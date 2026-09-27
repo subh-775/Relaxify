@@ -14,10 +14,11 @@ import type {Track} from './backend';
 /** What is collected, in the words the app shows people: once as a notice,
  *  and always in Settings. There is no switch; this is the disclosure. */
 export const ANALYTICS_NOTE =
-  'Relaxify sends usage statistics to help improve the app: songs played, ' +
-  'searches, downloads, errors, the app version and your approximate location ' +
-  '(country and city). They are linked to an anonymous ID for this phone, ' +
-  'never to your name, account or contacts.';
+  'Relaxify sends usage statistics to help improve the app: songs played and ' +
+  'how long you listened, searches, likes, playlists and downloads, settings ' +
+  'you change, errors, the app version, your phone model and your approximate ' +
+  'location (country and city). They are linked to an anonymous ID for this ' +
+  'phone, never to your name, account or contacts.';
 
 type AnalyticsNative = {
   log?: (name: string, params: Record<string, string | number>) => void;

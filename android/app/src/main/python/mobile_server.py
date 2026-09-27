@@ -1109,11 +1109,19 @@ def scan_local_downloads():
     or an app restart."""
     from components.download_manager import scan_downloads
     directory = get_default_download_dir()
-    try:
-        tracks = scan_downloads(directory)
-    except Exception:
-        tracks = []
+    tracks = []
+    for root in android_env.music_roots():
+        try:
+            tracks += scan_downloads(root)
+        except Exception:
+            pass
     return jsonify({"tracks": tracks, "download_dir": directory})
+
+
+def _music_roots() -> list:
+    """Resolved library folders; a path must sit inside one to be served or
+    deleted. See android_env.music_roots."""
+    return [Path(r).resolve() for r in android_env.music_roots()]
 
 
 @app.post("/api/downloads/delete")
@@ -1128,18 +1136,18 @@ def delete_download_file():
     if not raw:
         return jsonify({"ok": False, "error": "no path"}), 400
 
-    directory = Path(get_default_download_dir()).resolve()
+    roots = _music_roots()
     try:
         target = Path(raw).resolve()
         # A PARENT check, not a string prefix: "…/Relaxify-old/x.m4a" starts
         # with "…/Relaxify" and used to pass. Same rule /api/local applies.
-        inside = directory in target.parents
+        inside = any(root in target.parents for root in roots)
         if not inside or not target.is_file():
             return jsonify({"ok": False, "error": "not a managed download"}), 400
         target.unlink()
         # Clean up an emptied album subfolder, but never the root itself.
         parent = target.parent
-        if parent != directory and parent.is_dir() and not any(parent.iterdir()):
+        if parent not in roots and parent.is_dir() and not any(parent.iterdir()):
             parent.rmdir()
         return jsonify({"ok": True})
     except Exception as e:
@@ -1184,8 +1192,7 @@ def serve_local_file():
     except Exception:
         return jsonify({"detail": "File not found"}), 404
 
-    root = Path(get_default_download_dir()).resolve()
-    if root not in real.parents:
+    if not any(root in real.parents for root in _music_roots()):
         return jsonify({"detail": "Path not allowed"}), 403
     if real.suffix.lower() not in _LOCAL_AUDIO_EXTS:
         return jsonify({"detail": "Unsupported file type"}), 403
@@ -1212,8 +1219,7 @@ def serve_local_artwork():
     except Exception:
         return jsonify({"detail": "File not found"}), 404
 
-    root = Path(get_default_download_dir()).resolve()
-    if root not in real.parents:
+    if not any(root in real.parents for root in _music_roots()):
         return jsonify({"detail": "Path not allowed"}), 403
     if real.suffix.lower() not in _LOCAL_AUDIO_EXTS:
         return jsonify({"detail": "Unsupported file type"}), 403
@@ -2108,6 +2114,10 @@ def start_server(files_dir: str, downloads_dir: str, web_dir: str,
 
     android_env.configure(files_dir, downloads_dir, web_dir, cache_dir, public_dir)
     android_env.install_stdio_logging()
+    try:
+        print(f"[backend] legacy downloads: {android_env.migrate_legacy_downloads()}")
+    except Exception as e:
+        print(f"[backend] legacy downloads: {e}")
 
     print(f"[backend] starting on 127.0.0.1:{port}")
     print(f"[backend] downloads -> {android_env.downloads_dir()}")

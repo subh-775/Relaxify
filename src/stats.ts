@@ -32,10 +32,22 @@ export type TrackStat = {track: Track; count: number; last: number};
  * a total would have to be written on every pause, skip and track change, and
  * every one of those is a chance to double-count or miss.
  */
-export type Play = {at: number; full: number; src: string};
-export type ArtistStat = {name: string; image?: string; count: number; last: number};
+export type Play = {
+  at: number;
+  full: number;
+  src: string;
+  /** The track's id (getTrackId), so the Recap can name this week's top song
+   *  and artist. Absent on plays logged before v1.2.24. */
+  k?: string;
+};
+export type ArtistStat = {
+  name: string;
+  image?: string;
+  count: number;
+  last: number;
+};
 
-type Stats = {
+export type Stats = {
   tracks: Record<string, TrackStat>;
   artists: Record<string, ArtistStat>;
   plays: number;
@@ -139,7 +151,10 @@ export function recordPlay(track: Track): void {
 
     // Prune by AGE first, then by count. Anything older than a week can never
     // be read again, so it is dropped whether or not the log is full.
-    const log = [...prev.log, {at: now, full: playSeconds(track), src: sourceOf(track)}]
+    const log = [
+      ...prev.log,
+      {at: now, full: playSeconds(track), src: sourceOf(track), k: id},
+    ]
       .filter(e => now - e.at < WEEK_MS)
       .slice(-MAX_LOG);
 
@@ -209,14 +224,10 @@ export function summarizeWeek(log: Play[], now: number): WeekStat {
   return {minutes: Math.round(seconds / 60), songs, sources, perDay};
 }
 
-/**
- * Deliberately NOT on a clock: it recomputes when the log changes, which is
- * once per song. Between songs the numbers cannot move by enough to matter, and
- * a ticking derived value would re-render the screen for nothing.
- */
-export function useWeek(): WeekStat {
-  const s = useStoreValue(store);
-  return useMemo(() => summarizeWeek(s.log, Date.now()), [s]);
+/** Everything recorded, for the Recap to summarise. It recomputes when the
+ *  store changes, which is once per song. */
+export function useStatsState(): Stats {
+  return useStoreValue(store);
 }
 
 export function useStats(): {

@@ -51,6 +51,7 @@ export const SIDEBAR = [
       {text: 'Import from Spotify', link: '/guide/spotify-import'},
       {text: 'Your Library', link: '/guide/library'},
       {text: 'Downloads & Offline', link: '/guide/downloads'},
+      {text: 'Recap', link: '/guide/recap'},
     ],
   },
   {

@@ -23,8 +23,10 @@ import {BOTTOM_INSET} from '../layout';
 import {createStore, useStoreValue} from '../storage';
 import {ANALYTICS_NOTE} from '../analytics';
 
+// v2: the notice changed (listening time, likes, playlists and settings joined
+// the list in v1.2.23), so everyone sees it once more.
 const noticeSeen = createStore<boolean>(
-  'mp.analyticsNoticeSeen.v1',
+  'mp.analyticsNoticeSeen.v2',
   false,
   raw => raw === true,
 );

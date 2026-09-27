@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import {ErrorBoundary} from './src/ErrorBoundary';
 import {HomeScreen} from './src/screens/HomeScreen';
-import {ActivityScreen} from './src/screens/ActivityScreen';
+import {RecapScreen} from './src/screens/RecapScreen';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
 import {
@@ -129,8 +129,8 @@ function Shell() {
   // null = not yet determined, false = this APK has no native audio engine.
   const [engine, setEngine] = useState<boolean | null>(null);
   const [libraryNonce, setLibraryNonce] = useState(0);
-  /** The drawer's Recents / Your activity pages. null = closed. */
-  const [activity, setActivity] = useState<'recents' | 'stats' | null>(null);
+  /** The drawer's Recap. null = closed. */
+  const [activity, setActivity] = useState<'stats' | null>(null);
   const updateWaiting = useUpdateAvailable();
   const exitArmedAt = useRef(0);
 
@@ -729,13 +729,7 @@ function Shell() {
         )}
         {!!activity && (
           <View style={StyleSheet.absoluteFill}>
-            <ActivityScreen
-              mode={activity}
-              onClose={() => setActivity(null)}
-              onPlay={play}
-              onMenu={openSheet}
-              onOpenArtist={openArtist}
-            />
+            <RecapScreen onClose={() => setActivity(null)} />
           </View>
         )}
 

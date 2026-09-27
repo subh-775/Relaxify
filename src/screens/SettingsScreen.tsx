@@ -895,7 +895,7 @@ export function SettingsScreen({
         <Section
           title="Content sources"
           Icon={Radio}
-          footer="JioSaavn and SoundCloud are always available. YouTube is optional and searched alongside them when it is on.">
+          footer="JioSaavn and SoundCloud are always on. YouTube is optional: its streams are protected, and the app has to decode each one before it can play it. Turning YouTube on first tests this by opening one YouTube stream on this phone, and it turns on only if the test succeeds.">
           <View style={styles.row}>
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>JioSaavn</Text>
