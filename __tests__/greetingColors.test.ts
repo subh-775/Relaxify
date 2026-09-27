@@ -6,6 +6,7 @@
 import {expect, jest, test} from '@jest/globals';
 
 jest.mock('react-native', () => ({
+  AccessibilityInfo: {},
   Animated: {Value: class {}, View: 'View'},
   Easing: {},
   StyleSheet: {create: (s: unknown) => s},

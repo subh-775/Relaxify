@@ -4,7 +4,7 @@ Where your things are kept. You do not need this page to use the app.
 
 ## Everything runs on your phone
 
-Searching, ranking, starting a stream and downloading all happen on your phone. There is no Relaxify server, so there is no account.
+Searching, ranking, starting a stream and downloading all happen on your phone. There is no Relaxify server, so there is no account. The one thing that leaves your phone is the usage statistics below.
 
 The engine is a small server **inside the app**. It cannot be reached from your network. It is locked with a password the app creates fresh every launch and never shares, because other apps on the same phone could otherwise talk to it.
 
@@ -16,9 +16,19 @@ Web pages in your browser cannot read its replies. The password protects everyth
 | --- | --- |
 | Playlists, likes, history, settings | The app's storage on your phone |
 | Downloaded songs | Your own music folder |
-| Lyrics, covers, temporary files | Cache. **Settings → Clear cached data** removes them |
+| Lyrics, covers, temporary files | Cache. **Settings → Clear cached data** removes them, and **Clear cache automatically** does once it passes your limit |
 
 Uninstalling deletes the first row. Downloads stay, because they are in a folder you chose. See [Downloads](/guide/downloads).
+
+## Usage statistics
+
+To help improve the app, it sends usage statistics to Google (Firebase Analytics and Crashlytics):
+
+- songs played and how long each was listened to, searches, likes, playlists and downloads
+- settings you change, errors, crashes and playback problems
+- the app version, the phone model and your approximate location (country and city, worked out from your internet address)
+
+They are linked to an anonymous ID for your phone, never to your name, account or contacts. The app never asks for your location. **Recap** is worked out on your phone from your own history and sends nothing.
 
 ## Audio effects
 

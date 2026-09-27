@@ -34,6 +34,7 @@ import {
   normalizeTrack,
 } from './tracks';
 import {getArtworkColor} from './artworkColor';
+import {logEvent, songParams} from './analytics';
 import {
   applyAudioEffects,
   endCrossfade,
@@ -344,6 +345,10 @@ export async function setupPlayer(): Promise<boolean> {
       } catch {}
     });
 
+    TrackPlayer.addEventListener(Event.PlaybackError, e => {
+      logEvent('playback_error', {message: e.message, code: e.code});
+    });
+
     TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async e => {
       // The "play this soon" window is relative to the current song — a new song
       // starts a fresh one, so anything queued now goes right after it again.
@@ -376,6 +381,25 @@ export async function setupPlayer(): Promise<boolean> {
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
         remember(src);
+        // The same queue ROW again is not a new play. Tapping a song part-way
+        // down a list starts it alone, then inserts the earlier songs in front
+        // of it; the shift fires this event a second time for the song that is
+        // already playing, and every tapped song was counted twice.
+        const sameRow =
+          !!e.lastTrack?._qid && e.lastTrack._qid === e.track?._qid;
+        if (!sameRow) {
+          logEvent('song_played', songParams(src));
+          // How far the song that just ended got: skips vs full listens.
+          const last = sourceTrackFor(e.lastTrack ?? null);
+          if (last) {
+            const dur = Number(e.lastTrack?.duration) || 0;
+            logEvent('song_listened', {
+              ...songParams(last),
+              seconds: Math.round(e.lastPosition || 0),
+              completed: dur > 0 && e.lastPosition >= dur - 5 ? 1 : 0,
+            });
+          }
+        }
       }
       // Re-read the mirror, warm the covers around the new track and save the
       // session — once the skipping stops. Everything above this line has
@@ -731,6 +755,7 @@ export async function addToQueue(track: Track): Promise<void> {
   if (!item) {
     throw new Error('This track has no playable source.');
   }
+  logEvent('queue_add', songParams(track));
   return serialQueueOp(() => insertQueued(track, item));
 }
 
@@ -993,13 +1018,15 @@ export async function skipNext(): Promise<void> {
 }
 
 /** Restart the track first; only jump back when already near the start — the
- *  behaviour every other player has, so one stray tap can't lose your place. */
-export async function skipPrevious(): Promise<void> {
+ *  behaviour every other player has, so one stray tap can't lose your place.
+ *  `always` skips the restart: a swipe has already shown the previous cover
+ *  gliding in, so it must land on that song. */
+export async function skipPrevious(always = false): Promise<void> {
   cancelCrossfade();
   markManualTrackChange();
   try {
     const pos = await TrackPlayer.getPosition();
-    if (pos > 3) {
+    if (!always && pos > 3) {
       await TrackPlayer.seekTo(0);
       return;
     }
@@ -1104,6 +1131,7 @@ export function shuffleUpcoming<T>(rest: T[]): T[] {
  * than lighting the icon for a shuffle that never happened.
  */
 export function setShuffle(on: boolean): Promise<boolean> {
+  logEvent('shuffle', {on: on ? 1 : 0});
   return serialQueueOp(() => setShuffleNow(on));
 }
 
@@ -1180,6 +1208,7 @@ async function dropQueuedRadioNow(): Promise<void> {
 }
 
 export async function setRepeat(mode: RepeatMode): Promise<void> {
+  logEvent('repeat', {mode: RepeatMode[mode] ?? String(mode)});
   await TrackPlayer.setRepeatMode(mode);
 }
 
@@ -1397,6 +1426,52 @@ let wasPlaying = false;
 let pushedSpan = -1;
 
 /**
+ * A song that goes silent mid-play with the pause icon still showing: the
+ * stream stopped delivering (a mobile network dropping out, a CDN connection
+ * that hangs), so the engine sits in Buffering. No error is raised, so nothing
+ * recovered it and nothing reported it.
+ *
+ * After STALL_KICK_MS of continuous buffering the watcher seeks one second
+ * ahead. That lands outside the (empty) buffer, so ExoPlayer drops the stuck
+ * request and opens a fresh one, and the proxy re-resolves the stream if the
+ * old URL died. A seek to the same position would be served from the buffer
+ * and leave the stuck request in place. One kick per stall, logged as
+ * `playback_stall`, so the next one shows up in Analytics with its song.
+ *
+ * ponytail: runs on the watcher tick, which Android freezes with the screen
+ * off, so a stall during screen-off listening is only caught once the app is
+ * back in front. Move it native if those turn up in playback_stall.
+ */
+const STALL_KICK_MS = 10000;
+let stalledSince = 0;
+
+export function kickIfStalled(position: number, duration: number): void {
+  const now = Date.now();
+  if (!stalledSince) {
+    stalledSince = now;
+    return;
+  }
+  if (now - stalledSince < STALL_KICK_MS) {
+    return;
+  }
+  // Re-armed, not cleared: a stall that outlasts the kick gets another one
+  // STALL_KICK_MS later instead of sitting silent until the user notices.
+  stalledSince = now;
+  const target =
+    duration > 2 ? Math.min(position + 1, duration - 1) : position + 1;
+  TrackPlayer.seekTo(target).catch(() => {});
+  TrackPlayer.getActiveTrack()
+    .then(t => {
+      const src = sourceTrackFor(t ?? null);
+      logEvent('playback_stall', {
+        ...(src ? songParams(src) : {}),
+        position: Math.round(position),
+      });
+    })
+    .catch(() => {});
+}
+
+/**
  * Tell the native scheduler how long to fade — zero while the sleep timer's
  * end-of-track stop is armed, because a crossfade starts the NEXT song
  * seconds before the boundary, mixing a song nobody asked for into the last
@@ -1446,14 +1521,18 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
     // One cheap state read replaces all of it. Paused, stopped or idle, the
     // tick now costs a single call and returns; playing, nothing changes.
     let playing = false;
+    let state: State | undefined;
     try {
-      const {state} = await TrackPlayer.getPlaybackState();
+      state = (await TrackPlayer.getPlaybackState()).state;
       playing =
         state === State.Playing ||
         state === State.Buffering ||
         state === State.Loading;
     } catch {
       return; // engine not up — there is nothing to do either way
+    }
+    if (state !== State.Buffering && state !== State.Loading) {
+      stalledSince = 0;
     }
     if (!playing) {
       // The falling edge is the one tick that still has work: a pause must
@@ -1508,6 +1587,9 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
       ]);
       position = p.position;
       idx = i ?? 0;
+      if (state === State.Buffering || state === State.Loading) {
+        kickIfStalled(position, p.duration);
+      }
     } catch {
       return;
     }
@@ -1554,6 +1636,27 @@ export function useIsPlaying(): boolean {
     // Buffering / Loading / Ready / Connecting: leave the icon as-is.
   }, [state]);
   return playing;
+}
+
+/**
+ * Is the engine waiting on the network — for long enough that it is a stall,
+ * not the flash every seek and track change passes through. useIsPlaying holds
+ * the pause icon through Buffering, which is right for a seek and hid a real
+ * stall completely: the song went silent with nothing on screen saying so.
+ */
+export function useIsBuffering(): boolean {
+  const {state} = usePlaybackState() as {state?: State};
+  const waiting = state === State.Buffering || state === State.Loading;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!waiting) {
+      setShown(false);
+      return;
+    }
+    const t = setTimeout(() => setShown(true), 1500);
+    return () => clearTimeout(t);
+  }, [waiting]);
+  return shown;
 }
 
 export {TrackPlayer, State, Event, RepeatMode};

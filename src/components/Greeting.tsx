@@ -18,14 +18,21 @@
  *
  * It blushes in on mount — a short fade and rise — so opening the app feels
  * like arriving somewhere rather than a list appearing.
+ *
+ * Each arrival then answers itself: "Listen up Buddy!" for a beat, then
+ * "You aren't ready for this", which stays until the next arrival. Both are
+ * set at the same size. The reply is too long for one line at that size, so
+ * it wraps, and it is the reply that sets the header's height from the start:
+ * the swap happens inside a box that is already the right size, and nothing
+ * below it moves.
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
   StyleSheet,
   Text,
-  View,
   type LayoutChangeEvent,
 } from 'react-native';
 import {C} from '../theme';
@@ -50,10 +57,16 @@ const MAX_SIZE = 32;
  *  the font file. */
 const LINE_EM = 7.381;
 const WORD_GAP = 8;
+/** The reply, word by word. It wraps at this size; see the note at the top. */
+const REPLY = ['You', "aren't", 'ready', 'for', 'this'];
 
-/** The font size that fits the line in `room` dp: MAX_SIZE on most phones,
- *  smaller where the screen is narrow, never wrapped or clipped. Exported for
- *  the test. */
+/** How long "Listen up Buddy!" stays before the reply, and the cross-fade. */
+const HOLD_MS = 2500;
+const SWAP_MS = 350;
+
+/** The font size that fits "Listen up Buddy!" in `room` dp: MAX_SIZE on most
+ *  phones, smaller where the screen is narrow, never wrapped or clipped. The
+ *  reply shares it. Exported for the test. */
 export function fitSize(room: number): number {
   if (!(room > 0)) {
     return MAX_SIZE;
@@ -97,6 +110,40 @@ export function Greeting({visible = true}: {visible?: boolean}) {
     wasVisible.current = visible;
   }, [visible]);
 
+  // The exchange, replayed on each arrival: 0 shows "Listen up Buddy!", 1 the
+  // reply, where it ends. Leaving Home stops it and resets to the first line,
+  // so the next arrival starts from the top.
+  const swap = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    swap.stopAnimation();
+    swap.setValue(0);
+    if (!visible) {
+      return;
+    }
+    let run: Animated.CompositeAnimation | null = null;
+    let cancelled = false;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then(reduce => {
+        if (reduce || cancelled) {
+          return; // Reduce motion: the first line only.
+        }
+        const to = (v: number) =>
+          Animated.timing(swap, {
+            toValue: v,
+            duration: SWAP_MS,
+            easing: Easing.inOut(Easing.cubic),
+            useNativeDriver: true,
+          });
+        run = Animated.sequence([Animated.delay(HOLD_MS), to(1)]);
+        run.start();
+      });
+    return () => {
+      cancelled = true;
+      run?.stop();
+    };
+  }, [visible, swap]);
+
   useEffect(() => {
     Animated.timing(bloom, {
       toValue: 1,
@@ -123,7 +170,7 @@ export function Greeting({visible = true}: {visible?: boolean}) {
     <Animated.View
       accessible
       accessibilityRole="header"
-      accessibilityLabel="Listen up Buddy!"
+      accessibilityLabel="Listen up Buddy! You aren't ready for this"
       onLayout={onBox}
       style={[
         styles.wrap,
@@ -139,7 +186,25 @@ export function Greeting({visible = true}: {visible?: boolean}) {
           ],
         },
       ]}>
-      <View style={styles.line}>
+      <Animated.View
+        style={[
+          styles.line,
+          styles.first,
+          {
+            opacity: swap.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 0],
+            }),
+            transform: [
+              {
+                translateY: swap.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -6],
+                }),
+              },
+            ],
+          },
+        ]}>
         <Text
           style={[styles.word, word, {color: listen}]}
           maxFontSizeMultiplier={1}>
@@ -153,7 +218,44 @@ export function Greeting({visible = true}: {visible?: boolean}) {
           maxFontSizeMultiplier={1}>
           Buddy!
         </Text>
-      </View>
+      </Animated.View>
+      {/* The reply, in the flow, so its wrapped height is the header's height
+          before it ever shows. Coloured like the first line: the first and
+          last word take the pair. */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.line,
+          styles.reply,
+          {
+            opacity: swap,
+            transform: [
+              {
+                translateY: swap.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [6, 0],
+                }),
+              },
+            ],
+          },
+        ]}>
+        {REPLY.map((w, i) => (
+          <Text
+            key={w}
+            style={[
+              styles.word,
+              word,
+              i === 0
+                ? {color: listen}
+                : i === REPLY.length - 1
+                ? {color: buddy}
+                : styles.up,
+            ]}
+            maxFontSizeMultiplier={1}>
+            {w}
+          </Text>
+        ))}
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -169,6 +271,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: WORD_GAP,
   },
+  // "Listen up Buddy!" over the reply, centred in the height the reply sets.
+  first: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  reply: {flexWrap: 'wrap', rowGap: 0},
   // Each word states its weight itself — see the note at the top. The size,
   // line height (room for the 'y' descender) and tracking come from fitSize.
   // maxFontSizeMultiplier={1} on each word: a display line sized to fit

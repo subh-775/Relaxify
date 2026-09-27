@@ -12,6 +12,7 @@ components read via Path.home().
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -146,23 +147,80 @@ def default_downloads_dir() -> str:
     """Downloads/Relaxify/music — the phone's real, user-visible Download
     folder, so songs show up in any file manager and SURVIVE an uninstall.
 
-    An install that already keeps music under one of the old names carries on
-    using it. Moving those files would be a bulk copy of somebody's music
-    library on the back of a rename, and leaving them behind would hide them
-    from the library scan; staying put costs nothing and cannot lose anything.
-    Only a fresh install gets the new folder.
+    Music kept under an old name is moved here at startup (see
+    migrate_legacy_downloads), so this is the one place new downloads go.
 
     Empty when Android gave us no public Download path at all.
     """
     if not _dirs["public"]:
         return ""
-    current = Path(_dirs["public"], *PUBLIC_SUBDIR)
-    if not current.is_dir():
-        for legacy in LEGACY_PUBLIC_SUBDIRS:
-            previous = Path(_dirs["public"], *legacy)
-            if previous.is_dir():
-                return str(previous)
-    return str(current)
+    return str(Path(_dirs["public"], *PUBLIC_SUBDIR))
+
+
+def _legacy_dirs() -> list:
+    if not _dirs["public"]:
+        return []
+    return [Path(_dirs["public"], *legacy) for legacy in LEGACY_PUBLIC_SUBDIRS]
+
+
+def migrate_legacy_downloads() -> str:
+    """Move music from Download/Fix_Spotify/music into Download/Relaxify/music.
+
+    Runs at every start and does nothing once the old folder is gone. Each file
+    is a rename inside the same Download folder, so nothing is copied. A name
+    already taken in the new folder keeps both files. A file that cannot be
+    moved stays where it is and music_roots() keeps it in the library, so a
+    failed move never hides a song. The old folder is removed once empty.
+    """
+    if not _dirs["public"]:
+        return "no public Download folder"
+    target = Path(default_downloads_dir())
+    moved = failed = 0
+    for src in _legacy_dirs():
+        if not src.is_dir():
+            continue
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return f"cannot create {target}"
+        for f in sorted(p for p in src.rglob("*") if p.is_file()):
+            dest = target / f.relative_to(src)
+            if dest.exists():
+                dest = dest.with_name(f"{dest.stem} (1){dest.suffix}")
+            try:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(f), str(dest))
+                moved += 1
+            except Exception:
+                failed += 1
+        # Empty folders, deepest first, then the old app folder above "music".
+        for d in sorted((p for p in src.rglob("*") if p.is_dir()), reverse=True):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+        for d in (src, src.parent):
+            try:
+                d.rmdir()
+            except OSError:
+                pass
+    # A folder picked in Settings that WAS the old one now means the new one.
+    settings = read_settings()
+    custom = (settings.get("download_dir") or "").strip()
+    if custom and any(Path(custom) == p for p in _legacy_dirs()):
+        settings.pop("download_dir", None)
+        write_settings(settings)
+    return f"moved {moved}, left {failed}"
+
+
+def music_roots() -> list:
+    """Every folder whose songs belong in the library: where downloads go now,
+    plus an old folder that still holds files a move could not take."""
+    roots = [downloads_dir()]
+    for legacy in _legacy_dirs():
+        if legacy.is_dir() and str(legacy) not in roots:
+            roots.append(str(legacy))
+    return roots
 
 
 def private_downloads_dir() -> str:

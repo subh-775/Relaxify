@@ -61,7 +61,7 @@ export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer';
 //
 // Queue is gone from here: the player's own queue handle is a better home for
 // it, one swipe from where you already are. Recents is gone too — it was the
-// same history "Your activity" already presents, sorted differently, and one
+// same history the Recap (then "Your activity") presents, and one
 // listening page is enough.
 //
 // Shortcuts is gone as well, and so is the screen behind it. It was a list of
@@ -78,8 +78,8 @@ const ITEMS: {id: SidebarDest; label: string; Icon: typeof Clock}[] = [
   // AudioLines, not Sparkles: a sparkle says "AI" to most people now, and it
   // is also the badge on the update popup — the same glyph meaning two
   // unrelated things. A waveform reads as "your listening" with no caption.
-  {id: 'stats', label: 'Your activity', Icon: AudioLines},
-  {id: 'help', label: 'Read docs', Icon: BookOpen},
+  {id: 'stats', label: 'Recap', Icon: AudioLines},
+  {id: 'help', label: 'How to use', Icon: BookOpen},
   {id: 'settings', label: 'Settings', Icon: SettingsIcon},
 ];
 

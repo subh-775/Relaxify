@@ -54,15 +54,14 @@ import {
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Svg, {Defs, RadialGradient, Rect, Stop} from 'react-native-svg';
 import Animated, {
-  Easing,
   runOnJS,
   useAnimatedStyle,
   useDerivedValue,
   useAnimatedReaction,
   useSharedValue,
   withSpring,
-  withTiming,
   interpolateColor,
+  type SharedValue,
 } from 'react-native-reanimated';
 import {C} from '../theme';
 import {getLyrics, type Lyrics, type Track} from '../backend';
@@ -72,7 +71,6 @@ import {Marquee} from '../components/Marquee';
 import {
   RepeatMode,
   isShuffled,
-  peekAdjacentTrack,
   seekTo,
   setRepeat,
   setShuffle,
@@ -82,9 +80,11 @@ import {
   sourceTrackFor,
   togglePlay,
   useActiveTrack,
+  useIsBuffering,
   useIsPlaying,
   useProgress,
 } from '../player';
+import {useSongSwipe, type Neighbour} from '../songSwipe';
 import {useAudioOutput} from '../audioOutput';
 import {useSettings} from '../store';
 import {
@@ -173,12 +173,6 @@ const CoverGlow = React.memo(function CoverGlow({tint}: {tint: string | null}) {
   );
 });
 
-const SWIPE_COMMIT = 64; // px before a swipe actually changes track
-// How far the artwork (and now the title) travels off-screen on a full swipe.
-// Shared so the title tracks the SAME motion the artwork already had — that
-// shared number is what makes them move as one thing instead of two.
-const ART_TRAVEL = 400;
-
 /**
  * Two panes, not three, and no labels.
  *
@@ -230,6 +224,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
     };
   }, [active]);
   const playing = useIsPlaying();
+  const buffering = useIsBuffering();
   const output = useAudioOutput();
 
   /**
@@ -403,10 +398,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
    * one inside that one.
    */
   const slide = useSharedValue(0);
-  /** Which neighbour a horizontal drag is heading toward: 1 next, -1 prev, 0
-   *  none. A shared value so the incoming title can track the finger without
-   *  the direction having to be React state read from a worklet. */
-  const dir = useSharedValue(0);
 
   /**
    * Mounted as soon as there is a track, and never unmounted.
@@ -629,91 +620,21 @@ export const PlayerScreen = React.memo(function PlayerScreen({
     [],
   );
 
-  const commit = useCallback(
-    (to: 'next' | 'prev') => {
-      // Fire the skip IMMEDIATELY so the engine advances during the animation,
-      // not after it — that lag was the "old song lingers, then flips" bug.
-      (to === 'next' ? skipNext() : skipPrevious()).catch(() => {});
-      setPreviewDir(null); // the swap below IS the commit; no preview needed after
-      dir.value = 0;
-      const out = to === 'next' ? -ART_TRAVEL : ART_TRAVEL;
-      slide.value = withTiming(out, {duration: 160}, finished => {
-        if (!finished) {
-          return;
-        }
-        // Jump to the far side with no animation, then travel back in. The
-        // assignment lands before the animation initialises, so the return
-        // starts from the far edge rather than from where the exit ended.
-        slide.value = -out;
-        slide.value = withTiming(0, {
-          duration: 240,
-          easing: Easing.out(Easing.cubic),
-        });
-      });
-    },
-    [slide, dir],
-  );
-
   /**
-   * Which neighbour the title/artist row is currently previewing, if any —
-   * set the moment a horizontal drag begins, so the incoming song's name is
-   * already on screen and moving with the artwork, not something that only
-   * appears once the finger lifts. Spotify shows the destination as you drag;
-   * this used to show only the CURRENT song's name until release, then jump.
-   */
-  const [previewDir, setPreviewDir] = useState<'next' | 'prev' | null>(null);
-  const previewTrack = previewDir
-    ? peekAdjacentTrack(previewDir === 'next' ? 1 : -1)
-    : null;
-  const previewTitle = previewTrack
-    ? cleanText(String(previewTrack.title ?? ''))
-    : '';
-  const previewArtists = previewTrack
-    ? splitArtists(String(previewTrack.artist ?? '')).join(', ')
-    : '';
-
-  /**
-   * Swipe LEFT/RIGHT on the artwork to change song.
+   * Swipe LEFT/RIGHT on the artwork to change song — the carousel the mini
+   * player uses too; see songSwipe. Both neighbouring songs' covers and
+   * titles are drawn one `span` to either side and travel with the finger.
    *
-   * The manual axis lock this replaces (`artAxis`, set on the first move and
-   * then obeyed for the rest of the drag) is gone entirely: activeOffsetX +
-   * failOffsetY decide the axis natively, before either gesture has taken a
-   * frame, and Gesture.Race guarantees only one of the two can ever claim the
-   * touch. A mode flag inside one handler was doing that job by hand, and doing
-   * it a frame late.
+   * activeOffsetX + failOffsetY decide the axis natively, and Gesture.Race
+   * below guarantees only this or the dismiss can ever claim the touch.
    */
-  const skip = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-14, 14])
-        .failOffsetY([-20, 20])
-        .onUpdate(e => {
-          slide.value = e.translationX * 0.55;
-          // Which neighbour is being dragged toward. Re-evaluated every move,
-          // so reversing mid-drag (start left, change your mind) swaps the
-          // preview back — but JS only hears about it when the SIGN FLIPS, not
-          // on every frame. That is ~2 crossings per drag instead of ~60.
-          const d = e.translationX < 0 ? 1 : e.translationX > 0 ? -1 : 0;
-          if (d !== dir.value) {
-            dir.value = d;
-            runOnJS(setPreviewDir)(d === 1 ? 'next' : d === -1 ? 'prev' : null);
-          }
-        })
-        .onEnd((e, success) => {
-          if (success && e.translationX <= -SWIPE_COMMIT) {
-            runOnJS(commit)('next');
-            return;
-          }
-          if (success && e.translationX >= SWIPE_COMMIT) {
-            runOnJS(commit)('prev');
-            return;
-          }
-          dir.value = 0;
-          runOnJS(setPreviewDir)(null);
-          slide.value = withSpring(0, {damping: 18, stiffness: 220});
-        }),
-    [slide, dir, commit],
-  );
+  const {
+    gesture: skip,
+    sides,
+    span: swipeSpan,
+    onCoverLoad,
+  } = useSongSwipe({slide, active, failY: 20});
+  const neighbours = [sides.prev, sides.next];
 
   // Whichever recognises first wins outright; they can never both claim, and
   // neither can hand over halfway through.
@@ -920,15 +841,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   const metaStyle = useAnimatedStyle(() => ({
     transform: [{translateX: slide.value}],
   }));
-  // The INCOMING title, offset a full travel to the side you're dragging
-  // toward, so it enters exactly as the outgoing one leaves.
-  const metaPreviewStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX: slide.value + (dir.value === 1 ? ART_TRAVEL : -ART_TRAVEL),
-      },
-    ],
-  }));
 
   /**
    * Repeat is a two-state switch: off, or repeat THIS song.
@@ -1073,7 +985,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
           </Animated.View>
           {pane === 'song' && (
             <GestureDetector gesture={artGesture}>
-              <View style={styles.artArea}>
+              <View
+                style={styles.artArea}
+                onLayout={e => (swipeSpan.value = e.nativeEvent.layout.width)}>
                 <Animated.View
                   style={[styles.artFrame, artStyle]}
                   pointerEvents="none">
@@ -1099,12 +1013,27 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                         source={{uri: artwork}}
                         style={styles.art}
                         fadeDuration={0}
+                        onLoad={() => onCoverLoad(artwork)}
                       />
                     ) : (
                       <View style={[styles.art, styles.artFallback]} />
                     )}
                   </Animated.View>
                 </Animated.View>
+
+                {/* The neighbouring covers, laid out exactly like the one
+                    above, one span to either side (off screen at rest). */}
+                {neighbours.map(
+                  n =>
+                    n && (
+                      <NeighbourCover
+                        key={n.dir}
+                        n={n}
+                        slide={slide}
+                        span={swipeSpan}
+                      />
+                    ),
+                )}
 
                 {/* Double-tap zones over the artwork edges. They claim a TAP
                       only — the pan above needs movement to activate, so a
@@ -1158,21 +1087,18 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                 </View>
               </Animated.View>
 
-              {/* The incoming title, entering from the side you're dragging
-                  toward — same ART_TRAVEL offset the artwork uses, so the two
-                  land in sync. Rendered only mid-gesture; the real swap
-                  happens in `active` once commit() fires. */}
-              {!!previewTrack && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.meta, styles.metaPreview, metaPreviewStyle]}>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {previewTitle}
-                  </Text>
-                  <Text style={styles.artist} numberOfLines={1}>
-                    {previewArtists}
-                  </Text>
-                </Animated.View>
+              {/* The neighbouring titles, one span to either side — the
+                  same offset as their covers, so each lands with its own. */}
+              {neighbours.map(
+                n =>
+                  n && (
+                    <NeighbourMeta
+                      key={n.dir}
+                      n={n}
+                      slide={slide}
+                      span={swipeSpan}
+                    />
+                  ),
               )}
             </View>
 
@@ -1255,7 +1181,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               onPress={() => togglePlay()}
               activeOpacity={0.85}
               style={styles.playBtn}>
-              {playing ? (
+              {buffering ? (
+                <ActivityIndicator size="large" color={C.bg} />
+              ) : playing ? (
                 <Pause size={30} color={C.bg} fill={C.bg} />
               ) : (
                 <Play
@@ -1758,6 +1686,53 @@ const LyricsPane = React.memo(function LyricsPane({
     </ScrollView>
   );
 });
+
+type NeighbourProps = {
+  n: Neighbour;
+  slide: SharedValue<number>;
+  span: SharedValue<number>;
+};
+
+/** A neighbouring song's cover, one span to its side of the real one. */
+function NeighbourCover({n, slide, span}: NeighbourProps) {
+  const style = useAnimatedStyle(() => ({
+    transform: [{translateX: slide.value + n.dir * span.value}],
+  }));
+  return (
+    <View
+      style={[StyleSheet.absoluteFill, styles.artArea]}
+      pointerEvents="none">
+      <Animated.View style={[styles.artFrame, style]}>
+        <View style={styles.artHolder}>
+          {n.art ? (
+            <Image source={{uri: n.art}} style={styles.art} fadeDuration={0} />
+          ) : (
+            <View style={[styles.art, styles.artFallback]} />
+          )}
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
+/** A neighbouring song's title and artists, beside the real ones. */
+function NeighbourMeta({n, slide, span}: NeighbourProps) {
+  const style = useAnimatedStyle(() => ({
+    transform: [{translateX: slide.value + n.dir * span.value}],
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.meta, styles.metaPreview, style]}>
+      <Text style={styles.title} numberOfLines={1}>
+        {cleanText(String(n.track.title ?? ''))}
+      </Text>
+      <Text style={styles.artist} numberOfLines={1}>
+        {splitArtists(String(n.track.artist ?? '')).join(', ')}
+      </Text>
+    </Animated.View>
+  );
+}
 
 const styles = StyleSheet.create({
   // Below the bottom sheets (40) so a sheet raised from the ⊕ in here sits on

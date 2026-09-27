@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import {ErrorBoundary} from './src/ErrorBoundary';
 import {HomeScreen} from './src/screens/HomeScreen';
-import {ActivityScreen} from './src/screens/ActivityScreen';
+import {RecapScreen} from './src/screens/RecapScreen';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
 import {
@@ -40,6 +40,7 @@ import {
   useUpdateAvailable,
   watchForegroundUpdates,
 } from './src/update';
+import {watchCacheLimit} from './src/cacheLimit';
 import {
   TrackActionSheet,
   type SheetContext,
@@ -80,6 +81,7 @@ import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
 import {toast} from './src/toast';
 import {diag} from './src/diag';
+import {logEvent} from './src/analytics';
 
 /**
  * Where "Help" goes.
@@ -127,8 +129,8 @@ function Shell() {
   // null = not yet determined, false = this APK has no native audio engine.
   const [engine, setEngine] = useState<boolean | null>(null);
   const [libraryNonce, setLibraryNonce] = useState(0);
-  /** The drawer's Recents / Your activity pages. null = closed. */
-  const [activity, setActivity] = useState<'recents' | 'stats' | null>(null);
+  /** The drawer's Recap. null = closed. */
+  const [activity, setActivity] = useState<'stats' | null>(null);
   const updateWaiting = useUpdateAvailable();
   const exitArmedAt = useRef(0);
 
@@ -201,6 +203,8 @@ function Shell() {
     // …and again on every return to the foreground, because a process kept
     // alive by the playback service may not launch again for days.
     watchForegroundUpdates();
+    // Clear the cache once it passes the size set in Settings.
+    const stopCacheLimit = watchCacheLimit();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
     // the last moment we are reliably given before Android may reclaim the
     // process, so anything still pending goes out now.
@@ -213,6 +217,7 @@ function Shell() {
       clearTimeout(u);
       clearTimeout(bootCap);
       bg.remove();
+      stopCacheLimit();
     };
   }, [liftSplash]);
 
@@ -358,6 +363,7 @@ function Shell() {
   }, []);
 
   const switchTab = useCallback((next: Tab) => {
+    logEvent('screen_view', {screen_name: next});
     setTab(next);
     setCollection(null);
     setArtist(null);
@@ -723,13 +729,7 @@ function Shell() {
         )}
         {!!activity && (
           <View style={StyleSheet.absoluteFill}>
-            <ActivityScreen
-              mode={activity}
-              onClose={() => setActivity(null)}
-              onPlay={play}
-              onMenu={openSheet}
-              onOpenArtist={openArtist}
-            />
+            <RecapScreen onClose={() => setActivity(null)} />
           </View>
         )}
 
