@@ -15,7 +15,12 @@ jest.mock('react-native', () => ({
 }));
 
 // NB: below the mock — jest hoists jest.mock().
-import {PAIRS, fitSize, nextPair} from '../src/components/Greeting';
+import {
+  PAIRS,
+  fitReplySize,
+  fitSize,
+  nextPair,
+} from '../src/components/Greeting';
 
 const RANDS = [0, 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 0.9999];
 
@@ -54,4 +59,13 @@ test('the line fits its room: full size on wide phones, smaller on narrow ones',
   expect(narrow * 7.381 + 16).toBeLessThanOrEqual(228);
   // Before layout (width 0) it renders at the full size rather than 0.
   expect(fitSize(0)).toBe(32);
+});
+
+test('the reply always fits on one line, and never outgrows the call', () => {
+  for (const room of [180, 224, 260, 300, 400]) {
+    const r = fitReplySize(room);
+    // "You aren't ready for this": 10.23 em plus four 8 dp word gaps.
+    expect(r * 10.23 + 4 * 8).toBeLessThanOrEqual(room);
+    expect(r).toBeLessThanOrEqual(fitSize(room));
+  }
 });

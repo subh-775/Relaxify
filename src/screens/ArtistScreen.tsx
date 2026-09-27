@@ -24,6 +24,7 @@ import {TrackRow} from '../components/TrackRow';
 import {useFollowedArtists} from '../artists';
 import {State, togglePlay, useActiveTrack, usePlaybackState} from '../player';
 import {BOTTOM_INSET} from '../layout';
+import {useListEnd} from '../components/UpdateModal';
 
 /** Profiles the session has already opened — going back to an artist you just
  *  visited must not spin a loader again. */
@@ -65,6 +66,8 @@ export function ArtistScreen({
   // a prop computed once by the parent went stale until something else
   // re-rendered.
   const followed = useFollowedArtists();
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   const following = followed.some(
     a => a.name.toLowerCase() === (profile?.name || name).toLowerCase(),
   );
@@ -130,7 +133,7 @@ export function ArtistScreen({
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.body}>
+          contentContainerStyle={[styles.body, listEnd]}>
           <View style={styles.head}>
             {profile?.image ? (
               <Image source={{uri: profile.image}} style={styles.pfp} />

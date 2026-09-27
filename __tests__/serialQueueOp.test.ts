@@ -25,6 +25,8 @@ jest.mock('../src/store', () => ({}));
 jest.mock('../src/audioEffects', () => ({}));
 jest.mock('../src/artworkColor', () => ({}));
 jest.mock('../src/recentlyPlayed', () => ({}));
+jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
+jest.mock('../src/toast', () => ({toast: () => undefined}));
 jest.mock('../src/resume', () => ({}));
 jest.mock('../src/sleepTimer', () => ({}));
 jest.mock('../src/duckState', () => ({}));

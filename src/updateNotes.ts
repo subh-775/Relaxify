@@ -12,14 +12,18 @@
  *
  * CI writes bodies that are literally
  * "Full Changelog: https://github.com/.../compare/v1.0.15...v1.0.16", so the
- * prompt's one piece of prose was a URL nobody can tap. What survives is either
+ * prompt's one piece of prose was a URL nobody can tap. GitHub now writes it as
+ * markdown ("**Full Changelog**: …", "## What's Changed"), so the markers are
+ * allowed for before the words. What survives is either
  * real notes or nothing — and nothing must render as nothing, rather than as an
  * empty line holding vertical space.
  */
 export function readableNotes(body: string): string {
   return (body || '')
     .split('\n')
-    .filter(l => !/^\s*(full changelog|what's changed)\s*:?/i.test(l))
+    .filter(
+      l => !/^[\s#*_]*(full changelog|what's changed)[*_\s]*:?/i.test(l),
+    )
     .filter(l => !/^https?:\/\//.test(l.trim()))
     .map(l => l.replace(/^\s*[-*]\s+/, '• '))
     .join('\n')

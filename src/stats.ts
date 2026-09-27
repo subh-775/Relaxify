@@ -45,21 +45,30 @@ export type ArtistStat = {
   image?: string;
   count: number;
   last: number;
+  /** When this artist was first counted. Absent for artists counted before
+   *  v1.2.25, which the Recap therefore never calls a new discovery. */
+  first?: number;
 };
 
 export type Stats = {
   tracks: Record<string, TrackStat>;
   artists: Record<string, ArtistStat>;
   plays: number;
-  /** Newest LAST, so the "ran until the next one" reading is a forward scan. */
+  /** Newest LAST, so the "ran until the next one" reading is a forward scan.
+   *  Two weeks deep, so the Recap can compare this week with the last. */
   log: Play[];
+  /** Plays per local day ("2026-09-27" -> 12), for the streak. Bounded. */
+  days: Record<string, number>;
 };
 
 const MAX_TRACKS = 300;
 const MAX_ARTISTS = 200;
-/** A week of heavy listening is ~600 songs; past that the oldest go first. */
-const MAX_LOG = 700;
+/** Two weeks of heavy listening is ~1200 songs; past that the oldest go first. */
+const MAX_LOG = 1400;
+/** A year and a bit of days, which is as long as a streak needs to look. */
+const MAX_DAYS = 400;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const LOG_MS = 2 * WEEK_MS;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * The cap applied to a play whose track length we never learned.
@@ -70,7 +79,28 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * real play and it bounds the damage from a missing duration.
  */
 const UNKNOWN_LEN = 600;
-const EMPTY: Stats = {tracks: {}, artists: {}, plays: 0, log: []};
+const EMPTY: Stats = {tracks: {}, artists: {}, plays: 0, log: [], days: {}};
+
+/** The local calendar day of `at`, as "YYYY-MM-DD". */
+export function dayKey(at: number): string {
+  const d = new Date(at);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Seed the per-day counts from the log saved before they existed, so a
+ *  streak already running on update day is not reset to one. */
+function daysFrom(log: unknown): Record<string, number> {
+  const days: Record<string, number> = {};
+  for (const e of Array.isArray(log) ? (log as Play[]) : []) {
+    if (typeof e?.at === 'number') {
+      const k = dayKey(e.at);
+      days[k] = (days[k] ?? 0) + 1;
+    }
+  }
+  return days;
+}
 
 function normalize(raw: unknown): Stats {
   const s = (raw ?? {}) as Partial<Stats>;
@@ -80,6 +110,7 @@ function normalize(raw: unknown): Stats {
     plays: typeof s.plays === 'number' ? s.plays : 0,
     // Absent on anything saved before this existed — an empty week, not a crash.
     log: Array.isArray(s.log) ? s.log : [],
+    days: s.days && typeof s.days === 'object' ? s.days : daysFrom(s.log),
   };
 }
 
@@ -119,9 +150,12 @@ function sourceOf(track: Track): string {
   return track.playable_source || track.primary_source || 'unknown';
 }
 
-/** One play of `track`. Called from recentlyPlayed.remember, so every path that
- *  starts a song counts exactly once. */
-export function recordPlay(track: Track): void {
+/**
+ * One play of `track`, which began at `startedAt`. Called once per queue row by
+ * player.ts (countListened), after 30 s of listening, so a quick skip is not a
+ * play. The log keeps the START time, which the minutes arithmetic needs.
+ */
+export function recordPlay(track: Track, startedAt: number = Date.now()): void {
   if (!track?.title) {
     return;
   }
@@ -146,23 +180,41 @@ export function recordPlay(track: Track): void {
         image: a?.image || track.artwork_url,
         count: (a?.count ?? 0) + 1,
         last: now,
+        first: a ? a.first : now,
       };
     }
 
-    // Prune by AGE first, then by count. Anything older than a week can never
-    // be read again, so it is dropped whether or not the log is full.
+    // Prune by AGE first, then by count. Anything older than two weeks can
+    // never be read again, so it is dropped whether or not the log is full.
     const log = [
       ...prev.log,
-      {at: now, full: playSeconds(track), src: sourceOf(track), k: id},
+      {at: startedAt, full: playSeconds(track), src: sourceOf(track), k: id},
     ]
-      .filter(e => now - e.at < WEEK_MS)
+      .filter(e => now - e.at < LOG_MS)
       .slice(-MAX_LOG);
+
+    const day = dayKey(startedAt);
+    let days: Record<string, number> = {
+      ...prev.days,
+      [day]: (prev.days[day] ?? 0) + 1,
+    };
+    const keys = Object.keys(days);
+    if (keys.length > MAX_DAYS) {
+      // ISO day keys sort by date as plain strings; keep the newest.
+      days = Object.fromEntries(
+        keys
+          .sort()
+          .slice(-MAX_DAYS)
+          .map(k => [k, days[k]]),
+      );
+    }
 
     return {
       tracks: trim(tracks, MAX_TRACKS),
       artists: trim(artists, MAX_ARTISTS),
       plays: prev.plays + 1,
       log,
+      days,
     };
   });
 }
@@ -193,7 +245,11 @@ export type WeekStat = {
  */
 export function summarizeWeek(log: Play[], now: number): WeekStat {
   const since = now - WEEK_MS;
-  const recent = log.filter(e => e.at >= since).sort((a, b) => a.at - b.at);
+  // Bounded above too: the log is two weeks deep, and last week's figures are
+  // read by passing `now` a week back.
+  const recent = log
+    .filter(e => e.at >= since && e.at < now)
+    .sort((a, b) => a.at - b.at);
 
   let seconds = 0;
   const bySource = new Map<string, number>();

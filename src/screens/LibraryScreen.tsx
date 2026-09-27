@@ -62,6 +62,7 @@ import {BOTTOM_INSET} from '../layout';
 import Animated, {useAnimatedRef} from 'react-native-reanimated';
 import {FastScroll, useFastScroll} from '../components/FastScroll';
 import {MenuMark} from '../components/MenuMark';
+import {useListEnd} from '../components/UpdateModal';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
@@ -110,6 +111,8 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   visible?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>('all');
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   const [downloads, setDownloads] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -376,7 +379,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
             data={rows}
             keyExtractor={c => c.id}
             {...listWindowing}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[styles.list, listEnd]}
             showsVerticalScrollIndicator={false}
             onScroll={fast.onScroll}
             scrollEventThrottle={16}
@@ -425,7 +428,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           <FastScroll
             listRef={listRef}
             state={fast.state}
-            bottomInset={BOTTOM_INSET}
+            bottomInset={listEnd.paddingBottom}
           />
         </View>
       )}

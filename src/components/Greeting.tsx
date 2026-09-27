@@ -20,11 +20,15 @@
  * like arriving somewhere rather than a list appearing.
  *
  * Each arrival then answers itself: "Listen up Buddy!" for a beat, then
- * "You aren't ready for this", which stays until the next arrival. Both are
- * set at the same size. The reply is too long for one line at that size, so
- * it wraps, and it is the reply that sets the header's height from the start:
- * the swap happens inside a box that is already the right size, and nothing
- * below it moves.
+ * "You aren't ready for this", which stays until the next arrival. Each line
+ * is ONE line, sized from the font's own measurements to fill the same width,
+ * so the reply is a little smaller than the call and the two read as one
+ * block. (Wrapped, the reply's second line fell outside the header and was
+ * cut off by the page.) The first line sets the header's height; the reply
+ * sits over it, so the swap moves nothing below.
+ *
+ * The reply lands word by word: one animated value, staggered by
+ * interpolation, so it stays on the native driver.
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {
@@ -57,8 +61,9 @@ const MAX_SIZE = 32;
  *  the font file. */
 const LINE_EM = 7.381;
 const WORD_GAP = 8;
-/** The reply, word by word. It wraps at this size; see the note at the top. */
+/** The reply, word by word, and its width at font size 1 (same measurement). */
 const REPLY = ['You', "aren't", 'ready', 'for', 'this'];
+const REPLY_EM = 10.23;
 
 /** How long "Listen up Buddy!" stays before the reply, and the cross-fade. */
 const HOLD_MS = 2500;
@@ -72,6 +77,15 @@ export function fitSize(room: number): number {
     return MAX_SIZE;
   }
   return Math.min(MAX_SIZE, Math.floor((room - 2 * WORD_GAP) / LINE_EM));
+}
+
+/** The same for the reply: the largest size that keeps it on one line. */
+export function fitReplySize(room: number): number {
+  if (!(room > 0)) {
+    return MAX_SIZE;
+  }
+  const gaps = (REPLY.length - 1) * WORD_GAP;
+  return Math.min(MAX_SIZE, Math.floor((room - gaps) / REPLY_EM));
 }
 
 /**
@@ -128,14 +142,14 @@ export function Greeting({visible = true}: {visible?: boolean}) {
         if (reduce || cancelled) {
           return; // Reduce motion: the first line only.
         }
-        const to = (v: number) =>
+        const to = (v: number, duration: number) =>
           Animated.timing(swap, {
             toValue: v,
-            duration: SWAP_MS,
-            easing: Easing.inOut(Easing.cubic),
+            duration,
+            easing: Easing.linear, // each word eases on its own, below
             useNativeDriver: true,
           });
-        run = Animated.sequence([Animated.delay(HOLD_MS), to(1)]);
+        run = Animated.sequence([Animated.delay(HOLD_MS), to(1, SWAP_MS * 3)]);
         run.start();
       });
     return () => {
@@ -157,13 +171,41 @@ export function Greeting({visible = true}: {visible?: boolean}) {
 
   // Sized to the room it is given (see fitSize). Before the first layout it
   // is set at the full size; the fade-in covers the one-frame adjustment.
-  const [size, setSize] = useState(MAX_SIZE);
-  const onBox = (e: LayoutChangeEvent) =>
-    setSize(fitSize(e.nativeEvent.layout.width));
-  const word = {
+  const [room, setRoom] = useState(0);
+  const onBox = (e: LayoutChangeEvent) => setRoom(e.nativeEvent.layout.width);
+  const set = (size: number) => ({
     fontSize: size,
     lineHeight: Math.round(size * 1.28),
     letterSpacing: -size * (1.1 / 32),
+  });
+  const word = set(fitSize(room));
+  const replyWord = set(fitReplySize(room));
+
+  // The first line leaves in the first third of the swap; then each reply
+  // word rises in turn, overshooting a hair, like it was dropped into place.
+  const exit = swap.interpolate({
+    inputRange: [0, 0.3],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+  const land = (i: number) => {
+    const from = 0.2 + i * 0.12;
+    return {
+      opacity: swap.interpolate({
+        inputRange: [from, from + 0.18],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+      transform: [
+        {
+          translateY: swap.interpolate({
+            inputRange: [from, from + 0.2, from + 0.32],
+            outputRange: [14, -2, 0],
+            extrapolate: 'clamp',
+          }),
+        },
+      ],
+    };
   };
 
   return (
@@ -189,17 +231,14 @@ export function Greeting({visible = true}: {visible?: boolean}) {
       <Animated.View
         style={[
           styles.line,
-          styles.first,
           {
-            opacity: swap.interpolate({
-              inputRange: [0, 1],
-              outputRange: [1, 0],
-            }),
+            opacity: exit,
             transform: [
               {
                 translateY: swap.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -6],
+                  inputRange: [0, 0.3],
+                  outputRange: [0, -10],
+                  extrapolate: 'clamp',
                 }),
               },
             ],
@@ -219,41 +258,25 @@ export function Greeting({visible = true}: {visible?: boolean}) {
           Buddy!
         </Text>
       </Animated.View>
-      {/* The reply, in the flow, so its wrapped height is the header's height
-          before it ever shows. Coloured like the first line: the first and
-          last word take the pair. */}
-      <Animated.View
-        pointerEvents="none"
-        style={[
-          styles.line,
-          styles.reply,
-          {
-            opacity: swap,
-            transform: [
-              {
-                translateY: swap.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [6, 0],
-                }),
-              },
-            ],
-          },
-        ]}>
+      {/* The reply, over the first line and centred on it. Coloured like the
+          first line: the first and last word take the pair. */}
+      <Animated.View pointerEvents="none" style={[styles.line, styles.reply]}>
         {REPLY.map((w, i) => (
-          <Text
+          <Animated.Text
             key={w}
             style={[
               styles.word,
-              word,
+              replyWord,
               i === 0
                 ? {color: listen}
                 : i === REPLY.length - 1
                 ? {color: buddy}
                 : styles.up,
+              land(i),
             ]}
             maxFontSizeMultiplier={1}>
             {w}
-          </Text>
+          </Animated.Text>
         ))}
       </Animated.View>
     </Animated.View>
@@ -271,8 +294,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: WORD_GAP,
   },
-  // "Listen up Buddy!" over the reply, centred in the height the reply sets.
-  first: {
+  // The reply over "Listen up Buddy!", centred in the height the first sets.
+  reply: {
     position: 'absolute',
     top: 0,
     bottom: 0,
@@ -280,7 +303,6 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  reply: {flexWrap: 'wrap', rowGap: 0},
   // Each word states its weight itself — see the note at the top. The size,
   // line height (room for the 'y' descender) and tracking come from fitSize.
   // maxFontSizeMultiplier={1} on each word: a display line sized to fit

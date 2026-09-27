@@ -32,6 +32,7 @@ import {
   shouldOpen,
 } from '../drawer';
 import {BOTTOM_INSET} from '../layout';
+import {useListEnd} from '../components/UpdateModal';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -118,6 +119,8 @@ export const HomeScreen = React.memo(function HomeScreen({
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   // Subscribed, so cached rows appear the moment disk hydration finishes even
   // if that lands after first render.
   const cachedRows = useStoreValue(homeCache);
@@ -317,7 +320,7 @@ export const HomeScreen = React.memo(function HomeScreen({
             data={rows}
             keyExtractor={row => row.title}
             renderItem={({item}) => <Row row={item} onPick={onPickTrack} />}
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, listEnd]}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             bounces={false}

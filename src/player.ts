@@ -50,6 +50,8 @@ import {
   sleepTimerOnTrackChange,
 } from './sleepTimer';
 import {remember} from './recentlyPlayed';
+import {recordPlay} from './stats';
+import {toast} from './toast';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
 
 let ready = false;
@@ -347,6 +349,7 @@ export async function setupPlayer(): Promise<boolean> {
 
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
       logEvent('playback_error', {message: e.message, code: e.code});
+      skipPastError();
     });
 
     TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async e => {
@@ -378,6 +381,16 @@ export async function setupPlayer(): Promise<boolean> {
       // Cheap to call: topUpFromRadio() returns immediately unless the queue is
       // nearly out.
       topUpFromRadio().catch(() => {});
+      // The song that just ended gets its play counted here if it earned one
+      // and the watcher never saw it (screen off). Not for the same row again.
+      if (e.lastTrack && e.lastTrack._qid !== e.track?._qid) {
+        countListened(
+          e.lastTrack,
+          e.lastPosition || 0,
+          Number(e.lastTrack.duration) || 0,
+          true,
+        );
+      }
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
         remember(src);
@@ -1419,6 +1432,94 @@ async function prefetchNext(position: number, idx: number): Promise<void> {
   }
 }
 
+/**
+ * A play counts for the Recap once it has been LISTENED to for 30 s (half the
+ * song, if it is shorter than a minute): Spotify's rule, so a song you skip
+ * every time does not become your song of the week.
+ *
+ * Two callers, one per situation. The watcher tick sees the song cross the
+ * line while the app is in front; the track-change event (a native event, so
+ * it runs with the screen off) counts the song that just ended from its last
+ * position, if the tick never got the chance.
+ *
+ * `from` is where this row was first seen. A session restored at 2:00 would
+ * otherwise count the moment play is pressed; it has to be heard for 30 s.
+ */
+const PLAY_COUNTS_AFTER = 30;
+let countRow: string | undefined;
+let countFrom = 0;
+let counted = false;
+
+export function playThreshold(duration: number): number {
+  return duration > 0
+    ? Math.min(PLAY_COUNTS_AFTER, duration / 2)
+    : PLAY_COUNTS_AFTER;
+}
+
+/** True when a play heard from `from` to `position` has earned its count. */
+export function earnedPlay(
+  from: number,
+  position: number,
+  duration: number,
+): boolean {
+  const need = playThreshold(duration);
+  return position >= need && (from < need || position - from >= need);
+}
+
+function countListened(
+  row: RNTPTrack | null,
+  position: number,
+  duration: number,
+  ended = false,
+): void {
+  const qid = row?._qid as string | undefined;
+  if (!row || !qid) {
+    return;
+  }
+  if (qid !== countRow) {
+    if (ended) {
+      // Never watched: heard from wherever it started, which for a song that
+      // ran out behind a locked screen is the beginning.
+      countRow = undefined;
+      if (earnedPlay(0, position, duration)) {
+        const src = sourceTrackFor(row);
+        src && recordPlay(src, Date.now() - position * 1000);
+      }
+      return;
+    }
+    countRow = qid;
+    countFrom = position;
+    counted = false;
+  }
+  // A seek back re-opens the window from the earlier point.
+  countFrom = Math.min(countFrom, position);
+  if (counted || !earnedPlay(countFrom, position, duration)) {
+    return;
+  }
+  counted = true;
+  const src = sourceTrackFor(row);
+  src && recordPlay(src, Date.now() - position * 1000);
+}
+
+/**
+ * A stream that fails outright (a dead link, a source that refuses) used to
+ * stop the queue until someone pressed next. It skips on now, as every other
+ * player does — but at most three times in a row inside half a minute, so a
+ * phone that has lost the network does not race through the whole queue.
+ */
+let errorSkips: number[] = [];
+function skipPastError(): void {
+  const now = Date.now();
+  errorSkips = errorSkips.filter(t => now - t < 30000);
+  if (errorSkips.length >= 3) {
+    toast("Couldn't play these songs. Check your connection.", 'warn');
+    return;
+  }
+  errorSkips.push(now);
+  toast("Couldn't play this song, skipping it", 'warn');
+  skipNext().catch(() => {});
+}
+
 let fadeTimer: ReturnType<typeof setInterval> | null = null;
 /** Whether the previous watcher tick saw audio running — see the idle gate. */
 let wasPlaying = false;
@@ -1579,6 +1680,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
     // One progress/index read for the rest of the tick. It used to be two of
     // each: prefetchNext read them, then the resume save read them again.
     let position = 0;
+    let duration = 0;
     let idx = 0;
     try {
       const [p, i] = await Promise.all([
@@ -1586,6 +1688,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
         TrackPlayer.getActiveTrackIndex(),
       ]);
       position = p.position;
+      duration = p.duration;
       idx = i ?? 0;
       if (state === State.Buffering || state === State.Loading) {
         kickIfStalled(position, p.duration);
@@ -1602,7 +1705,11 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
     // …and remember the current position, throttled inside saveResume, so a
     // reopen resumes at the timestamp you left rather than the song's start.
     try {
-      const src = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
+      const active = (await TrackPlayer.getActiveTrack()) ?? null;
+      if (state === State.Playing) {
+        countListened(active, position, duration);
+      }
+      const src = sourceTrackFor(active);
       if (src) {
         saveResume({track: src, position, queue: queueSource, index: idx});
       }

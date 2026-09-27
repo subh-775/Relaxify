@@ -479,6 +479,7 @@ function Shell() {
   }, []);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const closeRecap = useCallback(() => setActivity(null), []);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -727,12 +728,6 @@ function Shell() {
             />
           </View>
         )}
-        {!!activity && (
-          <View style={StyleSheet.absoluteFill}>
-            <RecapScreen onClose={() => setActivity(null)} />
-          </View>
-        )}
-
         {/* Settings is an overlay, not a Modal, for the same reason as the
             rest: a Modal floats over the whole window and hid the mini player.
             Here it stays inside the body, so playback controls remain visible. */}
@@ -801,6 +796,16 @@ function Shell() {
         <BottomNav active={tab} onChange={switchTab} />
       </Animated.View>
 
+      {/* The Recap is a full-screen story, so it sits OVER the bars rather
+          than in the body under them: the mini player and the tab bar stay
+          mounted (the music is untouched) and simply are not seen until it is
+          swiped away. */}
+      {!!activity && (
+        <View style={styles.recap}>
+          <RecapScreen onClose={closeRecap} />
+        </View>
+      )}
+
       {/* Where every <Sheet> in the app is actually drawn — see Sheet.tsx.
           Mounted after the bars and given a zIndex above the player, so a menu
           raised from any screen covers all of it. */}
@@ -832,7 +837,7 @@ function Shell() {
         />
       )}
 
-      <UpdateModal />
+      <UpdateModal hidden={!!activity} />
 
       {/* Above everything, and the real UI is already mounted and painted
           underneath — so lifting this reveals a finished screen rather than
@@ -935,6 +940,7 @@ const styles = StyleSheet.create({
   // zIndex AND elevation. Document order alone decides this on iOS; Android
   // resolves overlapping siblings by elevation first, and the mini player
   // inside this layer carries an elevation of its own.
+  recap: {...StyleSheet.absoluteFillObject, zIndex: 25, elevation: 25},
   bottomStack: {
     position: 'absolute',
     left: 0,

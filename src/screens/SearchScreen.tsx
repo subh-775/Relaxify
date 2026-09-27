@@ -42,6 +42,7 @@ import {forgetSearch, rememberSearch, useSearchHistory} from '../searchHistory';
 import {BOTTOM_INSET} from '../layout';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
+import {useListEnd} from '../components/UpdateModal';
 
 /** A public Spotify playlist/album link (or spotify: URI). */
 export function isSpotifyUrl(text: string): boolean {
@@ -112,6 +113,8 @@ export const SearchScreen = React.memo(function SearchScreen({
   const [focused, setFocused] = useState(false);
   const [genres, setGenres] = useState<HomeItem[]>([]);
   const history = useSearchHistory();
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   const {topArtists} = useStats();
 
   // Guards against a slow response for an old query overwriting a newer one.
@@ -331,7 +334,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           data={history}
           keyExtractor={q => q}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <Text style={styles.section}>Recent searches</Text>
@@ -364,7 +367,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           data={suggestions}
           keyExtractor={s => `${s.title}|${s.artist}`}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={<Text style={styles.section}>Recommended</Text>}
           renderItem={({item}) => (
@@ -403,7 +406,7 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       {showBrowse && (
         <ScrollView
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           overScrollMode="never">
@@ -472,7 +475,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           keyExtractor={t => getTrackId(t)}
           keyboardShouldPersistTaps="handled"
           {...listWindowing}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             query.trim() && !error ? (

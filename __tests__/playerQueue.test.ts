@@ -99,6 +99,8 @@ jest.mock('../src/sleepTimer', () => ({
   sleepMode: () => 'off',
 }));
 jest.mock('../src/recentlyPlayed', () => ({remember: () => undefined}));
+jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
+jest.mock('../src/toast', () => ({toast: () => undefined}));
 jest.mock('../src/resume', () => ({
   clearResume: () => undefined,
   readResume: async () => null,

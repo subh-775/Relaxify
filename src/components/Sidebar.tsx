@@ -248,8 +248,11 @@ export const Sidebar = React.memo(function Sidebar({
             ))}
           </View>
 
-          {/* Version, centred, and nothing else — as specified. */}
-          <Text style={styles.version}>v{appVersion || '—'}</Text>
+          {/* Version, centred, and under it the licence the code ships under. */}
+          <View style={styles.foot}>
+            <Text style={styles.version}>v{appVersion || '—'}</Text>
+            <Text style={styles.license}>Released under GPL-3.0</Text>
+          </View>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -313,11 +316,12 @@ const styles = StyleSheet.create({
   },
   itemLabel: {color: C.text, fontSize: 15.5, fontWeight: '700'},
   itemValue: {color: C.accent, fontSize: 12.5, fontWeight: '700'},
+  foot: {paddingBottom: 22, gap: 3},
   version: {
     color: C.faint,
     fontSize: 12,
     textAlign: 'center',
-    paddingBottom: 22,
     letterSpacing: 0.4,
   },
+  license: {color: C.faint, fontSize: 11, textAlign: 'center', opacity: 0.8},
 });

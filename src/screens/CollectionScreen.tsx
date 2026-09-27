@@ -75,6 +75,7 @@ import {getLocalLibrary} from '../backend';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {Sheet} from '../components/Sheet';
 import {BOTTOM_INSET} from '../layout';
+import {useListEnd} from '../components/UpdateModal';
 
 export function CollectionScreen({
   collection,
@@ -118,6 +119,8 @@ export function CollectionScreen({
    * source of truth here.
    */
   const likes = useLikes();
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   const playlists = usePlaylists();
   const [localTracks, setLocalTracks] = useState<Track[] | null>(null);
   const jobs = useDownloadJobs();
@@ -435,7 +438,7 @@ export function CollectionScreen({
         data={tracks}
         keyExtractor={t => getTrackId(t)}
         {...listWindowing}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, listEnd]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
           [{nativeEvent: {contentOffset: {y: scrollY}}}],

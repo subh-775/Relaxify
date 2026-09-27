@@ -32,7 +32,6 @@ export type Store<T> = {
 // Keyed by storage key so hydrateAll can hand each store back the raw string
 // multiGet read for it. `any` because the map is heterogeneous by nature —
 // every store has a different T and only the key-agnostic methods are used.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const registry = new Map<string, Store<any>>();
 
 /**
