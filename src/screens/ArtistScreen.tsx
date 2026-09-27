@@ -25,6 +25,7 @@ import {useFollowedArtists} from '../artists';
 import {State, togglePlay, useActiveTrack, usePlaybackState} from '../player';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
+import {rememberArtistPhoto} from '../artistPhotos';
 
 /** Profiles the session has already opened — going back to an artist you just
  *  visited must not spin a loader again. */
@@ -81,6 +82,8 @@ export function ArtistScreen({
     getArtist(name)
       .then(p => {
         profileCache.set(name.toLowerCase(), p);
+        // The Recap and "Your artists" show this face from now on.
+        rememberArtistPhoto(name, p.image);
         if (alive) {
           setProfile(p);
         }

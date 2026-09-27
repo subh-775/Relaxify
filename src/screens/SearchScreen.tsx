@@ -9,7 +9,7 @@
  * A Spotify playlist/album link pasted into the field is detected and offered
  * as an import rather than searched for as text.
  */
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -43,6 +43,7 @@ import {BOTTOM_INSET} from '../layout';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
+import {useArtistPhotos} from '../artistPhotos';
 
 /** A public Spotify playlist/album link (or spotify: URI). */
 export function isSpotifyUrl(text: string): boolean {
@@ -116,6 +117,9 @@ export const SearchScreen = React.memo(function SearchScreen({
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
   const {topArtists} = useStats();
+  // Real faces for "Your artists": the stats only know a song's cover.
+  const yourArtists = useMemo(() => topArtists.slice(0, 12), [topArtists]);
+  const faces = useArtistPhotos(yourArtists.map(a => a.name));
 
   // Guards against a slow response for an old query overwriting a newer one.
   const latest = useRef(0);
@@ -415,7 +419,7 @@ export const SearchScreen = React.memo(function SearchScreen({
               <Text style={styles.section}>Your artists</Text>
               <FlatList
                 horizontal
-                data={topArtists.slice(0, 12)}
+                data={yourArtists}
                 keyExtractor={a => a.name}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.artistStrip}
@@ -424,9 +428,9 @@ export const SearchScreen = React.memo(function SearchScreen({
                     style={styles.artistCard}
                     activeOpacity={0.75}
                     onPress={() => onOpenArtist(item.name)}>
-                    {item.image ? (
+                    {faces[item.name] || item.image ? (
                       <Image
-                        source={{uri: item.image}}
+                        source={{uri: faces[item.name] || item.image}}
                         style={styles.artistPfp}
                       />
                     ) : (

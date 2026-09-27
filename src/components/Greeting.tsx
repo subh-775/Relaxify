@@ -1,34 +1,24 @@
 /**
- * "Listen up Buddy!" — the header on Home, centred.
+ * "Listen up ___!" — the header on Home, centred.
  *
- * "Listen" and "Buddy" wear a matched pair of colours, "up" stays white. The
- * pair changes only when you arrive: each launch, and each time you come back
- * to Home from another tab. While Home is on screen it holds still — a header
- * that kept changing under you was a distraction, not a greeting.
+ * "Listen up" holds still; the last word is a slot reel. On each arrival (each
+ * launch, and each time you come back to Home from another tab) the reel spins
+ * through a few names and lands on one at random — Legend, GOAT, Maestro,
+ * Bestie — in a pill of the greeting's colour. While Home is on screen it holds
+ * still: a header that kept changing under you was a distraction, not a
+ * greeting. A new visit never lands on the word or colour the last one showed.
  *
- * Pairs, not two independent random picks: every entry in PAIRS is two colours
- * chosen to sit well together on true black, so any combination looks
- * deliberate. A new visit never repeats the pair the last one showed.
+ * Sized from the font's own measurements, not by wrapping: "Listen up" plus
+ * the LONGEST word, pill padding included, fits the room on every phone, so the
+ * line is always one line and the header's height never changes. The pill
+ * itself is as wide as the word it lands on; while the reel spins, longer
+ * words pass through that window clipped, like a real slot.
  *
- * Three SIBLING Texts, each with its own weight, not one Text with nested
- * spans. The app's default font (src/font.ts) names the family on every Text;
- * on Android a nested span that names a family without a weight resets to that
- * family's REGULAR weight, which made the words thin and look like another
- * typeface.
+ * Separate Texts, each stating its own weight, never nested spans: the app's
+ * default font (src/font.ts) names the family on every Text, and on Android a
+ * nested span that names a family without a weight falls back to REGULAR.
  *
- * It blushes in on mount — a short fade and rise — so opening the app feels
- * like arriving somewhere rather than a list appearing.
- *
- * Each arrival then answers itself: "Listen up Buddy!" for a beat, then
- * "You aren't ready for this", which stays until the next arrival. Each line
- * is ONE line, sized from the font's own measurements to fill the same width,
- * so the reply is a little smaller than the call and the two read as one
- * block. (Wrapped, the reply's second line fell outside the header and was
- * cut off by the page.) The first line sets the header's height; the reply
- * sits over it, so the swap moves nothing below.
- *
- * The reply lands word by word: one animated value, staggered by
- * interpolation, so it stays on the native driver.
+ * The spin is one Animated.Value on the native driver.
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {
@@ -37,12 +27,13 @@ import {
   Easing,
   StyleSheet,
   Text,
+  View,
   type LayoutChangeEvent,
 } from 'react-native';
 import {C} from '../theme';
 
-/** [Listen, Buddy]. Each pair is complementary or split-complementary, and
- *  every colour is bright enough to read on #000. */
+/** Colour pairs for the greeting; the pill takes the first. Every colour is
+ *  bright enough to read on #000 and to carry dark type. */
 export const PAIRS: [string, string][] = [
   ['#FF5A5F', '#00B4FF'], // coral · sky
   ['#FF9F1C', '#B388FF'], // orange · lavender
@@ -54,43 +45,66 @@ export const PAIRS: [string, string][] = [
   ['#00B4FF', '#8AE234'], // sky · lime
 ];
 
+/**
+ * What the reel can land on, each with its width at font size 1 in Plus
+ * Jakarta Sans ExtraBold at this tracking, measured from the font file. Add a
+ * word only with its measurement; nothing longer than Rockstar!, or the line
+ * has to shrink on every phone to make room for it.
+ */
+export const WORDS: [string, number][] = [
+  ['Buddy!', 3.431],
+  ['Legend!', 3.848],
+  ['Maestro!', 4.204],
+  ['Rockstar!', 4.511],
+  ['Cutie!', 2.857],
+  ['Champ!', 3.75],
+  ['Boss!', 2.599],
+  ['Fam!', 2.361],
+  ['Bestie!', 3.267],
+  ['GOAT!', 3.194],
+  ['MVP!', 2.535],
+  ['OG!', 1.979],
+  ['Hero!', 2.608],
+  ['Icon!', 2.376],
+  ['Bro!', 1.989],
+  ['King!', 2.422],
+  ['Queen!', 3.492],
+  ['Chief!', 2.846],
+  ['DJ!', 1.432],
+  ['VIP!', 1.911],
+  ['BFF!', 2.126],
+  ['Genius!', 3.547],
+  ['Star!', 2.265],
+];
+
 /** The largest size the line is set at; narrower phones get less. */
 const MAX_SIZE = 32;
-/** The line's width at font size 1, word gaps excluded: "Listen", "up" and
- *  "Buddy!" in Plus Jakarta Sans ExtraBold with this tracking, measured from
- *  the font file. */
-const LINE_EM = 7.381;
-const WORD_GAP = 8;
-/** The reply, word by word, and its width at font size 1 (same measurement). */
-const REPLY = ['You', "aren't", 'ready', 'for', 'this'];
-const REPLY_EM = 10.23;
+/** "Listen up" at font size 1, measured the same way. */
+const LISTEN_EM = 4.096;
+const LONGEST_EM = Math.max(...WORDS.map(w => w[1]));
+const GAP = 7;
+/** The pill's padding either side of its word. */
+const PAD = 9;
+/** Words the reel passes before it lands. */
+const SPIN_WORDS = 7;
+const SPIN_MS = 1400;
 
-/** How long "Listen up Buddy!" stays before the reply, and the cross-fade. */
-const HOLD_MS = 2500;
-const SWAP_MS = 350;
-
-/** The font size that fits "Listen up Buddy!" in `room` dp: MAX_SIZE on most
- *  phones, smaller where the screen is narrow, never wrapped or clipped. The
- *  reply shares it. Exported for the test. */
+/** The font size that fits "Listen up" and the longest word, pill included,
+ *  in `room` dp. Exported for the test. */
 export function fitSize(room: number): number {
   if (!(room > 0)) {
     return MAX_SIZE;
   }
-  return Math.min(MAX_SIZE, Math.floor((room - 2 * WORD_GAP) / LINE_EM));
-}
-
-/** The same for the reply: the largest size that keeps it on one line. */
-export function fitReplySize(room: number): number {
-  if (!(room > 0)) {
-    return MAX_SIZE;
-  }
-  const gaps = (REPLY.length - 1) * WORD_GAP;
-  return Math.min(MAX_SIZE, Math.floor((room - gaps) / REPLY_EM));
+  return Math.min(
+    MAX_SIZE,
+    Math.floor((room - GAP - 2 * PAD) / (LISTEN_EM + LONGEST_EM)),
+  );
 }
 
 /**
- * The index of the next pair: any pair except the current one. Exported for
- * the test.
+ * The index of the next pick: anything except the current one (a launch,
+ * `current` -1, can be anything). Used for both the colour and the word.
+ * Exported for the test.
  */
 export function nextPair(
   current: number,
@@ -101,62 +115,75 @@ export function nextPair(
     return 0;
   }
   if (current < 0 || current >= count) {
-    return Math.floor(rand() * count); // a launch: any pair at all
+    return Math.floor(rand() * count);
   }
-  // Pick among the other count-1 pairs, then step over the current one.
+  // Pick among the other count-1, then step over the current one.
   const pick = Math.floor(rand() * (count - 1));
   return pick >= current ? pick + 1 : pick;
 }
 
+/** A reel ending on `land`: random words, never the same one twice running. */
+export function buildReel(
+  land: number,
+  rand: () => number = Math.random,
+): number[] {
+  const reel = [land];
+  while (reel.length < SPIN_WORDS + 1) {
+    reel.unshift(nextPair(reel[0], WORDS.length, rand));
+  }
+  return reel;
+}
+
 export function Greeting({visible = true}: {visible?: boolean}) {
   const bloom = useRef(new Animated.Value(0)).current;
-  // A fresh pair per launch: the initial pick is random, not the first entry.
+  const spin = useRef(new Animated.Value(0)).current;
   const [pair, setPair] = useState(() => nextPair(-1));
+  const [reel, setReel] = useState(() => buildReel(nextPair(-1, WORDS.length)));
+  const land = reel[reel.length - 1];
 
-  // A new pair on each ARRIVAL at Home — the moment `visible` turns true. The
-  // tab is hidden when this runs, so the new colours are already in place
-  // when it appears; nothing changes while you are looking at it.
-  const wasVisible = useRef(visible);
+  // A new colour and a new word on each ARRIVAL at Home — the moment `visible`
+  // turns true — and the reel spins to it. Leaving Home changes nothing.
+  const first = useRef(true);
   useEffect(() => {
-    if (visible && !wasVisible.current) {
-      setPair(cur => nextPair(cur));
-    }
-    wasVisible.current = visible;
-  }, [visible]);
-
-  // The exchange, replayed on each arrival: 0 shows "Listen up Buddy!", 1 the
-  // reply, where it ends. Leaving Home stops it and resets to the first line,
-  // so the next arrival starts from the top.
-  const swap = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    swap.stopAnimation();
-    swap.setValue(0);
     if (!visible) {
       return;
     }
+    if (!first.current) {
+      setPair(cur => nextPair(cur));
+      setReel(cur => buildReel(nextPair(cur[cur.length - 1], WORDS.length)));
+    }
+    first.current = false;
+    spin.stopAnimation();
+    spin.setValue(0);
     let run: Animated.CompositeAnimation | null = null;
     let cancelled = false;
     AccessibilityInfo.isReduceMotionEnabled()
       .catch(() => false)
       .then(reduce => {
-        if (reduce || cancelled) {
-          return; // Reduce motion: the first line only.
+        if (cancelled) {
+          return;
         }
-        const to = (v: number, duration: number) =>
-          Animated.timing(swap, {
-            toValue: v,
-            duration,
-            easing: Easing.linear, // each word eases on its own, below
+        if (reduce) {
+          spin.setValue(1); // reduce motion: the word, no spin
+          return;
+        }
+        run = Animated.sequence([
+          Animated.delay(250),
+          Animated.timing(spin, {
+            toValue: 1,
+            duration: SPIN_MS,
+            // Slows into the word and nudges past it, like a reel settling.
+            easing: Easing.bezier(0.15, 0.9, 0.25, 1.08),
             useNativeDriver: true,
-          });
-        run = Animated.sequence([Animated.delay(HOLD_MS), to(1, SWAP_MS * 3)]);
+          }),
+        ]);
         run.start();
       });
     return () => {
       cancelled = true;
       run?.stop();
     };
-  }, [visible, swap]);
+  }, [visible, spin]);
 
   useEffect(() => {
     Animated.timing(bloom, {
@@ -167,52 +194,24 @@ export function Greeting({visible = true}: {visible?: boolean}) {
     }).start();
   }, [bloom]);
 
-  const [listen, buddy] = PAIRS[pair];
-
   // Sized to the room it is given (see fitSize). Before the first layout it
   // is set at the full size; the fade-in covers the one-frame adjustment.
   const [room, setRoom] = useState(0);
   const onBox = (e: LayoutChangeEvent) => setRoom(e.nativeEvent.layout.width);
-  const set = (size: number) => ({
+  const size = fitSize(room);
+  const lineH = Math.round(size * 1.28);
+  const word = {
     fontSize: size,
-    lineHeight: Math.round(size * 1.28),
+    lineHeight: lineH,
     letterSpacing: -size * (1.1 / 32),
-  });
-  const word = set(fitSize(room));
-  const replyWord = set(fitReplySize(room));
-
-  // The first line leaves in the first third of the swap; then each reply
-  // word rises in turn, overshooting a hair, like it was dropped into place.
-  const exit = swap.interpolate({
-    inputRange: [0, 0.3],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-  const land = (i: number) => {
-    const from = 0.2 + i * 0.12;
-    return {
-      opacity: swap.interpolate({
-        inputRange: [from, from + 0.18],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-      transform: [
-        {
-          translateY: swap.interpolate({
-            inputRange: [from, from + 0.2, from + 0.32],
-            outputRange: [14, -2, 0],
-            extrapolate: 'clamp',
-          }),
-        },
-      ],
-    };
   };
+  const pillW = Math.ceil(WORDS[land][1] * size) + 2 * PAD;
 
   return (
     <Animated.View
       accessible
       accessibilityRole="header"
-      accessibilityLabel="Listen up Buddy! You aren't ready for this"
+      accessibilityLabel={`Listen up ${WORDS[land][0]}`}
       onLayout={onBox}
       style={[
         styles.wrap,
@@ -228,57 +227,38 @@ export function Greeting({visible = true}: {visible?: boolean}) {
           ],
         },
       ]}>
-      <Animated.View
-        style={[
-          styles.line,
-          {
-            opacity: exit,
-            transform: [
-              {
-                translateY: swap.interpolate({
-                  inputRange: [0, 0.3],
-                  outputRange: [0, -10],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ],
-          },
-        ]}>
-        <Text
-          style={[styles.word, word, {color: listen}]}
-          maxFontSizeMultiplier={1}>
-          Listen
+      <View style={styles.line}>
+        <Text style={[styles.word, styles.lead, word]} maxFontSizeMultiplier={1}>
+          Listen up
         </Text>
-        <Text style={[styles.word, word, styles.up]} maxFontSizeMultiplier={1}>
-          up
-        </Text>
-        <Text
-          style={[styles.word, word, {color: buddy}]}
-          maxFontSizeMultiplier={1}>
-          Buddy!
-        </Text>
-      </Animated.View>
-      {/* The reply, over the first line and centred on it. Coloured like the
-          first line: the first and last word take the pair. */}
-      <Animated.View pointerEvents="none" style={[styles.line, styles.reply]}>
-        {REPLY.map((w, i) => (
-          <Animated.Text
-            key={w}
-            style={[
-              styles.word,
-              replyWord,
-              i === 0
-                ? {color: listen}
-                : i === REPLY.length - 1
-                ? {color: buddy}
-                : styles.up,
-              land(i),
-            ]}
-            maxFontSizeMultiplier={1}>
-            {w}
-          </Animated.Text>
-        ))}
-      </Animated.View>
+        <View
+          style={[
+            styles.pill,
+            {width: pillW, height: lineH, backgroundColor: PAIRS[pair][0]},
+          ]}>
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  translateY: spin.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -(reel.length - 1) * lineH],
+                  }),
+                },
+              ],
+            }}>
+            {reel.map((w, i) => (
+              <Text
+                key={i}
+                numberOfLines={1}
+                style={[styles.word, styles.slot, word, {width: pillW}]}
+                maxFontSizeMultiplier={1}>
+                {WORDS[w][0]}
+              </Text>
+            ))}
+          </Animated.View>
+        </View>
+      </View>
     </Animated.View>
   );
 }
@@ -287,26 +267,16 @@ const styles = StyleSheet.create({
   wrap: {flex: 1, minWidth: 0},
   // Centred in its box; the box itself is centred on the screen by Home's
   // header (the mark on the left, a spacer of the same width on the right).
-  // A word gap, not a space character: each word is its own Text.
   line: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'center',
-    gap: WORD_GAP,
-  },
-  // The reply over "Listen up Buddy!", centred in the height the first sets.
-  reply: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: GAP,
   },
-  // Each word states its weight itself — see the note at the top. The size,
-  // line height (room for the 'y' descender) and tracking come from fitSize.
-  // maxFontSizeMultiplier={1} on each word: a display line sized to fit
-  // exactly must not be scaled up by the system font size.
+  // maxFontSizeMultiplier={1} on each: a display line sized to fit exactly
+  // must not be scaled up by the system font size.
   word: {fontWeight: '900'},
-  up: {color: C.text},
+  lead: {color: C.text},
+  pill: {borderRadius: 10, overflow: 'hidden'},
+  slot: {color: '#111014', textAlign: 'center'},
 });

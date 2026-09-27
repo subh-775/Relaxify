@@ -29,6 +29,9 @@ export type Recap = {
   /** Up to five of each, most played first; [0] is topSong / topArtist. */
   topSongs: SongCount[];
   topArtists: ArtistCount[];
+  /** The weekday (0 = Sunday) the top song was played most this week, or
+   *  -1 when it was not played this week at all. */
+  topSongDay: number;
   /** This week only: songs per day, oldest first, with each day's start. */
   days: {at: number; songs: number}[] | null;
   /** Index into `days` of the biggest day, or -1. */
@@ -124,6 +127,21 @@ export function streaks(
   return {streak, best: Math.max(best, streak)};
 }
 
+/** The weekday `track` was played most in `week`, or -1. */
+function weekdayOf(s: Stats, week: Stats['log'], track?: Track): number {
+  if (!track) {
+    return -1;
+  }
+  const k = Object.keys(s.tracks).find(id => s.tracks[id].track === track);
+  const per = new Array<number>(7).fill(0);
+  for (const e of week) {
+    if (k && e.k === k) {
+      per[new Date(e.at).getDay()] += 1;
+    }
+  }
+  return argmax(per);
+}
+
 const byCount = <T extends {count: number}>(a: T, b: T) => b.count - a.count;
 
 export function buildRecap(s: Stats, now: number, mode: RecapMode): Recap {
@@ -161,6 +179,7 @@ export function buildRecap(s: Stats, now: number, mode: RecapMode): Recap {
       topArtist: topArtists[0] ?? null,
       topSongs,
       topArtists,
+      topSongDay: weekdayOf(s, week, topSongs[0]?.track),
       days: null,
       busiest: -1,
       onRepeat: null,
@@ -228,6 +247,7 @@ export function buildRecap(s: Stats, now: number, mode: RecapMode): Recap {
     topArtist: topArtists[0] ?? null,
     topSongs,
     topArtists,
+    topSongDay: weekdayOf(s, week, topSongs[0]?.track),
     days,
     busiest: argmax(sum.perDay),
     onRepeat,

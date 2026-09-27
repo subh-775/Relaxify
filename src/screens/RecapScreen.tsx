@@ -4,16 +4,16 @@
  * for the previous one, hold to pause, swipe down to put it away; each card
  * moves on by itself after CARD_MS and the last one stays.
  *
- * The look is a sticker board. Every card is one yellow tile — a thick black
- * edge and a hard, unblurred shadow — slapped onto a bright field taken from
- * the greeting's own colours (Greeting.tsx). Where the tile lands, and which
- * way it leans, is reshuffled each time the Recap opens from a small set of
- * hand-tuned layouts, so it feels different every visit and long titles never
- * collide with anything.
+ * Every card is a flat, loud colour field with its own piece of artwork framed
+ * around the fact — a starburst, a day ring round the cover, sunburst rays, a
+ * spinning record — and the Relaxify mark in the same corner throughout. The
+ * palettes are dealt again each time the Recap opens.
  *
- * The figures come from recap.ts, from history kept on this phone: nothing
- * here talks to the network. Reanimated, gesture-handler and react-native-svg
- * only, all already in the app.
+ * Drawn on a 360-wide canvas and scaled to the phone's width, so the artwork
+ * lands where it was designed on every screen; only the height stretches, and
+ * `Y()` spreads the vertical positions over it. Reanimated, gesture-handler and
+ * react-native-svg only, all already in the app. The figures come from
+ * recap.ts; the only network use is the artists' photos (artistPhotos.ts).
  */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
@@ -24,21 +24,34 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Animated, {
   Easing,
+  FadeInUp,
+  ReduceMotion,
   cancelAnimation,
   interpolate,
   runOnJS,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
+  withRepeat,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, {Line, Text as SvgText} from 'react-native-svg';
-import {S} from '../theme';
+import Svg, {
+  Circle,
+  Defs,
+  Line,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
+import {FONT} from '../font';
 import {useStatsState} from '../stats';
 import {
   buildRecap,
@@ -46,48 +59,29 @@ import {
   type ArtistCount,
   type Recap,
   type RecapMode,
-  type SongCount,
 } from '../recap';
 import {getBestArtworkUrl} from '../tracks';
+import {useArtistPhotos} from '../artistPhotos';
+
+const MARK = require('../assets/mark-white.png');
 
 /** How long a card stays before the next one. */
 const CARD_MS = 5000;
-const INK = '#000000';
-const PAPER = '#FFFDF5';
+/** The design canvas is this wide; everything is scaled from it. */
+const CW = 360;
+const DARK = '#111014';
 
-/** The fields: the greeting's colours, minus the orange and sun that would
- *  melt into a yellow tile. */
-const FIELDS = [
-  '#FF5A5F', // coral
-  '#00B4FF', // sky
-  '#B388FF', // lavender
-  '#FF6FD8', // pink
-  '#2EC4B6', // teal
-  '#7B8CFF', // periwinkle
-  '#8AE234', // lime
-];
-/** The tiles: one yellow family, a different shade per card. */
-const TILES = ['#FFE14D', '#FFF3A3', '#FFD60A', '#FFC53D', '#F4FF6A'];
-
-/**
- * Where a tile sits and how it leans. Every one works for every card: the
- * tile always keeps most of the width, so only its height on the page, its
- * side and its tilt change.
- */
-type Layout = {
-  v: 'flex-start' | 'center' | 'flex-end';
-  h: 'flex-start' | 'center' | 'flex-end';
-  tilt: number;
-  /** Which corner of the tile the sticker is stuck to. */
-  stick: 'tl' | 'tr' | 'bl' | 'br';
-};
-const LAYOUTS: Layout[] = [
-  {v: 'flex-start', h: 'flex-start', tilt: -2.5, stick: 'br'},
-  {v: 'center', h: 'center', tilt: 1.8, stick: 'tr'},
-  {v: 'flex-end', h: 'flex-end', tilt: -1.6, stick: 'tl'},
-  {v: 'flex-start', h: 'flex-end', tilt: 2.4, stick: 'bl'},
-  {v: 'flex-end', h: 'flex-start', tilt: 1.2, stick: 'tr'},
-  {v: 'center', h: 'flex-start', tilt: -1.2, stick: 'br'},
+// ── Palettes: a field, its ink, and three accents ───────────────────────
+type Pal = {bg: string; ink: string; a: string; b: string; c: string};
+const PALS: Pal[] = [
+  {bg: '#FF5A4E', ink: DARK, a: '#B8FF3C', b: '#7A2CFF', c: '#3CC8FF'},
+  {bg: '#A9A3FF', ink: DARK, a: '#FF7A1A', b: '#FF4FB3', c: '#FFE14D'},
+  {bg: '#15121C', ink: '#FFFFFF', a: '#2EE6C8', b: '#FF3FA4', c: '#FFD23F'},
+  {bg: '#B8F03C', ink: DARK, a: '#6C2BFF', b: '#FF5A4E', c: '#3CC8FF'},
+  {bg: '#3CB4FF', ink: DARK, a: '#FFE14D', b: '#FF4FB3', c: '#B8FF3C'},
+  {bg: '#FF6FD8', ink: DARK, a: '#1FD1B5', b: '#FFE14D', c: '#6C2BFF'},
+  {bg: '#FF9F1C', ink: DARK, a: '#6C2BFF', b: '#3CC8FF', c: '#FF4FB3'},
+  {bg: '#1FC3A6', ink: DARK, a: '#FF5A4E', b: '#FFE14D', c: '#6C2BFF'},
 ];
 
 function shuffled<T>(xs: T[]): T[] {
@@ -139,8 +133,1409 @@ function times(n: number): string {
   return n === 1 ? 'once' : n === 2 ? 'twice' : `${n} times`;
 }
 
-/** One card: what goes on the tile, and the sticker stuck to it. */
-type Card = {key: string; body: React.ReactNode; sticker?: string};
+// ── Shapes: plain path strings, the same ones the demo drew ─────────────
+/** A small seeded generator, so each blob keeps its shape between renders. */
+function rng(seed: number): () => number {
+  let x = seed * 7919 + 17;
+  return () => {
+    x = (x * 9301 + 49297) % 233280;
+    return x / 233280;
+  };
+}
+
+/** A smooth, wobbly closed blob through n points (Catmull-Rom as cubics). */
+function blob(
+  cx: number,
+  cy: number,
+  r: number,
+  wob: number,
+  n: number,
+  seed: number,
+): string {
+  const R = rng(seed);
+  const p = Array.from({length: n}, (_, i) => {
+    const a = (i / n) * Math.PI * 2;
+    const rr = r * (1 - wob + R() * wob * 2);
+    return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr];
+  });
+  const f = (v: number) => v.toFixed(1);
+  let d = `M${f(p[0][0])},${f(p[0][1])}`;
+  for (let i = 0; i < n; i++) {
+    const p0 = p[(i - 1 + n) % n];
+    const p1 = p[i];
+    const p2 = p[(i + 1) % n];
+    const p3 = p[(i + 2) % n];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += `C${f(c1x)},${f(c1y)} ${f(c2x)},${f(c2y)} ${f(p2[0])},${f(p2[1])}`;
+  }
+  return d + 'Z';
+}
+
+function burst(cx: number, cy: number, R: number, r: number, spikes: number) {
+  let d = '';
+  for (let i = 0; i < spikes * 2; i++) {
+    const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+    const rr = i % 2 ? r : R;
+    const x = (cx + Math.cos(a) * rr).toFixed(1);
+    const y = (cy + Math.sin(a) * rr).toFixed(1);
+    d += `${i ? 'L' : 'M'}${x},${y}`;
+  }
+  return d + 'Z';
+}
+
+function wave(x0: number, x1: number, y: number, amp: number, len: number) {
+  let d = `M${x0},${y}`;
+  for (let x = x0; x < x1; x += len) {
+    d += `Q${x + len / 4},${y - amp} ${x + len / 2},${y} T${x + len},${y}`;
+  }
+  return d;
+}
+
+function sparkle(cx: number, cy: number, r: number): string {
+  const k = r * 0.22;
+  return (
+    `M${cx},${cy - r}Q${cx + k},${cy - k} ${cx + r},${cy}` +
+    `Q${cx + k},${cy + k} ${cx},${cy + r}Q${cx - k},${cy + k} ${cx - r},${cy}` +
+    `Q${cx - k},${cy - k} ${cx},${cy - r}Z`
+  );
+}
+
+const FLOWER = [
+  '....XXX....',
+  '...X...X...',
+  '...X...X...',
+  '.XX.X.X.XX.',
+  'X..X...X..X',
+  'X...XXX...X',
+  'X..X...X..X',
+  '.XX.X.X.XX.',
+  '...X...X...',
+  '...X...X...',
+  '....XXX....',
+];
+
+/** A small pixel-art flower. */
+function Pixels({
+  x,
+  y,
+  cell,
+  fill,
+}: {
+  x: number;
+  y: number;
+  cell: number;
+  fill: string;
+}) {
+  const out: React.ReactNode[] = [];
+  FLOWER.forEach((row, j) =>
+    [...row].forEach((ch, i) => {
+      if (ch === 'X') {
+        out.push(
+          <Rect
+            key={`${i}:${j}`}
+            x={x + i * cell}
+            y={y + j * cell}
+            width={cell}
+            height={cell}
+            fill={fill}
+          />,
+        );
+      }
+    }),
+  );
+  return <>{out}</>;
+}
+
+/** A tube squiggle: a dark outline under a gradient stroke. */
+function Tube({
+  d,
+  grad,
+  ink,
+  w = 16,
+}: {
+  d: string;
+  grad: string;
+  ink: string;
+  w?: number;
+}) {
+  return (
+    <>
+      <Path
+        d={d}
+        fill="none"
+        stroke={ink}
+        strokeWidth={w + 7}
+        strokeLinecap="round"
+      />
+      <Path
+        d={d}
+        fill="none"
+        stroke={`url(#${grad})`}
+        strokeWidth={w}
+        strokeLinecap="round"
+      />
+    </>
+  );
+}
+
+function Grad({
+  id,
+  from,
+  to,
+  x2 = 1,
+  y2 = 1,
+}: {
+  id: string;
+  from: string;
+  to: string;
+  x2?: number;
+  y2?: number;
+}) {
+  return (
+    <LinearGradient id={id} x1="0" y1="0" x2={String(x2)} y2={String(y2)}>
+      <Stop offset="0" stopColor={from} />
+      <Stop offset="1" stopColor={to} />
+    </LinearGradient>
+  );
+}
+
+/** A full-canvas drawing layer. */
+function Layer({h, children}: {h: number; children: React.ReactNode}) {
+  return (
+    <Svg
+      width={CW}
+      height={h}
+      viewBox={`0 0 ${CW} ${h}`}
+      style={StyleSheet.absoluteFill}>
+      {children}
+    </Svg>
+  );
+}
+
+/** A rotation that runs forever while mounted (none with reduce motion). */
+function useTurn(ms: number) {
+  const reduce = useReducedMotion();
+  const turn = useSharedValue(0);
+  useEffect(() => {
+    if (!reduce) {
+      turn.value = withRepeat(
+        withTiming(360, {duration: ms, easing: Easing.linear}),
+        -1,
+      );
+    }
+    return () => cancelAnimation(turn);
+  }, [turn, ms, reduce]);
+  return useAnimatedStyle(() => ({
+    transform: [{rotate: `${turn.value}deg`}],
+  }));
+}
+
+/**
+ * Artwork that turns slowly on its own centre: its own small Svg inside a
+ * rotating view, with the viewBox offset so the shape keeps the canvas
+ * coordinates it was drawn in.
+ */
+function Spin({
+  cx,
+  cy,
+  r,
+  ms = 40000,
+  children,
+}: {
+  cx: number;
+  cy: number;
+  r: number;
+  ms?: number;
+  children: React.ReactNode;
+}) {
+  const style = useTurn(ms);
+  return (
+    <Animated.View
+      style={[
+        styles.abs,
+        {left: cx - r, top: cy - r, width: 2 * r, height: 2 * r},
+        style,
+      ]}>
+      <Svg
+        width={2 * r}
+        height={2 * r}
+        viewBox={`${cx - r} ${cy - r} ${2 * r} ${2 * r}`}>
+        {children}
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** A round view (the record's label) turning with the record. */
+function SpinningLabel({
+  cx,
+  cy,
+  r,
+  children,
+}: {
+  cx: number;
+  cy: number;
+  r: number;
+  children: React.ReactNode;
+}) {
+  const style = useTurn(6000);
+  return (
+    <Animated.View
+      style={[
+        styles.abs,
+        {left: cx - r, top: cy - r, width: 2 * r, height: 2 * r},
+        style,
+      ]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/** A cover, or the title's initials on the palette when there is none. */
+function Cover({
+  uri,
+  size,
+  title,
+  pal,
+  round = false,
+}: {
+  uri?: string;
+  size: number;
+  title: string;
+  pal: Pal;
+  round?: boolean;
+}) {
+  const box = {
+    width: size,
+    height: size,
+    borderRadius: round ? size / 2 : size * 0.08,
+  };
+  if (uri) {
+    return <Image source={{uri}} style={box} />;
+  }
+  const words = title.split(/[\s,]+/).filter(Boolean);
+  const ini = ((words[0]?.[0] ?? '') + (words[1]?.[0] ?? '')).toUpperCase();
+  return (
+    <View style={[box, styles.clip]}>
+      <Svg width={size} height={size} viewBox="0 0 100 100">
+        <Defs>
+          <Grad id="cv" from={pal.a} to={pal.b} />
+        </Defs>
+        <Rect width="100" height="100" fill="url(#cv)" />
+        <SvgText
+          x="10"
+          y="88"
+          fontFamily={FONT}
+          fontWeight="800"
+          fontSize="38"
+          fill="#fff">
+          {ini}
+        </SvgText>
+      </Svg>
+    </View>
+  );
+}
+
+/** One entrance per card: the words rise in turn. */
+function Rise({
+  i,
+  children,
+  style,
+}: {
+  i: number;
+  children: React.ReactNode;
+  style?: object;
+}) {
+  return (
+    <Animated.View
+      style={style}
+      entering={FadeInUp.duration(500)
+        .delay(i * 80)
+        .reduceMotion(ReduceMotion.System)}>
+      {children}
+    </Animated.View>
+  );
+}
+
+/** A top-five row. The ranks are a real order. */
+function Row({
+  i,
+  title,
+  sub,
+  uri,
+  n,
+  pal,
+  round,
+}: {
+  i: number;
+  title: string;
+  sub?: string;
+  uri?: string;
+  n: number;
+  pal: Pal;
+  round?: boolean;
+}) {
+  const ink = {color: pal.ink};
+  return (
+    <View style={styles.li}>
+      <Text style={[styles.liN, ink, i === 0 && styles.liNTop]}>{i + 1}</Text>
+      <Cover
+        uri={uri}
+        size={i ? 50 : 62}
+        title={title}
+        pal={pal}
+        round={round}
+      />
+      <View style={styles.liText}>
+        <Text
+          style={[styles.liA, ink, i === 0 && styles.liATop]}
+          numberOfLines={1}>
+          {title}
+        </Text>
+        {!!sub && (
+          <Text style={[styles.liB, ink]} numberOfLines={1}>
+            {sub}
+          </Text>
+        )}
+      </View>
+      <Text style={[styles.liC, ink]}>{n}</Text>
+    </View>
+  );
+}
+
+type Card = {
+  key: string;
+  draw: (p: Pal, h: number) => React.ReactNode;
+};
+
+/** A vertical position from the 760-tall design, spread over height `h`. */
+const at760 = (h: number) => (v: number) => (v * h) / 760;
+
+// ── The cards ───────────────────────────────────────────────────────────
+function buildCards(r: Recap, faces: Record<string, string>): Card[] {
+  const week = r.mode === 'week';
+  // A real photo when one is known; the stats only ever had a cover.
+  const face = (a: ArtistCount) => faces[a.name] || a.image;
+
+  if (!r.songs) {
+    return [
+      {
+        key: 'empty',
+        draw: (p, h) => (
+          <>
+            <Spin cx={250} cy={h * 0.36} r={150}>
+              <Path d={blob(250, h * 0.36, 130, 0.22, 9, 4)} fill={p.a} />
+            </Spin>
+            <Layer h={h}>
+              <Path d={sparkle(70, h * 0.2, 18)} fill={p.c} />
+            </Layer>
+            <View style={[styles.content, styles.bottom]}>
+              <Rise i={0}>
+                <Text style={[styles.h1, {color: p.ink}]}>
+                  Nothing to recap yet
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text style={[styles.line, {color: p.ink}]}>
+                  Play a few songs. Each one counts once you have listened for
+                  30 seconds.
+                </Text>
+              </Rise>
+            </View>
+          </>
+        ),
+      },
+    ];
+  }
+
+  const cards: Card[] = [];
+  const now = Date.now();
+
+  cards.push({
+    key: 'intro',
+    draw: (p, h) => {
+      const Y = at760(h);
+      const ink = {color: p.ink};
+      return (
+        <>
+          <Spin cx={262} cy={Y(300)} r={148}>
+            <Path d={burst(262, Y(300), 146, 88, 13)} fill={p.a} />
+          </Spin>
+          <Layer h={h}>
+            <Defs>
+              <Grad id="g1" from={p.a} to={p.c} y2={0} />
+            </Defs>
+            <Path d={blob(262, Y(300), 72, 0.18, 9, 3)} fill={p.b} />
+            <Tube d={wave(-40, 420, Y(118), 30, 150)} grad="g1" ink={p.ink} />
+            <Pixels x={18} y={Y(196)} cell={9} fill={p.c} />
+          </Layer>
+          <View style={[styles.content, styles.bottom]}>
+            <Rise i={0}>
+              <Text style={[styles.lbl, ink]}>
+                {week
+                  ? `${dayMonth(now - 6 * 24 * 60 * 60 * 1000)} to ${dayMonth(
+                      now,
+                    )}`
+                  : 'Everything you have played'}
+              </Text>
+            </Rise>
+            <Rise i={1}>
+              <Text style={[styles.fig, styles.fig120, ink]}>{r.songs}</Text>
+            </Rise>
+            <Rise i={2}>
+              <Text style={[styles.h1, ink]}>
+                {r.songs === 1 ? 'song' : 'songs'}
+                {week ? ' this week' : ' and counting'}
+              </Text>
+            </Rise>
+            {week && r.minutes != null && (
+              <Rise i={3}>
+                <Text style={[styles.line, ink]}>
+                  {`${duration(r.minutes)} of music.`}
+                </Text>
+              </Rise>
+            )}
+          </View>
+        </>
+      );
+    },
+  });
+
+  if (r.topSong) {
+    const t = r.topSong.track;
+    const count = r.topSong.count;
+    const hotDay = r.topSongDay;
+    cards.push({
+      key: 'song',
+      draw: (p, h) => {
+        const Y = at760(h);
+        const cy = Y(392);
+        const ink = {color: p.ink};
+        // Monday first, as a week is read; the dot marks the day it was
+        // played most.
+        const order = [1, 2, 3, 4, 5, 6, 0];
+        const ring = order.map((wd, i) => {
+          const a = (i / 7) * 360 - 90;
+          const rad = (a * Math.PI) / 180;
+          const lx = 180 + Math.cos(rad) * 94;
+          const ly = cy + Math.sin(rad) * 94;
+          const ta = rad + Math.PI / 7;
+          return (
+            <React.Fragment key={wd}>
+              <SvgText
+                x={lx}
+                y={ly + 4}
+                textAnchor="middle"
+                fontFamily={FONT}
+                fontSize="11"
+                fontWeight="800"
+                fill={p.ink}
+                transform={`rotate(${a + 90} ${lx} ${ly})`}>
+                {DAYS[wd].slice(0, 3).toUpperCase()}
+              </SvgText>
+              <Line
+                x1={180 + Math.cos(ta) * 84}
+                y1={cy + Math.sin(ta) * 84}
+                x2={180 + Math.cos(ta) * 106}
+                y2={cy + Math.sin(ta) * 106}
+                stroke={p.ink}
+                strokeWidth={1.5}
+                opacity={0.5}
+              />
+            </React.Fragment>
+          );
+        });
+        const hot =
+          hotDay >= 0
+            ? (order.indexOf(hotDay) / 7) * Math.PI * 2 - Math.PI / 2
+            : null;
+        return (
+          <>
+            <Spin cx={180} cy={cy} r={170}>
+              <Defs>
+                <Grad id="g2" from={p.a} to={p.b} />
+              </Defs>
+              <Path d={blob(180, cy, 158, 0.2, 11, 7)} fill="url(#g2)" />
+            </Spin>
+            <Layer h={h}>
+              <Defs>
+                <Grad id="g2b" from={p.c} to={p.b} y2={0} />
+              </Defs>
+              <Circle cx={180} cy={cy} r={112} fill={p.bg} />
+              {ring}
+              {hot != null && (
+                <Circle
+                  cx={180 + Math.cos(hot) * 124}
+                  cy={cy + Math.sin(hot) * 124}
+                  r={9}
+                  fill={p.ink}
+                />
+              )}
+              <Tube
+                d={`M390,${Y(196)} C320,${Y(170)} 360,${Y(262)} 286,${Y(246)}`}
+                grad="g2b"
+                ink={p.ink}
+                w={12}
+              />
+              <Path d={sparkle(62, Y(250), 16)} fill={p.c} />
+            </Layer>
+            <View style={[styles.songCover, {top: cy - 60}]}>
+              <Cover
+                uri={getBestArtworkUrl(t)}
+                size={120}
+                title={t.title}
+                pal={p}
+              />
+            </View>
+            <View style={[styles.content, styles.center]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, styles.centerText, ink]}>
+                  {week ? 'Your song of the week' : 'Your most played song'}
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text
+                  style={[styles.h1, styles.h32, styles.centerText, ink]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}>
+                  {t.title}
+                </Text>
+              </Rise>
+              <View style={styles.fill} />
+              <Rise i={2}>
+                <Text
+                  style={[styles.line, styles.centerText, ink]}
+                  numberOfLines={1}>
+                  {t.artist}
+                </Text>
+              </Rise>
+              <Rise i={3}>
+                <Text style={[styles.h1, styles.h30, styles.centerText, ink]}>
+                  {`Played ${times(count)}`}
+                </Text>
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (r.topSongs.length > 1) {
+    cards.push({
+      key: 'songs',
+      draw: (p, h) => (
+        <>
+          <Layer h={h}>
+            <SvgText
+              x={392}
+              y={h - 18}
+              textAnchor="end"
+              fontFamily={FONT}
+              fontSize="470"
+              fontWeight="800"
+              fill="none"
+              stroke={p.a}
+              strokeWidth={4}>
+              5
+            </SvgText>
+            <Circle
+              cx={360}
+              cy={0}
+              r={120}
+              fill="none"
+              stroke={p.b}
+              strokeWidth={22}
+            />
+            <Circle
+              cx={360}
+              cy={0}
+              r={72}
+              fill="none"
+              stroke={p.c}
+              strokeWidth={22}
+            />
+            <Path d={sparkle(40, h - 60, 14)} fill={p.b} />
+          </Layer>
+          <View style={[styles.content, styles.listTop]}>
+            <Rise i={0}>
+              <Text style={[styles.h1, styles.h34, {color: p.ink}]}>
+                {week ? 'Your top songs this week' : 'Your top songs'}
+              </Text>
+            </Rise>
+            <Rise i={1} style={styles.list}>
+              {r.topSongs.map((s, i) => (
+                <Row
+                  key={`${i}:${s.track.title}`}
+                  i={i}
+                  title={s.track.title}
+                  sub={s.track.artist}
+                  uri={getBestArtworkUrl(s.track)}
+                  n={s.count}
+                  pal={p}
+                />
+              ))}
+            </Rise>
+          </View>
+        </>
+      ),
+    });
+  }
+
+  if (r.topArtist) {
+    const a = r.topArtist;
+    cards.push({
+      key: 'artist',
+      draw: (p, h) => {
+        const cy = at760(h)(380);
+        const rays = Array.from({length: 32}, (_, i) => {
+          const a0 = (i / 32) * Math.PI * 2;
+          const a1 = ((i + 0.5) / 32) * Math.PI * 2;
+          const x0 = 180 + Math.cos(a0) * 560;
+          const y0 = cy + Math.sin(a0) * 560;
+          const x1 = 180 + Math.cos(a1) * 560;
+          const y1 = cy + Math.sin(a1) * 560;
+          return (
+            <Path
+              key={i}
+              d={`M180,${cy} L${x0},${y0} L${x1},${y1}Z`}
+              fill={i % 2 ? p.a : p.c}
+            />
+          );
+        });
+        return (
+          <>
+            <Spin cx={180} cy={cy} r={560}>
+              {rays}
+            </Spin>
+            <Layer h={h}>
+              <Circle cx={180} cy={cy} r={118} fill={p.bg} />
+              <Circle
+                cx={180}
+                cy={cy}
+                r={118}
+                fill="none"
+                stroke={p.b}
+                strokeWidth={10}
+              />
+            </Layer>
+            <View style={[styles.artistFace, {top: cy - 96}]}>
+              <Cover uri={face(a)} size={192} title={a.name} pal={p} round />
+            </View>
+            <View style={[styles.content, styles.center]}>
+              <Rise i={0} style={[styles.pill, {backgroundColor: p.bg}]}>
+                <Text style={[styles.lbl, {color: p.ink}]}>
+                  {week ? 'Your artist of the week' : 'Your most played artist'}
+                </Text>
+              </Rise>
+              <View style={styles.fill} />
+              <Rise i={1} style={[styles.plate, {backgroundColor: p.bg}]}>
+                <Text
+                  style={[styles.h1, styles.centerText, {color: p.ink}]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}>
+                  {a.name}
+                </Text>
+                <Text
+                  style={[styles.line, styles.centerText, {color: p.ink}]}>
+                  {`${a.count} ${a.count === 1 ? 'play' : 'plays'}${
+                    week ? ' this week' : ''
+                  }.`}
+                </Text>
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (r.topArtists.length > 1) {
+    cards.push({
+      key: 'artists',
+      draw: (p, h) => {
+        const check: React.ReactNode[] = [];
+        for (let j = 0; j < Math.ceil(h / 18); j++) {
+          for (let i = 0; i < 2; i++) {
+            if ((i + j) % 2) {
+              check.push(
+                <Rect
+                  key={`${i}:${j}`}
+                  x={i * 18}
+                  y={j * 18}
+                  width={18}
+                  height={18}
+                  fill={j % 6 < 3 ? p.a : p.b}
+                />,
+              );
+            }
+          }
+        }
+        return (
+          <>
+            <Layer h={h}>{check}</Layer>
+            <Spin cx={330} cy={h - 60} r={140}>
+              <Path d={blob(330, h - 60, 110, 0.25, 8, 11)} fill={p.c} />
+            </Spin>
+            <View style={[styles.content, styles.listTop, styles.besideStrip]}>
+              <Rise i={0}>
+                <Text style={[styles.h1, styles.h34, {color: p.ink}]}>
+                  {week ? 'Your top artists this week' : 'Your top artists'}
+                </Text>
+              </Rise>
+              <Rise i={1} style={styles.list}>
+                {r.topArtists.map((a, i) => (
+                  <Row
+                    key={`${i}:${a.name}`}
+                    i={i}
+                    title={a.name}
+                    uri={face(a)}
+                    n={a.count}
+                    pal={p}
+                    round
+                  />
+                ))}
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (week && r.days && r.minutes != null) {
+    const days = r.days;
+    const minutes = r.minutes;
+    const max = Math.max(1, ...days.map(d => d.songs));
+    const big = r.busiest >= 0 ? days[r.busiest] : null;
+    cards.push({
+      key: 'time',
+      draw: (p, h) => {
+        const Y = at760(h);
+        const base = h - 150;
+        return (
+          <>
+            <Layer h={h}>
+              <Defs>
+                <Grad id="g6" from={p.b} to={p.a} x2={0} />
+              </Defs>
+              {[0, 1, 2, 3].map(i => (
+                <Path
+                  key={i}
+                  d={wave(-40, 420, Y(110) + i * 26, 10, 60)}
+                  fill="none"
+                  stroke={i % 2 ? p.a : p.c}
+                  strokeWidth={6}
+                  strokeLinecap="round"
+                />
+              ))}
+              {days.map((d, i) => {
+                const bh = Math.max(8, (d.songs / max) * 200);
+                const on = i === r.busiest;
+                return (
+                  <React.Fragment key={d.at}>
+                    <Rect
+                      x={28 + i * 45}
+                      y={base - bh}
+                      width={36}
+                      height={bh}
+                      rx={18}
+                      fill={on ? 'url(#g6)' : p.ink}
+                      opacity={on ? 1 : 0.18}
+                    />
+                    <SvgText
+                      x={46 + i * 45}
+                      y={base + 26}
+                      textAnchor="middle"
+                      fontFamily={FONT}
+                      fontSize="13"
+                      fontWeight="800"
+                      fill={p.ink}>
+                      {DAYS[new Date(d.at).getDay()].slice(0, 1)}
+                    </SvgText>
+                  </React.Fragment>
+                );
+              })}
+            </Layer>
+            <View style={[styles.content, {paddingTop: Y(250)}]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, {color: p.ink}]}>
+                  You listened for
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text style={[styles.fig, styles.fig64, {color: p.ink}]}>
+                  {duration(minutes)}
+                </Text>
+              </Rise>
+              <View style={styles.fill} />
+              {big && (
+                <Rise i={2}>
+                  <Text style={[styles.line, {color: p.ink}]}>
+                    {`${
+                      DAYS[new Date(big.at).getDay()]
+                    } was your biggest day, with ${big.songs} ${
+                      big.songs === 1 ? 'song' : 'songs'
+                    }.`}
+                  </Text>
+                </Rise>
+              )}
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (
+    week &&
+    r.minutes != null &&
+    r.lastMinutes != null &&
+    r.lastMinutes > 0
+  ) {
+    const nowM = r.minutes;
+    const lastM = r.lastMinutes;
+    const diff = nowM - lastM;
+    const pct = Math.round((Math.abs(diff) / lastM) * 100);
+    cards.push({
+      key: 'vs',
+      draw: (p, h) => {
+        const Y = at760(h);
+        // Areas to scale: the bigger week gets the full circle.
+        const top = Math.max(nowM, lastM);
+        const rNow = 128 * Math.sqrt(nowM / top);
+        const rLast = 128 * Math.sqrt(lastM / top);
+        const label = (x: number, y: number, size: number, text: string) => (
+          <SvgText
+            x={x}
+            y={y}
+            textAnchor="middle"
+            fontFamily={FONT}
+            fontSize={String(size)}
+            fontWeight="800"
+            fill={p.ink}>
+            {text}
+          </SvgText>
+        );
+        return (
+          <>
+            <Layer h={h}>
+              <Circle cx={130} cy={Y(470)} r={rLast} fill={p.b} />
+              <Circle
+                cx={218}
+                cy={Y(486)}
+                r={rNow}
+                fill={p.a}
+                opacity={0.92}
+              />
+              {label(100, Y(420), 13, 'Last week')}
+              {label(100, Y(440), 16, duration(lastM))}
+              {label(240, Y(500), 14, 'This week')}
+              {label(240, Y(526), 22, duration(nowM))}
+              <Pixels x={270} y={Y(640)} cell={8} fill={p.c} />
+            </Layer>
+            <View style={[styles.content, styles.listTop]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, {color: p.ink}]}>
+                  Compared with last week
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text
+                  style={[styles.fig, styles.fig76, {color: p.ink}]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit>
+                  {diff >= 0 ? `+${duration(diff)}` : `-${duration(-diff)}`}
+                </Text>
+              </Rise>
+              <Rise i={2}>
+                <Text style={[styles.line, {color: p.ink}]}>
+                  {diff >= 0
+                    ? `${pct}% more music than last week.`
+                    : `${pct}% less music than last week.`}
+                </Text>
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (r.onRepeat) {
+    const o = r.onRepeat;
+    cards.push({
+      key: 'repeat',
+      draw: (p, h) => {
+        const cy = at760(h)(400);
+        const arc = `M60,${cy - 150} A150,150 0 0 1 312,${cy - 100}`;
+        const grooves = Array.from({length: 9}, (_, i) => (
+          <Circle
+            key={i}
+            cx={180}
+            cy={cy}
+            r={66 + i * 9}
+            fill="none"
+            stroke="rgba(255,255,255,0.09)"
+            strokeWidth={1.5}
+          />
+        ));
+        return (
+          <>
+            <Layer h={h}>
+              <Defs>
+                <Grad id="g8" from={p.a} to={p.c} y2={0} />
+              </Defs>
+              <Path
+                d={arc}
+                fill="none"
+                stroke={p.ink}
+                strokeWidth={20}
+                strokeLinecap="round"
+              />
+              <Path
+                d={arc}
+                fill="none"
+                stroke="url(#g8)"
+                strokeWidth={12}
+                strokeLinecap="round"
+              />
+              <Path
+                d={`M296,${cy - 130} L330,${cy - 100} L292,${cy - 82}Z`}
+                fill={p.ink}
+              />
+            </Layer>
+            <Spin cx={180} cy={cy} r={148} ms={6000}>
+              <Circle cx={180} cy={cy} r={148} fill="#121016" />
+              {grooves}
+            </Spin>
+            {/* The record's label is the song's own cover, turning with it. */}
+            <SpinningLabel cx={180} cy={cy} r={54}>
+              <Cover
+                uri={getBestArtworkUrl(o.track)}
+                size={108}
+                title={o.track.title}
+                pal={p}
+                round
+              />
+            </SpinningLabel>
+            <View style={[styles.content, styles.center]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, styles.centerText, {color: p.ink}]}>
+                  {`On ${
+                    DAYS[new Date(o.day).getDay()]
+                  } you could not stop playing`}
+                </Text>
+              </Rise>
+              <View style={styles.fill} />
+              <Rise i={1}>
+                <Text
+                  style={[styles.h1, styles.centerText, {color: p.ink}]}
+                  numberOfLines={2}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}>
+                  {o.track.title}
+                </Text>
+              </Rise>
+              <Rise i={2}>
+                <Text
+                  style={[styles.line, styles.centerText, {color: p.ink}]}>
+                  {`${o.count} times in one day.`}
+                </Text>
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (r.discoveries.length) {
+    const d = r.discoveries;
+    cards.push({
+      key: 'new',
+      draw: (p, h) => {
+        const R = rng(5);
+        const stars = Array.from({length: 14}, (_, i) => (
+          <Path
+            key={i}
+            d={sparkle(20 + R() * 320, 90 + R() * (h - 140), 6 + R() * 18)}
+            fill={[p.a, p.b, p.c][i % 3]}
+          />
+        ));
+        const tilts = [-6, 4, -3];
+        return (
+          <>
+            <Layer h={h}>{stars}</Layer>
+            <View style={[styles.content, styles.middle]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, {color: p.ink}]}>
+                  New to you this week
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text style={[styles.fig, styles.fig130, {color: p.ink}]}>
+                  {d.length}
+                </Text>
+              </Rise>
+              <Rise i={2}>
+                <Text style={[styles.h1, {color: p.ink}]}>
+                  {d.length === 1 ? 'new artist' : 'new artists'}
+                </Text>
+              </Rise>
+              <Rise i={3} style={styles.pills}>
+                {d.slice(0, 3).map((a, i) => (
+                  <View
+                    key={a.name}
+                    style={[
+                      styles.pill,
+                      {
+                        backgroundColor: [p.a, p.b, p.c][i % 3],
+                        marginLeft: i * 28,
+                        transform: [{rotate: `${tilts[i % 3]}deg`}],
+                      },
+                    ]}>
+                    <Text style={styles.pillText} numberOfLines={1}>
+                      {a.name}
+                    </Text>
+                  </View>
+                ))}
+                {d.length > 3 && (
+                  <Text style={[styles.line, {color: p.ink}]}>
+                    {`and ${d.length - 3} more`}
+                  </Text>
+                )}
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (r.persona) {
+    const persona = r.persona;
+    const night =
+      persona.name === 'Night owl' || persona.name === 'After-hours listener';
+    cards.push({
+      key: 'hour',
+      draw: (p, h) => {
+        const top = at760(h)(176);
+        const fh = 360;
+        const cx = 180;
+        const cy = top + 190;
+        const max = Math.max(1, ...r.hours);
+        const near = (hr: number) =>
+          r.peakHour >= 0 &&
+          Math.min(
+            Math.abs(hr - r.peakHour),
+            24 - Math.abs(hr - r.peakHour),
+          ) <= 1;
+        const R = rng(9);
+        return (
+          <>
+            <Layer h={h}>
+              <Defs>
+                <Grad id="g10" from={p.a} to={p.b} />
+                <Grad
+                  id="g10s"
+                  from={night ? '#1B1446' : '#FFB36B'}
+                  to={night ? '#3A1A5E' : '#FF6FA8'}
+                  x2={0}
+                />
+                <Grad id="g10c" from={p.c} to={p.a} y2={0} />
+              </Defs>
+              <Rect
+                x={52}
+                y={top}
+                width={256}
+                height={fh}
+                rx={4}
+                fill="url(#g10s)"
+              />
+              {Array.from({length: 18}, (_, i) => (
+                <Circle
+                  key={i}
+                  cx={60 + R() * 240}
+                  cy={top + 14 + R() * (fh - 28)}
+                  r={0.8 + R() * 1.8}
+                  fill="#fff"
+                  opacity={night ? 0.8 : 0.5}
+                />
+              ))}
+              {night ? (
+                <Path
+                  d={`M232,${top + 60} a34,34 0 1 0 22,58 a28,28 0 1 1 -22,-58Z`}
+                  fill={p.c}
+                />
+              ) : (
+                <Circle cx={244} cy={top + 84} r={30} fill={p.c} />
+              )}
+              {r.hours.map((n, hr) => {
+                const a = (hr / 24) * Math.PI * 2 - Math.PI / 2;
+                const r0 = 46;
+                const len = 6 + (n / max) * 40;
+                return (
+                  <Line
+                    key={hr}
+                    x1={cx + Math.cos(a) * r0}
+                    y1={cy + Math.sin(a) * r0}
+                    x2={cx + Math.cos(a) * (r0 + len)}
+                    y2={cy + Math.sin(a) * (r0 + len)}
+                    stroke={near(hr) ? p.c : 'rgba(255,255,255,0.35)'}
+                    strokeWidth={6}
+                    strokeLinecap="round"
+                  />
+                );
+              })}
+              <SvgText
+                x={cx}
+                y={cy + 5}
+                textAnchor="middle"
+                fontFamily={FONT}
+                fontSize="13"
+                fontWeight="800"
+                fill="#fff">
+                {hourLabel(r.peakHour)}
+              </SvgText>
+              <Rect
+                x={52}
+                y={top}
+                width={256}
+                height={fh}
+                rx={4}
+                fill="none"
+                stroke="url(#g10)"
+                strokeWidth={9}
+              />
+              <Pixels x={270} y={top - 26} cell={6} fill={p.a} />
+              <Tube
+                d={`M-20,${top - 26} C50,${top - 72} 110,${top + 20} 176,${
+                  top - 26
+                }`}
+                grad="g10c"
+                ink={p.ink}
+                w={10}
+              />
+            </Layer>
+            <View
+              style={[
+                styles.content,
+                styles.center,
+                {paddingTop: top + fh + 24},
+              ]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, styles.centerText, {color: p.ink}]}>
+                  {week ? 'This week you were' : 'Lately you have been'}
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text style={[styles.h1, styles.centerText, {color: p.ink}]}>
+                  {persona.name}
+                </Text>
+              </Rise>
+              <Rise i={2}>
+                <Text
+                  style={[styles.line, styles.centerText, {color: p.ink}]}>
+                  {persona.line}
+                </Text>
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  if (r.streak >= 2) {
+    const {streak, bestStreak} = r;
+    cards.push({
+      key: 'streak',
+      draw: (p, h) => {
+        const Y = at760(h);
+        const beads = Math.min(bestStreak, 12);
+        const step = beads > 1 ? 292 / (beads - 1) : 0;
+        return (
+          <>
+            <Spin cx={250} cy={Y(300)} r={185}>
+              <Path d={blob(250, Y(300), 150, 0.22, 10, 21)} fill={p.a} />
+            </Spin>
+            <Layer h={h}>
+              <Path d={burst(250, Y(300), 62, 40, 9)} fill={p.c} />
+              {Array.from({length: beads}, (_, i) => {
+                const x = 34 + i * step;
+                const y = Y(560) + Math.sin(i * 0.9) * 22;
+                return i < Math.min(streak, beads) ? (
+                  <Circle
+                    key={i}
+                    cx={x}
+                    cy={y}
+                    r={11}
+                    fill={[p.a, p.b, p.c][i % 3]}
+                    stroke={p.ink}
+                    strokeWidth={2.5}
+                  />
+                ) : (
+                  <Circle
+                    key={i}
+                    cx={x}
+                    cy={y}
+                    r={10}
+                    fill="none"
+                    stroke={p.ink}
+                    strokeWidth={2.5}
+                    strokeDasharray="4 3"
+                  />
+                );
+              })}
+            </Layer>
+            <View style={[styles.content, {paddingTop: Y(150)}]}>
+              <Rise i={0}>
+                <Text style={[styles.lbl, {color: p.ink}]}>
+                  Days in a row with music
+                </Text>
+              </Rise>
+              <Rise i={1}>
+                <Text style={[styles.fig, styles.fig170, {color: p.ink}]}>
+                  {streak}
+                </Text>
+              </Rise>
+              <View style={styles.fill} />
+              <Rise i={2}>
+                <Text style={[styles.line, {color: p.ink}]}>
+                  {streak >= bestStreak
+                    ? 'Your longest run yet. Play something tomorrow to keep it going.'
+                    : `Your best is ${bestStreak}. Play something tomorrow to keep it going.`}
+                </Text>
+              </Rise>
+            </View>
+          </>
+        );
+      },
+    });
+  }
+
+  cards.push({
+    key: 'poster',
+    draw: (p, h) => {
+      const cells: [string, string][] = [['Songs', String(r.songs)]];
+      if (r.minutes != null) {
+        cells.push(['Listened', duration(r.minutes)]);
+      }
+      if (r.topArtist) {
+        cells.push(['Top artist', r.topArtist.name]);
+      }
+      if (r.persona) {
+        cells.push(['You are', r.persona.name]);
+      }
+      if (r.streak >= 2) {
+        cells.push(['Streak', `${r.streak} days`]);
+      }
+      const ink = {color: p.ink};
+      return (
+        <>
+          <Layer h={h}>
+            <Defs>
+              <Grad id="g12" from={p.a} to={p.c} />
+            </Defs>
+            <Rect
+              x={18}
+              y={92}
+              width={324}
+              height={h - 140}
+              rx={28}
+              fill="none"
+              stroke="url(#g12)"
+              strokeWidth={10}
+            />
+          </Layer>
+          <Spin cx={332} cy={156} r={80}>
+            <Path d={blob(332, 156, 56, 0.25, 7, 31)} fill={p.b} />
+          </Spin>
+          <View style={[styles.content, styles.poster]}>
+            <Rise i={0}>
+              <Text style={[styles.lbl, ink]}>
+                {week ? 'Your week, in one picture' : 'You, in one picture'}
+              </Text>
+            </Rise>
+            {r.topSong && (
+              <Rise i={1} style={styles.li}>
+                <Cover
+                  uri={getBestArtworkUrl(r.topSong.track)}
+                  size={84}
+                  title={r.topSong.track.title}
+                  pal={p}
+                />
+                <View style={styles.liText}>
+                  <Text style={[styles.liB, ink]}>Top song</Text>
+                  <Text style={[styles.posterTitle, ink]} numberOfLines={2}>
+                    {r.topSong.track.title}
+                  </Text>
+                </View>
+              </Rise>
+            )}
+            <Rise i={2} style={styles.grid}>
+              {cells.map(([k, v]) => (
+                <View key={k} style={styles.cell}>
+                  <Text style={[styles.liB, ink]}>{k}</Text>
+                  <Text style={[styles.cellValue, ink]} numberOfLines={2}>
+                    {v}
+                  </Text>
+                </View>
+              ))}
+            </Rise>
+            <View style={styles.fill} />
+            <Rise i={3} style={styles.sign}>
+              <Image
+                source={MARK}
+                style={[styles.signMark, {tintColor: p.ink}]}
+              />
+              <Text style={[styles.signText, ink]}>relaxify recap</Text>
+            </Rise>
+          </View>
+        </>
+      );
+    },
+  });
+
+  return cards;
+}
+
+/** The art swings in once per card: a slight turn and scale, settling. */
+function Canvas({
+  h,
+  animate,
+  children,
+}: {
+  h: number;
+  animate: boolean;
+  children: React.ReactNode;
+}) {
+  const t = useSharedValue(animate ? 0 : 1);
+  useEffect(() => {
+    t.value = withTiming(1, {
+      duration: 700,
+      easing: Easing.bezier(0.2, 1.4, 0.4, 1),
+    });
+  }, [t]);
+  const style = useAnimatedStyle(() => ({
+    opacity: interpolate(t.value, [0, 0.4], [0, 1], 'clamp'),
+    transform: [
+      {scale: interpolate(t.value, [0, 1], [0.88, 1])},
+      {rotate: `${(1 - t.value) * -5}deg`},
+    ],
+  }));
+  return (
+    <Animated.View style={[{width: CW, height: h}, style]}>
+      {children}
+    </Animated.View>
+  );
+}
 
 export function RecapScreen({onClose}: {onClose: () => void}) {
   const stats = useStatsState();
@@ -149,27 +1544,28 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
     () => buildRecap(stats, Date.now(), mode),
     [stats, mode],
   );
-  const {width, height} = useWindowDimensions();
-  const tileW = Math.min(width - 2 * S.gutter - 10, 440);
-  const cards = useMemo(
-    () => buildCards(recap, tileW, height),
-    [recap, tileW, height],
-  );
+  const faces = useArtistPhotos(recap.topArtists.map(a => a.name));
+  const cards = useMemo(() => buildCards(recap, faces), [recap, faces]);
 
-  // A fresh deal of layouts, fields and tiles each time the Recap opens.
-  const [deal] = useState(() => ({
-    layouts: shuffled(LAYOUTS),
-    fields: shuffled(FIELDS),
-    tiles: shuffled(TILES),
-  }));
+  // The palettes, dealt again each time the Recap opens.
+  const [deal] = useState(() => shuffled(PALS));
+
+  const win = useWindowDimensions();
+  const [box, setBox] = useState({w: win.width, h: win.height});
+  const onLayout = (e: LayoutChangeEvent) => {
+    const {width, height} = e.nativeEvent.layout;
+    if (width !== box.w || height !== box.h) {
+      setBox({w: width, h: height});
+    }
+  };
+  const scale = box.w / CW;
+  const logicalH = box.h / scale;
 
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const at = Math.min(index, cards.length - 1);
   const card = cards[at];
-  const layout = deal.layouts[at % deal.layouts.length];
-  const field = deal.fields[at % deal.fields.length];
-  const tile = deal.tiles[at % deal.tiles.length];
+  const pal = deal[at % deal.length];
 
   // ── Progress and auto-advance ─────────────────────────────────────────
   const prog = useSharedValue(0);
@@ -222,10 +1618,8 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
   };
 
   // ── Swipe down to put it away ────────────────────────────────────────
-  // `drag` is how far the story has been pulled down, in px. It enters from a
-  // little way down too, so opening and closing are the same motion.
   const reduce = useReducedMotion();
-  const drag = useSharedValue(reduce ? 0 : height * 0.12);
+  const drag = useSharedValue(reduce ? 0 : box.h * 0.12);
   useEffect(() => {
     drag.value = withSpring(0, {damping: 20, stiffness: 190});
   }, [drag]);
@@ -238,7 +1632,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
       }
       closing.current = true;
       drag.value = withTiming(
-        height,
+        box.h,
         {
           duration: Math.max(160, 320 - Math.abs(velocity) / 8),
           easing: Easing.in(Easing.cubic),
@@ -250,7 +1644,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
         },
       );
     },
-    [drag, height, onClose],
+    [drag, box.h, onClose],
   );
 
   // Back puts it away the same way a swipe does.
@@ -271,7 +1665,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
         drag.value = Math.max(0, e.translationY);
       })
       .onEnd(e => {
-        if (e.translationY > height * 0.2 || e.velocityY > 900) {
+        if (e.translationY > box.h * 0.2 || e.velocityY > 900) {
           runOnJS(dismiss)(e.velocityY);
         } else {
           drag.value = withSpring(0, {damping: 18, stiffness: 220});
@@ -286,16 +1680,16 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
       .maxDuration(250)
       .onEnd((e, ok) => {
         if (ok) {
-          runOnJS(go)(e.x < width * 0.32 ? -1 : 1);
+          runOnJS(go)(e.x < box.w * 0.32 ? -1 : 1);
         }
       });
     return Gesture.Race(pan, hold, tap);
-  }, [drag, height, width, dismiss, go]);
+  }, [drag, box.h, box.w, dismiss, go]);
 
   // Pulled down, the story shrinks and rounds off like a card being lifted
   // away, the way the full player folds into the mini player.
   const sheet = useAnimatedStyle(() => {
-    const p = Math.min(1, drag.value / height);
+    const p = Math.min(1, drag.value / box.h);
     return {
       opacity: interpolate(p, [0, 0.6, 1], [1, 0.9, 0]),
       borderRadius: interpolate(p, [0, 0.15], [0, 28], 'clamp'),
@@ -306,24 +1700,27 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
     };
   });
 
+  const ink = {color: pal.ink};
   return (
-    <Animated.View style={[styles.wrap, {backgroundColor: field}, sheet]}>
+    <Animated.View
+      style={[styles.wrap, {backgroundColor: pal.bg}, sheet]}
+      onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
         <View style={styles.stage}>
+          {/* The 360-wide canvas, scaled about its centre to fill the screen. */}
           <View
             style={[
-              styles.body,
-              {justifyContent: layout.v, alignItems: layout.h},
+              styles.canvas,
+              {
+                height: logicalH,
+                left: (box.w - CW) / 2,
+                top: (box.h - logicalH) / 2,
+                transform: [{scale}],
+              },
             ]}>
-            <Tile
-              key={`${mode}:${card.key}`}
-              width={tileW}
-              color={tile}
-              layout={layout}
-              sticker={card.sticker}
-              animate={!reduce}>
-              {card.body}
-            </Tile>
+            <Canvas key={`${mode}:${card.key}`} h={logicalH} animate={!reduce}>
+              {card.draw(pal, logicalH)}
+            </Canvas>
           </View>
         </View>
       </GestureDetector>
@@ -333,659 +1730,161 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
       <View style={styles.chrome} pointerEvents="box-none">
         <View style={styles.bars} pointerEvents="none">
           {cards.map((c, i) => (
-            <View key={c.key} style={styles.bar}>
-              {i < at && <View style={styles.barFill} />}
-              {i === at && <Animated.View style={[styles.barFill, fill]} />}
+            <View
+              key={c.key}
+              style={[styles.bar, {backgroundColor: `${pal.ink}33`}]}>
+              {i < at && (
+                <View style={[styles.barFill, {backgroundColor: pal.ink}]} />
+              )}
+              {i === at && (
+                <Animated.View
+                  style={[styles.barFill, {backgroundColor: pal.ink}, fill]}
+                />
+              )}
             </View>
           ))}
         </View>
-        <View style={styles.modes}>
-          {(['week', 'all'] as const).map(m => {
-            const on = m === mode;
-            return (
-              <TouchableOpacity
-                key={m}
-                onPress={() => pick(m)}
-                style={[styles.mode, on && styles.modeOn]}
-                accessibilityRole="button"
-                accessibilityState={{selected: on}}>
-                <Text style={[styles.modeText, on && {color: field}]}>
-                  {m === 'week' ? 'This week' : 'All time'}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.row}>
+          {/* The watermark: the same corner on every card. */}
+          <View style={styles.mark} pointerEvents="none">
+            <Image
+              source={MARK}
+              style={[styles.markIcon, {tintColor: pal.ink}]}
+            />
+            <Text style={[styles.markText, ink]}>Relaxify</Text>
+          </View>
+          <View style={styles.modes}>
+            {(['week', 'all'] as const).map(m => {
+              const on = m === mode;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  onPress={() => pick(m)}
+                  style={[
+                    styles.mode,
+                    {borderColor: pal.ink},
+                    on && {backgroundColor: pal.ink},
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{selected: on}}>
+                  <Text
+                    style={[styles.modeText, {color: on ? pal.bg : pal.ink}]}>
+                    {m === 'week' ? 'This week' : 'All time'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       </View>
-      {/* A handle, the same promise the player's grab bar makes: this pulls
-          down. */}
-      <View style={styles.grip} pointerEvents="none" />
+      <View
+        style={[styles.grip, {backgroundColor: pal.ink}]}
+        pointerEvents="none"
+      />
     </Animated.View>
-  );
-}
-
-/**
- * The yellow tile: a hard shadow drawn as a black slab behind it, a lean from
- * the layout, and one entrance — slapped down like a sticker, tilting past its
- * resting angle and settling back.
- */
-function Tile({
-  width,
-  color,
-  layout,
-  sticker,
-  animate,
-  children,
-}: {
-  width: number;
-  color: string;
-  layout: Layout;
-  sticker?: string;
-  animate: boolean;
-  children: React.ReactNode;
-}) {
-  const t = useSharedValue(animate ? 0 : 1);
-  useEffect(() => {
-    t.value = withTiming(1, {duration: 420, easing: Easing.out(Easing.back(2))});
-  }, [t]);
-  const land = useAnimatedStyle(() => ({
-    opacity: interpolate(t.value, [0, 0.35], [0, 1], 'clamp'),
-    transform: [
-      {scale: interpolate(t.value, [0, 1], [1.14, 1])},
-      {rotate: `${layout.tilt + (1 - t.value) * 7}deg`},
-    ],
-  }));
-  const corner = {
-    tl: {top: -16, left: -8},
-    tr: {top: -16, right: -8},
-    bl: {bottom: -14, left: -8},
-    br: {bottom: -14, right: -8},
-  }[layout.stick];
-  return (
-    <Animated.View style={[{width}, land]}>
-      <View style={styles.shadow} />
-      <View style={[styles.tile, {backgroundColor: color}]}>{children}</View>
-      {!!sticker && (
-        <View
-          style={[
-            styles.sticker,
-            corner,
-            {transform: [{rotate: `${-layout.tilt * 3}deg`}]},
-          ]}>
-          <Text style={styles.stickerText}>{sticker}</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
-function Cover({uri, size}: {uri?: string; size: number}) {
-  return uri ? (
-    <Image
-      source={{uri}}
-      style={[styles.cover, {width: size, height: size}]}
-    />
-  ) : (
-    <View style={[styles.cover, styles.coverEmpty, {width: size, height: size}]} />
-  );
-}
-
-/** A top-five list: rank, cover, name, count. The ranks are a real order. */
-function Ranked({
-  rows,
-}: {
-  rows: {key: string; title: string; sub?: string; uri?: string; n: number}[];
-}) {
-  return (
-    <View style={styles.ranked}>
-      {rows.map((r, i) => (
-        <View key={r.key} style={styles.rankRow}>
-          <Text style={[styles.rank, i === 0 && styles.rankTop]}>{i + 1}</Text>
-          <Cover uri={r.uri} size={i === 0 ? 50 : 40} />
-          <View style={styles.rankText}>
-            <Text
-              style={[styles.rankTitle, i === 0 && styles.rankTitleTop]}
-              numberOfLines={1}>
-              {r.title}
-            </Text>
-            {!!r.sub && (
-              <Text style={styles.rankSub} numberOfLines={1}>
-                {r.sub}
-              </Text>
-            )}
-          </View>
-          <Text style={styles.rankN}>{r.n}×</Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
-const songRows = (xs: SongCount[]) =>
-  xs.map((s, i) => ({
-    key: `${i}:${s.track.title}`,
-    title: s.track.title,
-    sub: s.track.artist,
-    uri: getBestArtworkUrl(s.track),
-    n: s.count,
-  }));
-const artistRows = (xs: ArtistCount[]) =>
-  xs.map((a, i) => ({key: `${i}:${a.name}`, title: a.name, uri: a.image, n: a.count}));
-
-function buildCards(r: Recap, tileW: number, screenH: number): Card[] {
-  const week = r.mode === 'week';
-  // Capped by height as well, so a three-line title still fits a short phone.
-  const art = Math.min(tileW - 40, 230, Math.round(screenH * 0.26));
-
-  if (!r.songs) {
-    return [
-      {
-        key: 'empty',
-        sticker: 'soon',
-        body: (
-          <>
-            <Text style={styles.headline}>Nothing to recap yet</Text>
-            <Text style={styles.line}>
-              Play a few songs. Each one counts once you have listened for 30
-              seconds.
-            </Text>
-          </>
-        ),
-      },
-    ];
-  }
-
-  const cards: Card[] = [];
-  const now = Date.now();
-  cards.push({
-    key: 'intro',
-    sticker: week ? 'this week' : 'all time',
-    body: (
-      <>
-        <Text style={styles.label}>
-          {week
-            ? `${dayMonth(now - 6 * 24 * 60 * 60 * 1000)} to ${dayMonth(now)}`
-            : 'Everything you have played on Relaxify'}
-        </Text>
-        <Text style={styles.figure}>{r.songs}</Text>
-        <Text style={styles.headline}>
-          {r.songs === 1 ? 'song' : 'songs'}
-          {week ? ' this week' : ' and counting'}
-        </Text>
-        {week && r.minutes != null && (
-          <Text style={styles.line}>{`${duration(r.minutes)} of music.`}</Text>
-        )}
-        <Text style={styles.hint}>
-          Tap the right side to go on, hold to pause, swipe down to close.
-        </Text>
-      </>
-    ),
-  });
-
-  if (r.topSong) {
-    const t = r.topSong.track;
-    cards.push({
-      key: 'song',
-      sticker: `${r.topSong.count}×`,
-      body: (
-        <>
-          <Text style={styles.label}>
-            {week ? 'Your song of the week' : 'Your most played song'}
-          </Text>
-          <Cover uri={getBestArtworkUrl(t)} size={art} />
-          <Text
-            style={styles.headline}
-            numberOfLines={3}
-            adjustsFontSizeToFit
-            minimumFontScale={0.55}>
-            {t.title}
-          </Text>
-          <Text style={styles.sub} numberOfLines={2}>
-            {t.artist}
-          </Text>
-          <Text style={styles.line}>
-            {`Played ${times(r.topSong.count)}${week ? ' this week' : ''}.`}
-          </Text>
-        </>
-      ),
-    });
-  }
-
-  if (r.topSongs.length > 1) {
-    cards.push({
-      key: 'songs',
-      sticker: 'top 5',
-      body: (
-        <>
-          <Text style={styles.label}>
-            {week ? 'Your top songs this week' : 'Your top songs'}
-          </Text>
-          <Ranked rows={songRows(r.topSongs)} />
-        </>
-      ),
-    });
-  }
-
-  if (r.topArtist) {
-    const a = r.topArtist;
-    cards.push({
-      key: 'artist',
-      sticker: `${a.count} plays`,
-      body: (
-        <>
-          <Text style={styles.label}>
-            {week ? 'Your artist of the week' : 'Your most played artist'}
-          </Text>
-          {!!a.image && <Cover uri={a.image} size={art * 0.7} />}
-          <Text
-            style={styles.headline}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.55}>
-            {a.name}
-          </Text>
-          <Text style={styles.line}>
-            {`${a.count} ${a.count === 1 ? 'play' : 'plays'}${
-              week ? ' this week' : ''
-            }.`}
-          </Text>
-        </>
-      ),
-    });
-  }
-
-  if (r.topArtists.length > 1) {
-    cards.push({
-      key: 'artists',
-      sticker: 'top 5',
-      body: (
-        <>
-          <Text style={styles.label}>
-            {week ? 'Your top artists this week' : 'Your top artists'}
-          </Text>
-          <Ranked rows={artistRows(r.topArtists)} />
-        </>
-      ),
-    });
-  }
-
-  if (week && r.days && r.minutes != null) {
-    const days = r.days;
-    const max = Math.max(1, ...days.map(d => d.songs));
-    const big = r.busiest >= 0 ? days[r.busiest] : null;
-    cards.push({
-      key: 'time',
-      sticker: big ? DAYS[new Date(big.at).getDay()].slice(0, 3) : undefined,
-      body: (
-        <>
-          <Text style={styles.label}>You listened for</Text>
-          <Text style={styles.figure}>{duration(r.minutes)}</Text>
-          <View style={styles.week}>
-            {days.map((d, i) => (
-              <View key={d.at} style={styles.dayCol}>
-                <View style={styles.dayTrack}>
-                  <View
-                    style={[
-                      styles.dayBar,
-                      i !== r.busiest && styles.dayBarQuiet,
-                      {height: `${Math.max(4, (d.songs / max) * 100)}%`},
-                    ]}
-                  />
-                </View>
-                <Text style={styles.dayLabel}>
-                  {DAYS[new Date(d.at).getDay()].slice(0, 1)}
-                </Text>
-              </View>
-            ))}
-          </View>
-          {big && (
-            <Text style={styles.line}>
-              {`${DAYS[new Date(big.at).getDay()]} was your biggest day, with ${
-                big.songs
-              } ${big.songs === 1 ? 'song' : 'songs'}.`}
-            </Text>
-          )}
-        </>
-      ),
-    });
-  }
-
-  if (week && r.minutes != null && r.lastMinutes != null && r.lastMinutes > 0) {
-    const diff = r.minutes - r.lastMinutes;
-    const pct = Math.round((Math.abs(diff) / r.lastMinutes) * 100);
-    cards.push({
-      key: 'vs',
-      sticker: diff >= 0 ? `+${pct}%` : `-${pct}%`,
-      body: (
-        <>
-          <Text style={styles.label}>Compared with last week</Text>
-          <Text style={styles.figure}>
-            {diff >= 0 ? `+${duration(diff)}` : `-${duration(-diff)}`}
-          </Text>
-          <Text style={styles.line}>
-            {diff >= 0
-              ? `More music than last week's ${duration(r.lastMinutes)}.`
-              : `A quieter week than last week's ${duration(r.lastMinutes)}.`}
-          </Text>
-        </>
-      ),
-    });
-  }
-
-  if (r.onRepeat) {
-    const o = r.onRepeat;
-    cards.push({
-      key: 'repeat',
-      sticker: 'on repeat',
-      body: (
-        <>
-          <Text style={styles.label}>{`On ${
-            DAYS[new Date(o.day).getDay()]
-          } you could not stop playing`}</Text>
-          <Cover uri={getBestArtworkUrl(o.track)} size={art * 0.62} />
-          <Text
-            style={styles.headline}
-            numberOfLines={2}
-            adjustsFontSizeToFit
-            minimumFontScale={0.55}>
-            {o.track.title}
-          </Text>
-          <Text style={styles.line}>{`${o.count} times in one day.`}</Text>
-        </>
-      ),
-    });
-  }
-
-  if (r.discoveries.length) {
-    const d = r.discoveries;
-    cards.push({
-      key: 'new',
-      sticker: 'new',
-      body: (
-        <>
-          <Text style={styles.label}>New to you this week</Text>
-          <Text style={styles.figure}>{d.length}</Text>
-          <Text style={styles.headline}>
-            {d.length === 1 ? 'new artist' : 'new artists'}
-          </Text>
-          <Text style={styles.line} numberOfLines={3}>
-            {d
-              .slice(0, 3)
-              .map(a => a.name)
-              .join(', ') + (d.length > 3 ? ` and ${d.length - 3} more.` : '.')}
-          </Text>
-        </>
-      ),
-    });
-  }
-
-  if (r.persona) {
-    cards.push({
-      key: 'hour',
-      sticker: hourLabel(r.peakHour),
-      body: (
-        <>
-          <HourDial
-            hours={r.hours}
-            peak={r.peakHour}
-            size={Math.min(tileW - 60, 220)}
-          />
-          <Text style={styles.label}>
-            {week ? 'This week you were' : 'Lately you have been'}
-          </Text>
-          <Text style={styles.headline}>{r.persona.name}</Text>
-          <Text style={styles.line}>{r.persona.line}</Text>
-        </>
-      ),
-    });
-  }
-
-  if (r.streak >= 2) {
-    cards.push({
-      key: 'streak',
-      sticker: `best ${r.bestStreak}`,
-      body: (
-        <>
-          <Text style={styles.label}>Days in a row with music</Text>
-          <Text style={styles.figure}>{r.streak}</Text>
-          <Text style={styles.line}>
-            {r.streak >= r.bestStreak
-              ? 'Your longest run yet. Play something tomorrow to keep it going.'
-              : `Your best is ${r.bestStreak}. Play something tomorrow to keep it going.`}
-          </Text>
-        </>
-      ),
-    });
-  }
-
-  cards.push({key: 'poster', sticker: 'Relaxify', body: <Poster r={r} />});
-  return cards;
-}
-
-/** The last card: the whole recap on one tile. */
-function Poster({r}: {r: Recap}) {
-  const week = r.mode === 'week';
-  const cells: [string, string][] = [
-    ['Songs', String(r.songs)],
-    ...(r.minutes != null
-      ? ([['Listened', duration(r.minutes)]] as [string, string][])
-      : []),
-    ...(r.topArtist
-      ? ([['Top artist', r.topArtist.name]] as [string, string][])
-      : []),
-    ...(r.persona ? ([['You are', r.persona.name]] as [string, string][]) : []),
-    ...(r.streak >= 2
-      ? ([['Streak', `${r.streak} days`]] as [string, string][])
-      : []),
-  ];
-  return (
-    <>
-      <Text style={styles.label}>
-        {week ? 'Your week, in one picture' : 'You, in one picture'}
-      </Text>
-      {r.topSong && (
-        <View style={styles.posterSong}>
-          <Cover uri={getBestArtworkUrl(r.topSong.track)} size={72} />
-          <View style={styles.rankText}>
-            <Text style={styles.rankSub}>Top song</Text>
-            <Text style={styles.posterTitle} numberOfLines={2}>
-              {r.topSong.track.title}
-            </Text>
-          </View>
-        </View>
-      )}
-      <View style={styles.grid}>
-        {cells.map(([k, v]) => (
-          <View key={k} style={styles.cell}>
-            <Text style={styles.rankSub}>{k}</Text>
-            <Text style={styles.cellValue} numberOfLines={2}>
-              {v}
-            </Text>
-          </View>
-        ))}
-      </View>
-    </>
-  );
-}
-
-/** The day as a clock face: one spoke per hour, longer for more listening,
- *  the busiest hour and its neighbours in solid ink. */
-function HourDial({
-  hours,
-  peak,
-  size,
-}: {
-  hours: number[];
-  peak: number;
-  size: number;
-}) {
-  const c = size / 2;
-  const r0 = size * 0.27;
-  const reach = size * 0.21;
-  const max = Math.max(1, ...hours);
-  const near = (h: number) =>
-    peak >= 0 && Math.min(Math.abs(h - peak), 24 - Math.abs(h - peak)) <= 1;
-  const labels: [string, number][] = [0, 6, 12, 18].map(h => [hourLabel(h), h]);
-  return (
-    <Svg width={size} height={size} style={styles.dial}>
-      {hours.map((n, h) => {
-        const a = (h / 24) * 2 * Math.PI - Math.PI / 2;
-        const len = 5 + (n / max) * reach;
-        return (
-          <Line
-            key={h}
-            x1={c + Math.cos(a) * r0}
-            y1={c + Math.sin(a) * r0}
-            x2={c + Math.cos(a) * (r0 + len)}
-            y2={c + Math.sin(a) * (r0 + len)}
-            stroke={near(h) ? INK : 'rgba(0,0,0,0.22)'}
-            strokeWidth={size * 0.035}
-            strokeLinecap="round"
-          />
-        );
-      })}
-      {labels.map(([t, h]) => {
-        const a = (h / 24) * 2 * Math.PI - Math.PI / 2;
-        return (
-          <SvgText
-            key={t}
-            x={c + Math.cos(a) * r0 * 0.62}
-            y={c + Math.sin(a) * r0 * 0.62 + 4}
-            fill={INK}
-            fontSize={11}
-            fontWeight="700"
-            textAnchor="middle">
-            {t}
-          </SvgText>
-        );
-      })}
-    </Svg>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {flex: 1, overflow: 'hidden'},
   stage: {flex: 1},
+  canvas: {position: 'absolute', width: CW},
+  abs: {position: 'absolute'},
+  songCover: {position: 'absolute', left: 120},
+  artistFace: {position: 'absolute', left: 84},
+  clip: {overflow: 'hidden'},
+  fill: {flex: 1},
+  // The words sit inside the canvas, in its units.
+  content: {
+    ...StyleSheet.absoluteFillObject,
+    paddingTop: 96,
+    paddingHorizontal: 26,
+    paddingBottom: 60,
+  },
+  bottom: {justifyContent: 'flex-end', paddingBottom: 64, gap: 4},
+  middle: {justifyContent: 'center', gap: 4},
+  center: {alignItems: 'center'},
+  centerText: {textAlign: 'center'},
+  listTop: {paddingTop: 110},
+  besideStrip: {paddingLeft: 58},
+  poster: {paddingTop: 124, paddingHorizontal: 42, paddingBottom: 70, gap: 14},
   chrome: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: S.gutter,
-    paddingTop: 12,
-    gap: 12,
+    paddingTop: 14,
+    paddingHorizontal: 16,
+    gap: 14,
   },
   bars: {flexDirection: 'row', gap: 4},
-  bar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.2)',
+  bar: {flex: 1, height: 3.5, borderRadius: 2, overflow: 'hidden'},
+  barFill: {height: '100%', width: '100%'},
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  barFill: {height: '100%', width: '100%', backgroundColor: INK},
-  modes: {flexDirection: 'row', gap: 6},
+  mark: {flexDirection: 'row', alignItems: 'center', gap: 7},
+  markIcon: {width: 24, height: 24},
+  markText: {fontSize: 15.5, fontWeight: '800', letterSpacing: -0.2},
+  modes: {flexDirection: 'row', gap: 4},
   mode: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 11,
     paddingVertical: 5,
     borderRadius: 999,
-    borderWidth: 2,
-    borderColor: INK,
+    borderWidth: 1.5,
   },
-  modeOn: {backgroundColor: INK},
-  modeText: {fontSize: 13.5, fontWeight: '800', color: INK},
-  // The tile's box: below the chrome, above the swipe hint. Where in it the
-  // tile sits comes from the card's layout.
-  body: {
-    flex: 1,
-    paddingTop: 92,
-    paddingBottom: 56,
-    paddingHorizontal: S.gutter,
-  },
-  shadow: {
-    position: 'absolute',
-    top: 7,
-    left: 7,
-    right: -7,
-    bottom: -7,
-    borderRadius: 20,
-    backgroundColor: INK,
-  },
-  tile: {
-    borderWidth: 3,
-    borderColor: INK,
-    borderRadius: 20,
-    padding: 20,
-    gap: 10,
-  },
-  sticker: {
-    position: 'absolute',
-    backgroundColor: PAPER,
-    borderWidth: 2.5,
-    borderColor: INK,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  stickerText: {color: INK, fontSize: 14, fontWeight: '900'},
+  modeText: {fontSize: 12.5, fontWeight: '800'},
   grip: {
     position: 'absolute',
-    bottom: 22,
+    bottom: 14,
     alignSelf: 'center',
-    width: 44,
+    width: 40,
     height: 5,
     borderRadius: 3,
-    backgroundColor: INK,
-    opacity: 0.45,
+    opacity: 0.4,
   },
-  label: {fontSize: 15, fontWeight: '800', color: INK},
-  headline: {
-    fontSize: 40,
-    lineHeight: 44,
-    fontWeight: '900',
-    letterSpacing: -1.3,
-    color: INK,
-  },
-  figure: {
-    fontSize: 64,
-    lineHeight: 68,
-    fontWeight: '900',
-    letterSpacing: -2.5,
-    color: INK,
-  },
-  sub: {fontSize: 17, fontWeight: '700', color: INK, opacity: 0.75},
-  line: {fontSize: 16, lineHeight: 23, fontWeight: '600', color: INK},
-  hint: {fontSize: 13, fontWeight: '700', color: INK, opacity: 0.6, marginTop: 8},
-  cover: {borderRadius: 8, borderWidth: 2.5, borderColor: INK},
-  coverEmpty: {backgroundColor: 'rgba(0,0,0,0.12)'},
-  dial: {alignSelf: 'center'},
-  week: {flexDirection: 'row', gap: 7, height: 120, marginVertical: 6},
-  dayCol: {flex: 1, gap: 6},
-  dayTrack: {flex: 1, justifyContent: 'flex-end'},
-  dayBar: {width: '100%', borderRadius: 4, backgroundColor: INK},
-  dayBarQuiet: {backgroundColor: 'rgba(0,0,0,0.22)'},
-  dayLabel: {fontSize: 13, fontWeight: '800', textAlign: 'center', color: INK},
-  ranked: {gap: 10, marginTop: 4},
-  rankRow: {flexDirection: 'row', alignItems: 'center', gap: 10},
-  rank: {width: 22, fontSize: 20, fontWeight: '900', color: INK},
-  rankTop: {fontSize: 26},
-  rankText: {flex: 1, minWidth: 0},
-  rankTitle: {fontSize: 15, fontWeight: '800', color: INK},
-  rankTitleTop: {fontSize: 18},
-  rankSub: {fontSize: 12.5, fontWeight: '700', color: INK, opacity: 0.65},
-  rankN: {fontSize: 15, fontWeight: '900', color: INK},
-  posterSong: {flexDirection: 'row', alignItems: 'center', gap: 12},
-  posterTitle: {fontSize: 22, lineHeight: 26, fontWeight: '900', color: INK},
-  grid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4},
-  cell: {
-    width: '48%',
-    flexGrow: 1,
-    borderWidth: 2,
-    borderColor: INK,
-    borderRadius: 12,
-    paddingHorizontal: 10,
+  lbl: {fontSize: 16, fontWeight: '800', letterSpacing: -0.2},
+  h1: {fontSize: 40, lineHeight: 43, fontWeight: '800', letterSpacing: -1.4},
+  h30: {fontSize: 30, lineHeight: 34},
+  h32: {fontSize: 32, lineHeight: 36, marginTop: 4},
+  h34: {fontSize: 34, lineHeight: 37},
+  fig: {fontWeight: '800', letterSpacing: -3},
+  fig64: {fontSize: 64, lineHeight: 70, letterSpacing: -2.5},
+  fig76: {fontSize: 76, lineHeight: 82},
+  fig120: {fontSize: 120, lineHeight: 118, letterSpacing: -6},
+  fig130: {fontSize: 130, lineHeight: 128, letterSpacing: -6},
+  fig170: {fontSize: 170, lineHeight: 166, letterSpacing: -8},
+  line: {fontSize: 16, lineHeight: 23, fontWeight: '600'},
+  list: {gap: 12, marginTop: 14},
+  li: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  liN: {width: 24, fontSize: 22, fontWeight: '800', textAlign: 'center'},
+  liNTop: {fontSize: 30},
+  liText: {flex: 1, minWidth: 0},
+  liA: {fontSize: 15.5, fontWeight: '800'},
+  liATop: {fontSize: 18},
+  liB: {fontSize: 12.5, fontWeight: '700', opacity: 0.7},
+  liC: {fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums']},
+  pill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderRadius: 999,
   },
-  cellValue: {fontSize: 16, fontWeight: '900', color: INK, marginTop: 2},
+  pillText: {color: DARK, fontSize: 18, fontWeight: '800'},
+  pills: {gap: 10, marginTop: 18, alignItems: 'flex-start'},
+  plate: {
+    borderRadius: 22,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    maxWidth: 300,
+  },
+  posterTitle: {fontSize: 22, lineHeight: 26, fontWeight: '800'},
+  grid: {flexDirection: 'row', flexWrap: 'wrap', rowGap: 16, marginTop: 6},
+  cell: {width: '50%', paddingRight: 12},
+  cellValue: {fontSize: 19, lineHeight: 23, fontWeight: '800'},
+  sign: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  signMark: {width: 20, height: 20},
+  signText: {fontSize: 14, fontWeight: '800'},
 });
