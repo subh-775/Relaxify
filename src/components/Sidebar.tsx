@@ -46,6 +46,7 @@ import {C, S, T} from '../theme';
 import {appVersion} from '../backend';
 import {useUpdateAvailable} from '../update';
 import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
+import {WhatsNew} from './WhatsNew';
 
 const ICON = require('../assets/app-icon-bl.png');
 
@@ -248,6 +249,11 @@ export const Sidebar = React.memo(function Sidebar({
             ))}
           </View>
 
+          {/* What changed lately, or the waiting update, above the version. */}
+          <View style={styles.news}>
+            <WhatsNew visible={visible} />
+          </View>
+
           {/* Version, centred, and under it the licence the code ships under. */}
           <View style={styles.foot}>
             <Text style={styles.version}>v{appVersion || '—'}</Text>
@@ -316,6 +322,7 @@ const styles = StyleSheet.create({
   },
   itemLabel: {color: C.text, fontSize: 15.5, fontWeight: '700'},
   itemValue: {color: C.accent, fontSize: 12.5, fontWeight: '700'},
+  news: {paddingHorizontal: S.gutter, paddingBottom: 14},
   foot: {paddingBottom: 22, gap: 3},
   version: {
     color: C.faint,
