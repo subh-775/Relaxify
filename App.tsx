@@ -480,6 +480,7 @@ function Shell() {
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const closeRecap = useCallback(() => setActivity(null), []);
+  const openRecap = useCallback(() => setActivity('stats'), []);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -648,6 +649,7 @@ function Shell() {
             onBeginDrag={beginDrawerDrag}
             onEndDrag={endDrawerDrag}
             onReady={onHomeReady}
+            onOpenRecap={openRecap}
             visible={tab === 'home'}
           />
         </View>

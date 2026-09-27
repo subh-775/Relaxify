@@ -23,6 +23,7 @@ import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
 import {RecentsGrid} from '../components/RecentsGrid';
+import {RecapTeaser} from '../components/RecapTeaser';
 import {
   DRAWER_EDGE,
   DRAWER_GRAB,
@@ -73,6 +74,8 @@ type Props = {
   onEndDrag: (open: boolean, velocity: number) => void;
   /** Home has something to show — the app lifts its splash on this. */
   onReady?: () => void;
+  /** Open the Recap, from the teaser card. */
+  onOpenRecap?: () => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
    *  greeting takes new colours then. */
@@ -116,6 +119,7 @@ export const HomeScreen = React.memo(function HomeScreen({
   onBeginDrag,
   onEndDrag,
   onReady,
+  onOpenRecap,
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
@@ -281,6 +285,8 @@ export const HomeScreen = React.memo(function HomeScreen({
    */
   const header = (
     <>
+      {/* The week's Recap, announced once there is enough to tell. */}
+      {onOpenRecap && <RecapTeaser onOpen={onOpenRecap} />}
       {/* Recents: the last nine songs, as the YouTube Music speed dial. */}
       <RecentsGrid recent={recent} onPlay={onPlayTrack} />
     </>

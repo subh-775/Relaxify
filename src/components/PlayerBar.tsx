@@ -91,10 +91,24 @@ const BAR_R = MINI_BAR_RADIUS;
  * component containing a Marquee, forever, on every screen. Here it re-renders
  * one 2px view.
  */
-const MiniProgress = React.memo(function MiniProgress() {
+const MiniProgress = React.memo(function MiniProgress({
+  color,
+}: {
+  /** The song's own colour, lifted to read as a bright line; white until the
+   *  cover's colour is known. */
+  color?: string;
+}) {
   const {position, duration} = useProgress(1000);
   const pct = duration > 0 ? Math.min(1, position / duration) : 0;
-  return <View style={[styles.progressFill, {width: `${pct * 100}%`}]} />;
+  return (
+    <View
+      style={[
+        styles.progressFill,
+        color ? {backgroundColor: color} : null,
+        {width: `${pct * 100}%`},
+      ]}
+    />
+  );
 });
 
 /**
@@ -479,7 +493,9 @@ export const PlayerBar = React.memo(function PlayerBar({
           </View>
 
           <View style={styles.progressTrack}>
-            <MiniProgress />
+            <MiniProgress
+              color={tint ? surfaceTint(tint, 0.66, 0.8) : undefined}
+            />
           </View>
         </Animated.View>
       </GestureDetector>

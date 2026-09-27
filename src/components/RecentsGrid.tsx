@@ -3,8 +3,9 @@
  * at the top of Home — the "speed dial" layout YouTube Music uses.
  *
  * A tap plays the song with the rest of your recents queued after it. The
- * song playing now wears a white outline, so the grid also answers "what is
- * this" at a glance.
+ * song playing now wears a ring in the greeting's colour and a little
+ * equalizer that dances while it plays and lies flat when paused, so the grid
+ * also answers "what is on, and is it playing" at a glance.
  *
  * Each tile's title sits on a soft fade rather than a solid bar, so a cover
  * keeps its whole picture and the name stays readable over a light one.
@@ -21,7 +22,9 @@ import {
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {C, S, T} from '../theme';
 import {cleanText, getBestArtworkUrl, getTrackId} from '../tracks';
-import {useIsActiveTrack} from '../player';
+import {useIsActiveTrack, useIsPlaying} from '../player';
+import {useAccent} from '../accent';
+import {EqBars} from './EqBars';
 import type {Track} from '../backend';
 
 const COLUMNS = 3;
@@ -96,10 +99,28 @@ const Tile = React.memo(function Tile({
       <Text style={styles.name} numberOfLines={1}>
         {cleanText(track.title)}
       </Text>
-      {playing && <View style={styles.playing} pointerEvents="none" />}
+      {playing && <NowPlaying />}
     </TouchableOpacity>
   );
 });
+
+/** The ring and the bars. Its own component, so only the playing tile
+ *  follows the play state. */
+function NowPlaying() {
+  const [lead, second] = useAccent();
+  const on = useIsPlaying();
+  return (
+    <>
+      <View
+        style={[styles.playing, {borderColor: lead}]}
+        pointerEvents="none"
+      />
+      <View style={styles.eq} pointerEvents="none">
+        <EqBars colors={[lead, second, lead]} active={on} height={13} />
+      </View>
+    </>
+  );
+}
 
 const styles = StyleSheet.create({
   section: {marginTop: 6},
@@ -136,7 +157,15 @@ const styles = StyleSheet.create({
   playing: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#fff',
+    borderWidth: 3,
+  },
+  eq: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderRadius: 5,
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
 });

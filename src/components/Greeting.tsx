@@ -33,19 +33,9 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import {C} from '../theme';
+import {PAIRS, setAccent} from '../accent';
 
-/** Colour pairs for the greeting; the pill takes the first. Every colour is
- *  bright enough to read on #000 and to carry dark type. */
-export const PAIRS: [string, string][] = [
-  ['#FF5A5F', '#00B4FF'], // coral · sky
-  ['#FF9F1C', '#B388FF'], // orange · lavender
-  ['#8AE234', '#FF6FD8'], // lime · pink
-  ['#2EC4B6', '#FFD23F'], // teal · sun
-  ['#7B8CFF', '#FF9F1C'], // periwinkle · orange
-  ['#FF6FD8', '#2EC4B6'], // pink · teal
-  ['#FFD23F', '#7B8CFF'], // sun · periwinkle
-  ['#00B4FF', '#8AE234'], // sky · lime
-];
+export {PAIRS};
 
 /**
  * What the reel can land on, each with its width at font size 1 in Plus
@@ -143,6 +133,8 @@ export function Greeting({visible = true}: {visible?: boolean}) {
   // 1 = the current word is still sliding in from below, 0 = in place.
   const slide = useRef(new Animated.Value(0)).current;
   const [pair, setPair] = useState(() => nextPair(-1));
+  // The rest of the app wears the same colour (see accent.ts).
+  useEffect(() => setAccent(pair), [pair]);
   const [land, setLand] = useState(() => nextPair(-1, WORDS.length));
   // The word in the window right now. It IS a word at every moment, and the
   // spin always finishes by setting it to `land`, so the pill can never be

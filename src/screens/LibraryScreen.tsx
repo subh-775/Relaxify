@@ -63,6 +63,9 @@ import Animated, {useAnimatedRef} from 'react-native-reanimated';
 import {FastScroll, useFastScroll} from '../components/FastScroll';
 import {MenuMark} from '../components/MenuMark';
 import {useListEnd} from '../components/UpdateModal';
+import {LibraryHeroes} from '../components/LibraryHeroes';
+import {EmptyState} from '../components/EmptyState';
+import {useAccent} from '../accent';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
@@ -201,6 +204,11 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   // afterwards, and why the Downloaded collection was a scan behind.
   useEffect(() => onDownloadsChanged(loadDownloads), [loadDownloads]);
 
+  const heroes = filter === 'all' && !query.trim();
+  const liked = withArtists.find(c => c.kind === 'liked');
+  const downloaded = withArtists.find(c => c.kind === 'downloads');
+  const [accent] = useAccent();
+
   const rows = useMemo(() => {
     const matches = (c: Collection) => {
       switch (filter) {
@@ -233,12 +241,33 @@ export const LibraryScreen = React.memo(function LibraryScreen({
     const found = (c: Collection) =>
       !q || fold(`${c.name} ${collectionSubtitle(c)}`).includes(q);
     const list = withArtists.filter(c => matches(c) && found(c));
-    const fixed = list.filter(
-      c => c.kind === 'liked' || c.kind === 'downloads',
-    );
+    // On "All" with no search, Liked and Downloaded are the two tiles above
+    // the list (LibraryHeroes), so they are not rows as well.
+    const fixed = heroes
+      ? []
+      : list.filter(c => c.kind === 'liked' || c.kind === 'downloads');
     const rest = list.filter(c => c.kind !== 'liked' && c.kind !== 'downloads');
     return [...fixed, ...sortPinned(rest, pins, idOf, c => c.updatedAt)];
-  }, [withArtists, pins, filter, query]);
+  }, [withArtists, pins, filter, query, heroes]);
+
+  // L2: how many each chip holds, whatever the search box says.
+  const counts = useMemo(() => {
+    const n = {all: withArtists.length, playlists: 0, albums: 0, artists: 0};
+    for (const c of withArtists) {
+      if (
+        c.kind === 'userPlaylist' ||
+        c.kind === 'sourcePlaylist' ||
+        c.kind === 'liked'
+      ) {
+        n.playlists += 1;
+      } else if (c.kind === 'album') {
+        n.albums += 1;
+      } else if (c.kind === 'artist') {
+        n.artists += 1;
+      }
+    }
+    return n;
+  }, [withArtists]);
 
   /** Only playlists pin — not artists, not albums, and not the fixtures. */
   const canPin = (c: Collection) =>
@@ -359,9 +388,12 @@ export const LibraryScreen = React.memo(function LibraryScreen({
               key={f.id}
               activeOpacity={0.75}
               onPress={() => setFilter(f.id)}
-              style={[styles.chip, on && styles.chipOn]}>
+              style={[styles.chip, on && {backgroundColor: accent}]}>
               <Text style={[styles.chipText, on && styles.chipTextOn]}>
                 {f.label}
+              </Text>
+              <Text style={[styles.chipCount, on && styles.chipCountOn]}>
+                {counts[f.id]}
               </Text>
             </TouchableOpacity>
           );
@@ -383,12 +415,26 @@ export const LibraryScreen = React.memo(function LibraryScreen({
             showsVerticalScrollIndicator={false}
             onScroll={fast.onScroll}
             scrollEventThrottle={16}
+            ListHeaderComponent={
+              heroes ? (
+                <LibraryHeroes
+                  liked={liked}
+                  downloads={downloaded}
+                  onOpen={onOpen}
+                />
+              ) : null
+            }
             ListEmptyComponent={
-              <Text style={styles.empty}>
-                {query.trim()
-                  ? `Nothing in your library matches "${query.trim()}".`
-                  : 'Nothing here yet.'}
-              </Text>
+              query.trim() ? (
+                <Text style={styles.empty}>
+                  {`Nothing in your library matches "${query.trim()}".`}
+                </Text>
+              ) : heroes ? null : (
+                <EmptyState
+                  title="Nothing here yet"
+                  line="Like a song, save an album or make a playlist, and it shows up here."
+                />
+              )
             }
             renderItem={({item}) => (
               <TouchableOpacity
@@ -643,14 +689,18 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   chip: {
-    paddingHorizontal: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
     backgroundColor: C.surfaceHi,
   },
-  chipOn: {backgroundColor: C.text},
+  chipCount: {color: C.faint, fontSize: 11.5, fontWeight: '800'},
+  chipCountOn: {color: '#111014', opacity: 0.6},
   chipText: {...T.sub, color: C.text, fontSize: 13},
-  chipTextOn: {color: C.bg, fontWeight: '700'},
+  chipTextOn: {color: '#111014', fontWeight: '700'},
   center: {
     flex: 1,
     alignItems: 'center',

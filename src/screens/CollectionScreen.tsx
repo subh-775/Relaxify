@@ -76,6 +76,7 @@ import {ConfirmModal} from '../components/ConfirmModal';
 import {Sheet} from '../components/Sheet';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
+import {EmptyState} from '../components/EmptyState';
 
 export function CollectionScreen({
   collection,
@@ -557,13 +558,22 @@ export function CollectionScreen({
               <Text style={styles.empty}>Loading songs…</Text>
             </View>
           ) : (
-            <Text style={styles.empty}>
-              {collection.kind === 'downloads'
-                ? 'Nothing downloaded yet. Songs you download are kept here and play offline.'
-                : collection.kind === 'liked'
-                ? 'Songs you like will show up here.'
-                : 'This list is empty.'}
-            </Text>
+            <EmptyState
+              title={
+                collection.kind === 'downloads'
+                  ? 'No downloads yet'
+                  : collection.kind === 'liked'
+                  ? 'No liked songs yet'
+                  : 'This list is empty'
+              }
+              line={
+                collection.kind === 'downloads'
+                  ? 'Download a song from its menu and it plays here without a connection.'
+                  : collection.kind === 'liked'
+                  ? 'Tap the heart on any song and it lands here.'
+                  : 'Add songs from any song\'s menu.'
+              }
+            />
           )
         }
         renderItem={({item}) => {
