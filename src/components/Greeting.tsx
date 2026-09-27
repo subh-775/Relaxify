@@ -18,7 +18,9 @@
  * default font (src/font.ts) names the family on every Text, and on Android a
  * nested span that names a family without a weight falls back to REGULAR.
  *
- * The spin is one Animated.Value on the native driver.
+ * The spin swaps the word in the window on a slowing clock, each one sliding
+ * in on the native driver; see `shown` below for why it is not a scrolled
+ * column.
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {
@@ -87,7 +89,6 @@ const GAP = 7;
 const PAD = 9;
 /** Words the reel passes before it lands. */
 const SPIN_WORDS = 7;
-const SPIN_MS = 1400;
 
 /** The font size that fits "Listen up" and the longest word, pill included,
  *  in `room` dp. Exported for the test. */
@@ -134,28 +135,40 @@ export function buildReel(
   return reel;
 }
 
+/** When each reel word lands, in ms from the start: quick, then slowing. */
+const TICKS = [0, 70, 150, 240, 345, 470, 625, 830];
+
 export function Greeting({visible = true}: {visible?: boolean}) {
   const bloom = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
+  // 1 = the current word is still sliding in from below, 0 = in place.
+  const slide = useRef(new Animated.Value(0)).current;
   const [pair, setPair] = useState(() => nextPair(-1));
-  const [reel, setReel] = useState(() => buildReel(nextPair(-1, WORDS.length)));
-  const land = reel[reel.length - 1];
+  const [land, setLand] = useState(() => nextPair(-1, WORDS.length));
+  // The word in the window right now. It IS a word at every moment, and the
+  // spin always finishes by setting it to `land`, so the pill can never be
+  // left empty. (It could before: the reel was a tall column slid up by a
+  // distance measured from the header, and Home's hidden tab reports a width
+  // of 0, so coming back re-measured it mid-spin and the column stopped
+  // outside the window.)
+  const [shown, setShown] = useState(land);
 
   // A new colour and a new word on each ARRIVAL at Home — the moment `visible`
   // turns true — and the reel spins to it. Leaving Home changes nothing.
+  const landRef = useRef(land);
   const first = useRef(true);
   useEffect(() => {
     if (!visible) {
       return;
     }
-    if (!first.current) {
-      setPair(cur => nextPair(cur));
-      setReel(cur => buildReel(nextPair(cur[cur.length - 1], WORDS.length)));
-    }
+    const launch = first.current;
     first.current = false;
-    spin.stopAnimation();
-    spin.setValue(0);
-    let run: Animated.CompositeAnimation | null = null;
+    const next = launch ? landRef.current : nextPair(landRef.current, WORDS.length);
+    landRef.current = next;
+    setLand(next);
+    if (!launch) {
+      setPair(cur => nextPair(cur));
+    }
+    const timers: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
     AccessibilityInfo.isReduceMotionEnabled()
       .catch(() => false)
@@ -164,26 +177,35 @@ export function Greeting({visible = true}: {visible?: boolean}) {
           return;
         }
         if (reduce) {
-          spin.setValue(1); // reduce motion: the word, no spin
+          setShown(next); // reduce motion: the word, no spin
           return;
         }
-        run = Animated.sequence([
-          Animated.delay(250),
-          Animated.timing(spin, {
-            toValue: 1,
-            duration: SPIN_MS,
-            // Slows into the word and nudges past it, like a reel settling.
-            easing: Easing.bezier(0.15, 0.9, 0.25, 1.08),
-            useNativeDriver: true,
-          }),
-        ]);
-        run.start();
+        const reel = buildReel(next);
+        reel.forEach((w, i) => {
+          timers.push(
+            setTimeout(() => {
+              const last = i === reel.length - 1;
+              setShown(w);
+              slide.setValue(1);
+              Animated.timing(slide, {
+                toValue: 0,
+                duration: last ? 420 : Math.min(160, TICKS[i + 1] - TICKS[i]),
+                // The last word settles with a little overshoot.
+                easing: last ? Easing.out(Easing.back(2.2)) : Easing.linear,
+                useNativeDriver: true,
+              }).start();
+            }, 250 + TICKS[i]),
+          );
+        });
       });
     return () => {
       cancelled = true;
-      run?.stop();
+      timers.forEach(clearTimeout);
+      slide.stopAnimation();
+      slide.setValue(0);
+      setShown(landRef.current);
     };
-  }, [visible, spin]);
+  }, [visible, slide]);
 
   useEffect(() => {
     Animated.timing(bloom, {
@@ -194,10 +216,15 @@ export function Greeting({visible = true}: {visible?: boolean}) {
     }).start();
   }, [bloom]);
 
-  // Sized to the room it is given (see fitSize). Before the first layout it
-  // is set at the full size; the fade-in covers the one-frame adjustment.
+  // Sized to the room it is given (see fitSize). A hidden tab lays out at
+  // width 0; that is not a room, so it is ignored.
   const [room, setRoom] = useState(0);
-  const onBox = (e: LayoutChangeEvent) => setRoom(e.nativeEvent.layout.width);
+  const onBox = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0) {
+      setRoom(w);
+    }
+  };
   const size = fitSize(room);
   const lineH = Math.round(size * 1.28);
   const word = {
@@ -228,7 +255,9 @@ export function Greeting({visible = true}: {visible?: boolean}) {
         },
       ]}>
       <View style={styles.line}>
-        <Text style={[styles.word, styles.lead, word]} maxFontSizeMultiplier={1}>
+        <Text
+          style={[styles.word, styles.lead, word]}
+          maxFontSizeMultiplier={1}>
           Listen up
         </Text>
         <View
@@ -236,27 +265,28 @@ export function Greeting({visible = true}: {visible?: boolean}) {
             styles.pill,
             {width: pillW, height: lineH, backgroundColor: PAIRS[pair][0]},
           ]}>
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  translateY: spin.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -(reel.length - 1) * lineH],
-                  }),
-                },
-              ],
-            }}>
-            {reel.map((w, i) => (
-              <Text
-                key={i}
-                numberOfLines={1}
-                style={[styles.word, styles.slot, word, {width: pillW}]}
-                maxFontSizeMultiplier={1}>
-                {WORDS[w][0]}
-              </Text>
-            ))}
-          </Animated.View>
+          <Animated.Text
+            numberOfLines={1}
+            ellipsizeMode="clip"
+            style={[
+              styles.word,
+              styles.slot,
+              word,
+              {
+                width: pillW,
+                transform: [
+                  {
+                    translateY: slide.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, lineH * 0.9],
+                    }),
+                  },
+                ],
+              },
+            ]}
+            maxFontSizeMultiplier={1}>
+            {WORDS[shown][0]}
+          </Animated.Text>
         </View>
       </View>
     </Animated.View>
