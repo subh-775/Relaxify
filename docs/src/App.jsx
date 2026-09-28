@@ -1,44 +1,28 @@
 /**
- * The shell: routing, header, sidebar, on-this-page, and the page footer.
+ * The shell: routing, the top bar, the home page, and each page's frame (its
+ * coloured card up top, the reading column, the next page's card at the foot).
  *
- * ## Routing
- *
- * A ~40-line path router rather than a library. The site is a fixed list of
- * routes known at build time (src/nav.js), the build emits a real HTML file for
- * each of them, and there is nothing dynamic to match — a router that can parse
- * `/users/:id/posts/*` is solving a problem this site does not have.
- *
- * Pages are imported EAGERLY. Twenty compiled MDX modules are a few tens of
- * kilobytes gzipped, and paying that once at load buys navigation with no
- * loading state at all — which is both faster to use and one fewer state to
- * design. The search index is the opposite case and is loaded lazily; see
- * search.jsx.
+ * A small path router rather than a library: the routes are a fixed list known
+ * at build time (nav.js), and the build writes a real HTML file for each.
  */
-import {useCallback, useEffect, useMemo, useState} from 'react';
-import {FLAT, NAV, SIDEBAR, SITE} from './nav.js';
+import {useCallback, useEffect, useState} from 'react';
+import {FLAT, MOVED, PAGES, PAL, SITE} from './nav.js';
+import {Art, GetApp, Note, PageCard, Stack, href, nextOf} from './brand.jsx';
 import {mdxComponents} from './mdx.jsx';
-import {SearchPalette} from './search.jsx';
-import {Close, Github, Menu, Pencil, Search as SearchIcon} from './icons.jsx';
+import {Github} from './icons.jsx';
+import '@fontsource-variable/plus-jakarta-sans';
 import './styles.css';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
-const LOGO = `${BASE}/logo.png`;
-
-const PAGES = import.meta.glob('../content/**/*.mdx', {eager: true});
-
-/** ../content/guide/player.mdx → /guide/player  ·  ../content/index.mdx → / */
+const CONTENT = import.meta.glob('../content/*.mdx', {eager: true});
 const BY_ROUTE = Object.fromEntries(
-  Object.entries(PAGES).map(([file, mod]) => [
-    file.replace('../content', '').replace(/\.mdx$/, '').replace(/\/index$/, '') ||
-      '/',
-    mod,
-  ]),
+  Object.entries(CONTENT).map(([file, mod]) => [file.replace('../content', '').replace(/\.mdx$/, ''), mod]),
 );
 
-/* ── Routing ─────────────────────────────────────────────────────────────── */
+/* ── routing ─────────────────────────────────────────────────────────────── */
 
-const toPath = url => {
-  const p = url.replace(BASE, '') || '/';
+const toPath = pathname => {
+  const p = pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname;
   return p.replace(/\/$/, '') || '/';
 };
 
@@ -48,66 +32,48 @@ function useRouter() {
   const navigate = useCallback(to => {
     const [p, hash] = to.split('#');
     const clean = p.replace(/\/$/, '') || '/';
-    // The hash goes in the URL even when the path has not changed, so a link
-    // followed to a section on the page you are already on is still a link you
-    // can copy, and Back still undoes it.
     const url = `${BASE}${clean === '/' ? '/' : clean}${hash ? `#${hash}` : ''}`;
-    const changed = toPath(window.location.pathname) !== clean;
     if (window.location.pathname + window.location.hash !== url) {
       window.history.pushState({}, '', url);
     }
-    if (changed) {
-      setPath(clean);
-    }
-    // Let the new page commit before hunting for the anchor in it.
+    setPath(clean);
     requestAnimationFrame(() => {
       const el = hash && document.getElementById(hash);
       if (el) {
-        el.scrollIntoView();
-        return;
+        el.scrollIntoView({behavior: 'smooth'});
+      } else {
+        // 'instant', spelled out: a new page is not somewhere you scrolled to.
+        window.scrollTo({top: 0, left: 0, behavior: 'instant'});
       }
-      // behavior: 'instant', and it has to be spelled out. `html` carries
-      // scroll-behavior: smooth so that in-page anchors glide, and a plain
-      // scrollTo(0, 0) inherits it: following Next from the foot of a long
-      // page ANIMATED all the way back up through content that had already
-      // been replaced, which is the new page appearing to scroll in from its
-      // bottom. A different page is not somewhere you travelled to.
-      //
-      // Overriding the style on <html> first does NOT work - measured. The
-      // inline write does not force a style flush, so scrollTo still reads
-      // the smooth value and animates anyway. The option on the call is read
-      // directly and is the only form that lands.
-      window.scrollTo({top: 0, left: 0, behavior: 'instant'});
     });
   }, []);
+
+  // An old address from the previous site: swap it for the new one in place,
+  // so Back does not bounce through it.
+  useEffect(() => {
+    const moved = MOVED[path];
+    if (moved) {
+      window.history.replaceState({}, '', `${BASE}${moved}`);
+      setPath(moved);
+    }
+  }, [path]);
 
   useEffect(() => {
     const onPop = () => setPath(toPath(window.location.pathname));
     window.addEventListener('popstate', onPop);
-
-    // One delegated listener instead of a <Link> component: MDX content is
-    // plain markdown, and its links are plain <a>. Intercepting here means
-    // every internal link in every page routes without the content knowing.
+    // One delegated listener: MDX links are plain <a>, and routing them here
+    // means the content never has to know it lives in an app.
     const onClick = e => {
       const a = e.target.closest?.('a');
-      if (
-        !a ||
-        e.defaultPrevented ||
-        e.button !== 0 ||
-        e.metaKey ||
-        e.ctrlKey ||
-        e.shiftKey ||
-        a.target === '_blank' ||
-        a.hasAttribute('download')
-      ) {
+      if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || a.target === '_blank') {
         return;
       }
-      const href = a.getAttribute('href') || '';
-      if (!href.startsWith('/') || href.startsWith('//')) {
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || !url.pathname.startsWith(BASE || '/')) {
         return;
       }
       e.preventDefault();
-      navigate(href);
+      navigate(toPath(url.pathname) + (url.hash || ''));
     };
     document.addEventListener('click', onClick);
     return () => {
@@ -116,320 +82,177 @@ function useRouter() {
     };
   }, [navigate]);
 
-  return [path, navigate];
+  return path;
 }
 
-/* ── On this page ────────────────────────────────────────────────────────── */
+/* ── the top bar ─────────────────────────────────────────────────────────── */
 
-function Toc({path}) {
-  const [items, setItems] = useState([]);
-  const [active, setActive] = useState('');
-
-  useEffect(() => {
-    const nodes = [...document.querySelectorAll('.prose h2, .prose h3')].filter(
-      n => n.id,
-    );
-    setItems(nodes.map(n => ({id: n.id, text: n.textContent, level: +n.tagName[1]})));
-    setActive(nodes[0]?.id ?? '');
-
-    if (!nodes.length || typeof IntersectionObserver === 'undefined') {
-      return;
-    }
-    // A band across the top of the viewport: the heading nearest the top of
-    // what you are reading is the one you are reading, which is not the same as
-    // the one that happens to be most visible.
-    const io = new IntersectionObserver(
-      entries => {
-        const onScreen = entries
-          .filter(e => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (onScreen.length) {
-          setActive(onScreen[0].target.id);
-        }
-      },
-      {rootMargin: '-72px 0px -72% 0px'},
-    );
-    nodes.forEach(n => io.observe(n));
-    return () => io.disconnect();
-  }, [path]);
-
-  if (items.length < 2) {
-    return <aside className="toc" />;
-  }
-
+function TopBar({path}) {
   return (
-    <aside className="toc">
-      <div className="toc-inner">
-        <p className="toc-title">On this page</p>
-        {items.map(i => (
+    <header className="top">
+      <a className="brand" href={href('/')} aria-label="Relaxify docs, home">
+        <Note size={30} />
+        <span>relaxify</span>
+      </a>
+      <nav className="chips" aria-label="Pages">
+        {FLAT.map(p => (
           <a
-            key={i.id}
-            href={`#${i.id}`}
-            title={i.text}
-            className={`${i.level === 3 ? 'lvl-3 ' : ''}${active === i.id ? 'on' : ''}`}>
-            {i.text}
+            key={p.link}
+            href={href(p.link)}
+            className={path === p.link ? 'chip on' : 'chip'}
+            style={{'--c': PAL[p.pal].bg}}
+            aria-current={path === p.link ? 'page' : undefined}>
+            <i aria-hidden="true" />
+            {p.title}
           </a>
         ))}
-      </div>
-    </aside>
+      </nav>
+      <a className="gh" href={SITE.repo} target="_blank" rel="noreferrer" aria-label="Relaxify on GitHub">
+        <Github size={18} />
+        <span>GitHub</span>
+      </a>
+    </header>
   );
 }
 
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+/* ── home ────────────────────────────────────────────────────────────────── */
 
-function Sidebar({path, onPick}) {
+function Home() {
   return (
-    <nav aria-label="Documentation">
-      {SIDEBAR.map(group => (
-        <div className="side-group" key={group.text}>
-          <p className="side-title">{group.text}</p>
-          {group.items.map(item => (
-            <a
-              key={item.link}
-              href={item.link}
-              className={`side-link${path === item.link ? ' on' : ''}`}
-              aria-current={path === item.link ? 'page' : undefined}
-              onClick={onPick}>
-              {item.text}
+    <main className="home" id="main">
+      <section className="hero">
+        <div className="hero-words">
+          <h1>
+            Music that
+            <br />
+            just plays.
+          </h1>
+          <p>
+            Relaxify is a free music app for Android. Search once and it looks
+            everywhere, plays what you picked, and keeps going with songs you'll
+            like. No account, no ads.
+          </p>
+          <div className="hero-actions">
+            <GetApp />
+            <a className="ghost" href={SITE.repo} target="_blank" rel="noreferrer">
+              <Github size={17} />
+              Star it on GitHub
             </a>
-          ))}
+          </div>
         </div>
-      ))}
-    </nav>
+        <Stack />
+      </section>
+
+      <section className="all" aria-label="Every page">
+        {PAGES.map(p => (
+          <a key={p.link} className="all-item" href={href(p.link)} style={{'--c': PAL[p.pal].bg}}>
+            <i aria-hidden="true" />
+            <span>
+              <b>{p.title}</b>
+              {p.card}
+            </span>
+            <small>{p.read}</small>
+          </a>
+        ))}
+      </section>
+    </main>
   );
 }
 
-/* ── Page footer ─────────────────────────────────────────────────────────── */
+/* ── a page ──────────────────────────────────────────────────────────────── */
 
-function Pager({path}) {
-  const i = FLAT.findIndex(p => p.link === path);
-  if (i < 0) {
-    return null;
-  }
-  const prev = FLAT[i - 1];
-  const next = FLAT[i + 1];
+function Page({route, page}) {
+  const Content = BY_ROUTE[route].default;
+  const p = PAL[page.pal];
+  const next = nextOf(route);
   return (
-    <nav className="pager" aria-label="Nearby pages">
-      {prev ? (
-        <a className="prev" href={prev.link}>
-          <span className="dir">Previous</span>
-          <span className="name">{prev.text}</span>
-        </a>
-      ) : (
-        <span />
-      )}
+    <main className="page" id="main">
+      {/* key: the card drops in again on every page change. */}
+      <header key={route} className="page-hero" style={{'--bg': p.bg, '--ink': p.ink}}>
+        <span className="page-art spin">
+          <PageArt page={page} />
+        </span>
+        <h1>{page.title}</h1>
+        <p>{page.card}</p>
+        {page.read && <span className="page-read">{page.read} read</span>}
+      </header>
+
+      <article className="prose">
+        <Content components={mdxComponents} />
+      </article>
+
       {next && (
-        <a className="next" href={next.link}>
-          <span className="dir">Next</span>
-          <span className="name">{next.text}</span>
-        </a>
+        <nav className="next" aria-label="Next page">
+          <span className="next-label">Next up</span>
+          <PageCard page={next} pill="Read it" />
+        </nav>
       )}
-    </nav>
+
+      <p className="edit">
+        Something wrong or missing on this page?{' '}
+        <a href={`${SITE.editBase}${route}.mdx`} target="_blank" rel="noreferrer">
+          Suggest an edit on GitHub
+        </a>
+        .
+      </p>
+    </main>
   );
 }
 
-/* ── App ─────────────────────────────────────────────────────────────────── */
+function PageArt({page}) {
+  // The page's card art, bigger; the Releases card wears the note itself.
+  return page.art === 'note' ? <Note size={200} /> : <Art kind={page.art} p={PAL[page.pal]} size={240} />;
+}
+
+function NotFound() {
+  return (
+    <main className="page" id="main">
+      <header className="page-hero" style={{'--bg': PAL.night.bg, '--ink': PAL.night.ink}}>
+        <h1>Nothing here.</h1>
+        <p>That page moved or never existed. Start from the home page.</p>
+      </header>
+      <p className="edit">
+        <a href={href('/')}>Back to the home page</a>
+      </p>
+    </main>
+  );
+}
+
+/* ── the app ─────────────────────────────────────────────────────────────── */
 
 export default function App() {
-  const [path, navigate] = useRouter();
-  const [drawer, setDrawer] = useState(false);
-  const [search, setSearch] = useState(false);
+  const path = useRouter();
+  const page = FLAT.find(p => p.link === path);
 
-  const page = BY_ROUTE[path];
-  const meta = FLAT.find(p => p.link === path);
-  const isHome = path === '/';
-
-  // Title follows the route, because a tab you left open should say which page
-  // it is rather than which site.
   useEffect(() => {
-    document.title = meta
-      ? `${meta.text} | ${SITE.name}`
-      : `${SITE.name} — Documentation`;
-  }, [meta]);
-
-  useEffect(() => setDrawer(false), [path]);
-
-  // Ctrl/⌘-K anywhere, and "/" when you are not already typing.
-  useEffect(() => {
-    const onKey = e => {
-      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) ||
-          (e.key === '/' && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName))) {
-        e.preventDefault();
-        setSearch(true);
-      }
-      if (e.key === 'Escape') {
-        setDrawer(false);
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, []);
-
-  // The page behind the drawer must not scroll under it.
-  useEffect(() => {
-    if (!drawer) {
-      return;
-    }
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [drawer]);
-
-  // No scroll-reveal on documentation pages, deliberately. Fading paragraphs in
-  // as they arrive answers no question — nothing changed, you scrolled — and it
-  // actively fights reading: the line you are moving toward is the one that is
-  // not there yet. It belongs on a landing page, not on a reference.
-
-  const Body = useMemo(() => page?.default, [page]);
-  const activeTop = NAV.find(n => path.startsWith(n.match));
+    document.title = page ? `Relaxify: ${page.title}` : 'Relaxify: music that just plays';
+  }, [page]);
 
   return (
     <>
-      <header className="hdr">
-        <button
-          type="button"
-          className="icon-btn burger"
-          aria-label="Open the navigation"
-          aria-expanded={drawer}
-          onClick={() => setDrawer(v => !v)}>
-          <Menu />
-        </button>
-
-        <a className="brand" href="/">
-          <img src={LOGO} alt="" width="30" height="30" />
-          {SITE.name}
-        </a>
-
-        <div className="hdr-mid">
-          <button
-            type="button"
-            className="search-btn"
-            aria-label="Search the documentation"
-            onClick={() => setSearch(true)}>
-            <SearchIcon />
-            <span>Search</span>
-            <kbd>Ctrl K</kbd>
-          </button>
-        </div>
-
-        <div className="hdr-right">
-          <div className="hdr-links">
-            {NAV.map(n => (
-              <a
-                key={n.link}
-                href={n.link}
-                className={activeTop === n ? 'on' : undefined}>
-                {n.text}
-              </a>
-            ))}
-          </div>
-
-          <a
-            className="icon-btn"
-            href={SITE.repo}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Source on GitHub">
-            <Github />
-          </a>
-
-          <a
-            className="btn btn-primary hdr-dl"
-            href={SITE.releases}
-            target="_blank"
-            rel="noreferrer">
-            Download
-          </a>
-        </div>
-      </header>
-
-      <div
-        className={`scrim${drawer ? ' on' : ''}`}
-        onClick={() => setDrawer(false)}
-        aria-hidden="true"
-      />
-      <aside
-        className={`drawer${drawer ? ' on' : ''}`}
-        inert={drawer ? undefined : 'true'}>
-        <div className="drawer-head">
-          <a className="brand" href="/">
-            <img src={LOGO} alt="" width="30" height="30" />
-            {SITE.name}
-          </a>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Close the navigation"
-            onClick={() => setDrawer(false)}>
-            <Close />
-          </button>
-        </div>
-        <Sidebar path={path} onPick={() => setDrawer(false)} />
-      </aside>
-
-      {isHome ? (
-        <main className="home">
-          {Body && <Body components={mdxComponents} />}
-        </main>
-      ) : (
-        <div className="shell">
-          <aside className="side">
-            <Sidebar path={path} />
-          </aside>
-
-          <main className="doc">
-            <div className="doc-inner">
-              <article className="prose">
-                {Body ? (
-                  <Body components={mdxComponents} />
-                ) : (
-                  <>
-                    <h1>Page not found</h1>
-                    <p>
-                      There is no page at <code>{path}</code>. Pick a page from
-                      the list on the left, or search.
-                    </p>
-                    <p>
-                      <a href="/guide/introduction">Go to the introduction</a>
-                    </p>
-                  </>
-                )}
-              </article>
-
-              {meta && (
-                <>
-                  <a
-                    className="edit"
-                    href={`${SITE.editBase}${path}.mdx`}
-                    target="_blank"
-                    rel="noreferrer">
-                    <Pencil />
-                    Edit this page on GitHub
-                  </a>
-                  <Pager path={path} />
-                </>
-              )}
-            </div>
-          </main>
-
-          <Toc path={path} />
-        </div>
-      )}
-
-      {/* One line. The row of links that used to sit above it repeated the
-          header and the sidebar on every page, which is three places to keep
-          in step and two of them the reader has already seen. */}
+      <a className="skip" href="#main">
+        Skip to the page
+      </a>
+      <TopBar path={path} />
+      {path === '/' ? <Home /> : page && BY_ROUTE[path] ? <Page route={path} page={page} /> : MOVED[path] ? null : <NotFound />}
       <footer className="foot">
-        <p>For educational and personal use.</p>
+        <span className="foot-brand">
+          <Note size={22} />
+          relaxify
+        </span>
+        <span>
+          Free and open source under GPL-3.0. Music comes from JioSaavn, SoundCloud and YouTube; Relaxify doesn't host any.
+        </span>
+        <span className="foot-links">
+          <a href={SITE.repo} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <a href={SITE.issues} target="_blank" rel="noreferrer">
+            Report a problem
+          </a>
+          <a href={href('/releases')}>Releases</a>
+        </span>
       </footer>
-
-      <SearchPalette
-        open={search}
-        onClose={() => setSearch(false)}
-        onNavigate={navigate}
-      />
     </>
   );
 }
