@@ -9,6 +9,7 @@
 export {default as AlertTriangle} from 'lucide-react-native/dist/esm/icons/triangle-alert';
 export {default as ArrowDownToLine} from 'lucide-react-native/dist/esm/icons/arrow-down-to-line';
 export {default as ArrowRight} from 'lucide-react-native/dist/esm/icons/arrow-right';
+export {default as ArrowUpDown} from 'lucide-react-native/dist/esm/icons/arrow-up-down';
 export {default as ArrowUpRight} from 'lucide-react-native/dist/esm/icons/arrow-up-right';
 export {default as AudioLines} from 'lucide-react-native/dist/esm/icons/audio-lines';
 export {default as BookOpen} from 'lucide-react-native/dist/esm/icons/book-open';

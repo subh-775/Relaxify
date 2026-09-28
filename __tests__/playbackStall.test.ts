@@ -8,7 +8,7 @@
 import {expect, jest, test} from '@jest/globals';
 import TrackPlayer from 'react-native-track-player';
 import {logEvent} from '../src/analytics';
-import {kickIfStalled} from '../src/player';
+import {earnedPlay, kickIfStalled} from '../src/player';
 
 jest.mock('react-native-track-player', () => ({
   __esModule: true,
@@ -32,6 +32,9 @@ jest.mock('../src/duckState', () => ({setPausedByDuck: () => undefined}));
 jest.mock('../src/sleepTimer', () => ({sleepMode: () => 'off'}));
 jest.mock('../src/recentlyPlayed', () => ({remember: () => undefined}));
 jest.mock('../src/resume', () => ({}));
+jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
+jest.mock('../src/toast', () => ({toast: () => undefined}));
+jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));
 
 test('waits out a normal rebuffer, then seeks past the buffer and re-arms', async () => {
   const seek = TrackPlayer.seekTo as unknown as jest.Mock;
@@ -56,4 +59,13 @@ test('waits out a normal rebuffer, then seeks past the buffer and re-arms', asyn
   at(21_000, 199.5); // still stuck 10s later: kick again, clamped short of the end
   expect(seek).toHaveBeenCalledTimes(2);
   expect(seek).toHaveBeenLastCalledWith(199);
+});
+
+test('a play counts after 30 s heard, not on start or a quick skip', () => {
+  expect(earnedPlay(0, 5, 200)).toBe(false); // skipped after five seconds
+  expect(earnedPlay(0, 30, 200)).toBe(true);
+  expect(earnedPlay(0, 20, 40)).toBe(true); // a 40 s song: half of it
+  // A session restored at 2:00 has to be heard for 30 s more.
+  expect(earnedPlay(120, 125, 200)).toBe(false);
+  expect(earnedPlay(120, 150, 200)).toBe(true);
 });

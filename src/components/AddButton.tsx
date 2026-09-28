@@ -21,7 +21,8 @@ import {StyleProp, TouchableOpacity, ViewStyle} from 'react-native';
 import {CircleCheck, CirclePlus} from '../icons';
 import {C} from '../theme';
 import type {Track} from '../backend';
-import {useLike} from '../store';
+import {toggleLike, useLike} from '../store';
+import {getBestArtworkUrl} from '../tracks';
 import {toast} from '../toast';
 
 export function AddButton({
@@ -45,7 +46,10 @@ export function AddButton({
     }
     if (!liked) {
       toggle();
-      toast('Added to Liked Songs');
+      toast('Added to Liked Songs', 'info', {
+        art: getBestArtworkUrl(track),
+        action: {label: 'Undo', onPress: () => toggleLike(track)},
+      });
       return;
     }
     onOpenSheet(track);

@@ -95,8 +95,13 @@ def _jcall(params):
     import urllib.parse
     base = {"_format": "json", "_marker": "0", "ctx": "web6dot0"}
     url = f"{_JS_API}?{urllib.parse.urlencode({**base, **params})}"
+    # JioSaavn ignores a "language" query parameter; the languages it serves
+    # come from the L cookie, as on its website. Without this every language
+    # got the same Hindi/English feed.
+    lang = params.get("language")
+    cookies = {"L": urllib.parse.quote(lang)} if lang else None
     try:
-        return SESSION.get(url, headers=_JS_HEADERS, timeout=12).json()
+        return SESSION.get(url, headers=_JS_HEADERS, cookies=cookies, timeout=12).json()
     except Exception:
         return {}
 

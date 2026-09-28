@@ -1,0 +1,10 @@
+<!-- The status-bar icon: Relaxify's note, white on clear (Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,14 H58 V70 C58,83 49,90 38,90 C27,90 19,83 19,73 C19,63 28,56 38,56 C43,56 47,57 50,59 Z M63,14 C76,20 86,30 84,46 C83,54 79,60 73,63 C75,52 70,40 63,34 Z" />
+</vector>

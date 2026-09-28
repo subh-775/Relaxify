@@ -13,6 +13,12 @@ import {
 import {ErrorBoundary} from './src/ErrorBoundary';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {RecapScreen} from './src/screens/RecapScreen';
+import {JamScreen} from './src/screens/JamScreen';
+import {DOCS_URL} from './src/links';
+import {startDeviceMemory} from './src/deviceMemory';
+import {startDevice} from './src/device';
+import {WelcomeScreen, settleWelcome, useWelcomed} from './src/screens/WelcomeScreen';
+import {rememberCollection} from './src/lastCollection';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
 import {
@@ -90,7 +96,6 @@ import {logEvent} from './src/analytics';
  * built", which is not the question anyone taps Help to ask. Settings used to
  * point its About row at the repo for want of anywhere better.
  */
-const DOCS_URL = 'https://subh-775.github.io/Relaxify/';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('home');
@@ -131,6 +136,8 @@ function Shell() {
   const [libraryNonce, setLibraryNonce] = useState(0);
   /** The drawer's Recap. null = closed. */
   const [activity, setActivity] = useState<'stats' | null>(null);
+  /** The drawer's Jam screen. */
+  const [jamOpen, setJamOpen] = useState(false);
   const updateWaiting = useUpdateAvailable();
   const exitArmedAt = useRef(0);
 
@@ -145,6 +152,8 @@ function Shell() {
    * and Home's first rows are ready. Nothing pops in after that.
    */
   const [booted, setBooted] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const welcomed = useWelcomed();
   const engineDone = useRef(false);
   const homeDone = useRef(false);
   const liftSplash = useCallback(() => {
@@ -163,7 +172,11 @@ function Shell() {
     // logging, not the thing being investigated.
     diag('boot', `Relaxify ${appVersion || '?'} starting`);
     askForNotifications();
-    hydrate().then(applyAudioEffects);
+    hydrate().then(() => {
+      applyAudioEffects();
+      settleWelcome();
+      setHydrated(true);
+    });
     // Boot the engine, then restore the last session so the mini player is
     // there on reopen (same song, paused, at the timestamp you left).
     setupPlayer().then(async ok => {
@@ -203,6 +216,11 @@ function Shell() {
     // …and again on every return to the foreground, because a process kept
     // alive by the playback service may not launch again for days.
     watchForegroundUpdates();
+    // Each headphone and speaker keeps its own equalizer; also resumes on
+    // connect when that is switched on.
+    startDeviceMemory();
+    // Data saver on mobile data, and the weekly Recap notification.
+    startDevice();
     // Clear the cache once it passes the size set in Settings.
     const stopCacheLimit = watchCacheLimit();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
@@ -370,6 +388,10 @@ function Shell() {
     setImportUrl(null);
     setSettingsOpen(false);
     setActivity(null);
+    // Every full-screen overlay closes on a tab change. The Equalizer and Jam
+    // were missing here, so the Equalizer stayed on top of every tab.
+    setEqOpen(false);
+    setJamOpen(false);
   }, []);
 
   /**
@@ -412,6 +434,10 @@ function Shell() {
     }
     if (activity) {
       setActivity(null);
+      return true;
+    }
+    if (jamOpen) {
+      setJamOpen(false);
       return true;
     }
     if (importUrl) {
@@ -479,6 +505,22 @@ function Shell() {
   }, []);
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const closeRecap = useCallback(() => setActivity(null), []);
+  const closeJam = useCallback(() => setJamOpen(false), []);
+  const openJam = useCallback(() => setJamOpen(true), []);
+  const openRecap = useCallback(() => setActivity('stats'), []);
+  // Sunday's Recap notification opens the app on relaxify://recap, whether it
+  // was closed (the initial URL) or already running (a url event).
+  useEffect(() => {
+    const go = (url: string | null) => {
+      if (url?.startsWith('relaxify://recap')) {
+        openRecap();
+      }
+    };
+    Linking.getInitialURL().then(go, () => {});
+    const sub = Linking.addEventListener('url', e => go(e.url));
+    return () => sub.remove();
+  }, [openRecap]);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -535,6 +577,8 @@ function Shell() {
         );
       } else if (dest === 'stats') {
         setActivity(dest);
+      } else if (dest === 'jam') {
+        setJamOpen(true);
       }
       // updateWaiting is read above, so it has to be a dependency — with an empty
       // array this closure would keep whatever the flag was on first render and
@@ -647,6 +691,10 @@ function Shell() {
             onBeginDrag={beginDrawerDrag}
             onEndDrag={endDrawerDrag}
             onReady={onHomeReady}
+            onOpenRecap={openRecap}
+            onOpenJam={openJam}
+            onImportSpotify={setImportUrl}
+            onOpenCollection={openFromLibrary}
             visible={tab === 'home'}
           />
         </View>
@@ -681,8 +729,13 @@ function Shell() {
               // that can tell the library where playback started. Everything
               // else — search, radio, a tap on Home — passes nothing, which is
               // the honest answer for a queue that came from no collection.
-              onPlay={(t, ctx) => play(t, ctx, collection.id)}
+              onPlay={(t, ctx) => {
+                // Home's Continue card reopens whatever was played from last.
+                rememberCollection(collection);
+                play(t, ctx, collection.id);
+              }}
               onMenu={openSheet}
+              onOpenAlbum={openAlbumByName}
               onChanged={() => {
                 // Downloads stays OPEN and re-reads the folder. Closing it was
                 // right for a playlist that was just deleted — there is nothing
@@ -727,12 +780,6 @@ function Shell() {
             />
           </View>
         )}
-        {!!activity && (
-          <View style={StyleSheet.absoluteFill}>
-            <RecapScreen onClose={() => setActivity(null)} />
-          </View>
-        )}
-
         {/* Settings is an overlay, not a Modal, for the same reason as the
             rest: a Modal floats over the whole window and hid the mini player.
             Here it stays inside the body, so playback controls remain visible. */}
@@ -753,6 +800,12 @@ function Shell() {
         {eqOpen && (
           <View style={StyleSheet.absoluteFill}>
             <EqualizerScreen onClose={() => setEqOpen(false)} />
+          </View>
+        )}
+
+        {jamOpen && (
+          <View style={StyleSheet.absoluteFill}>
+            <JamScreen onClose={closeJam} />
           </View>
         )}
       </Animated.View>
@@ -801,6 +854,16 @@ function Shell() {
         <BottomNav active={tab} onChange={switchTab} />
       </Animated.View>
 
+      {/* The Recap is a full-screen story, so it sits OVER the bars rather
+          than in the body under them: the mini player and the tab bar stay
+          mounted (the music is untouched) and simply are not seen until it is
+          swiped away. */}
+      {!!activity && (
+        <View style={styles.recap}>
+          <RecapScreen onClose={closeRecap} />
+        </View>
+      )}
+
       {/* Where every <Sheet> in the app is actually drawn — see Sheet.tsx.
           Mounted after the bars and given a zIndex above the player, so a menu
           raised from any screen covers all of it. */}
@@ -832,7 +895,7 @@ function Shell() {
         />
       )}
 
-      <UpdateModal />
+      <UpdateModal hidden={!!activity} />
 
       {/* Above everything, and the real UI is already mounted and painted
           underneath — so lifting this reveals a finished screen rather than
@@ -851,6 +914,8 @@ function Shell() {
         onClose={closeDrawer}
         onNavigate={navigateFromDrawer}
       />
+
+      {booted && hydrated && !welcomed && <WelcomeScreen />}
 
       {!booted && (
         <View style={styles.splash} pointerEvents="auto">
@@ -935,6 +1000,7 @@ const styles = StyleSheet.create({
   // zIndex AND elevation. Document order alone decides this on iOS; Android
   // resolves overlapping siblings by elevation first, and the mini player
   // inside this layer carries an elevation of its own.
+  recap: {...StyleSheet.absoluteFillObject, zIndex: 25, elevation: 25},
   bottomStack: {
     position: 'absolute',
     left: 0,

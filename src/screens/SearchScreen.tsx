@@ -9,7 +9,7 @@
  * A Spotify playlist/album link pasted into the field is detected and offered
  * as an import rather than searched for as text.
  */
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -42,34 +42,31 @@ import {forgetSearch, rememberSearch, useSearchHistory} from '../searchHistory';
 import {BOTTOM_INSET} from '../layout';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
+import {useListEnd} from '../components/UpdateModal';
+import {homeLanguageParam} from '../store';
+import {useArtistPhotos} from '../artistPhotos';
+import {SearchHints} from '../components/SearchHints';
+import {isSpotifyUrl} from '../spotifyImport';
 
-/** A public Spotify playlist/album link (or spotify: URI). */
-export function isSpotifyUrl(text: string): boolean {
-  const s = (text || '').trim();
-  return (
-    /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(playlist|album)\//i.test(s) ||
-    /^spotify:(playlist|album):/i.test(s)
-  );
-}
+export {isSpotifyUrl};
+import {BRIGHT_PALS, blob} from '../brandArt';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient as SvgGradient,
+  Path,
+  Stop,
+} from 'react-native-svg';
+
 
 const DEBOUNCE_MS = 180;
 
-/** Browse tiles are colour-blocked, like Spotify's. A fixed rotation keeps a
- *  given tile the same colour across launches — a random one per render made
- *  the grid flicker on every re-render. */
-const TILE_COLORS = [
-  '#1E3264',
-  '#E8115B',
-  '#148A08',
-  '#8D67AB',
-  '#B95D06',
-  '#0D73EC',
-  '#503750',
-  '#477D95',
-  '#777777',
-  '#E13300',
-];
-const tileColor = (i: number) => TILE_COLORS[i % TILE_COLORS.length];
+/** Browse tiles wear Relaxify's own palettes (the Recap's), each with a blob
+ *  of its accent behind the tilted cover. A fixed rotation keeps a given tile
+ *  the same colour across launches: a random one per render made the grid
+ *  flicker on every re-render. */
+const tilePal = (i: number) => BRIGHT_PALS[i % BRIGHT_PALS.length];
+const TILE_BLOBS = BRIGHT_PALS.map((_, k) => blob(55, 55, 46, 0.22, 8, k + 1));
 
 /**
  * Memoised, and this is not a micro-optimisation.
@@ -112,7 +109,12 @@ export const SearchScreen = React.memo(function SearchScreen({
   const [focused, setFocused] = useState(false);
   const [genres, setGenres] = useState<HomeItem[]>([]);
   const history = useSearchHistory();
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   const {topArtists} = useStats();
+  // Real faces for "Your artists": the stats only know a song's cover.
+  const yourArtists = useMemo(() => topArtists.slice(0, 12), [topArtists]);
+  const faces = useArtistPhotos(yourArtists.map(a => a.name));
 
   // Guards against a slow response for an old query overwriting a newer one.
   const latest = useRef(0);
@@ -250,7 +252,7 @@ export const SearchScreen = React.memo(function SearchScreen({
     // Wait for the engine first: this mounts during cold start, and firing at
     // t=0 just burns the one attempt on a backend that isn't listening yet.
     waitForBackend()
-      .then(ok => (ok ? getGenres() : []))
+      .then(ok => (ok ? getGenres(homeLanguageParam()) : []))
       .then(setGenres)
       .catch(() => {
         // Browsing is a bonus; searching still works without it.
@@ -286,19 +288,21 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       <View style={styles.field}>
         <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
-        <TextInput
+        <View style={styles.inputBox}>
+          {!query && <SearchHints artist={topArtists[0]?.name} />}
+          <TextInput
           ref={inputRef}
           value={query}
           onChangeText={setQuery}
-          placeholder="What do you want to play?"
-          placeholderTextColor="#6b6b6b"
+          accessibilityLabel="Search songs, artists or a Spotify link"
           style={styles.input}
           returnKeyType="search"
           autoCorrect={false}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onSubmitEditing={() => runSearch(query)}
-        />
+          />
+        </View>
         {!!query && (
           <TouchableOpacity onPress={() => resetSearch(true)} hitSlop={10}>
             <X size={19} color={C.bg} />
@@ -331,7 +335,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           data={history}
           keyExtractor={q => q}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <Text style={styles.section}>Recent searches</Text>
@@ -364,7 +368,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           data={suggestions}
           keyExtractor={s => `${s.title}|${s.artist}`}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={<Text style={styles.section}>Recommended</Text>}
           renderItem={({item}) => (
@@ -403,7 +407,7 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       {showBrowse && (
         <ScrollView
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           overScrollMode="never">
@@ -412,27 +416,48 @@ export const SearchScreen = React.memo(function SearchScreen({
               <Text style={styles.section}>Your artists</Text>
               <FlatList
                 horizontal
-                data={topArtists.slice(0, 12)}
+                data={yourArtists}
                 keyExtractor={a => a.name}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.artistStrip}
-                renderItem={({item}) => (
+                renderItem={({item, index}) => (
                   <TouchableOpacity
                     style={styles.artistCard}
                     activeOpacity={0.75}
                     onPress={() => onOpenArtist(item.name)}>
-                    {item.image ? (
-                      <Image
-                        source={{uri: item.image}}
-                        style={styles.artistPfp}
-                      />
-                    ) : (
-                      <View style={[styles.artistPfp, styles.artistPfpEmpty]}>
-                        <Text style={styles.artistInitial}>
-                          {item.name.trim().charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
+                    <View style={styles.ring}>
+                      {/* Your most played artist wears a colour ring and a
+                          #1 sticker, so the row reads as a ranking. */}
+                      {index === 0 && (
+                        <Svg width={84} height={84} style={styles.ringArt}>
+                          <Defs>
+                            <SvgGradient id="top" x1="0" y1="0" x2="1" y2="1">
+                              <Stop offset="0" stopColor="#FF5A4E" />
+                              <Stop offset="0.5" stopColor="#FFD23F" />
+                              <Stop offset="1" stopColor="#2EC4B6" />
+                            </SvgGradient>
+                          </Defs>
+                          <Circle cx={42} cy={42} r={42} fill="url(#top)" />
+                        </Svg>
+                      )}
+                      {faces[item.name] || item.image ? (
+                        <Image
+                          source={{uri: faces[item.name] || item.image}}
+                          style={[styles.artistPfp, index === 0 && styles.pfpTop]}
+                        />
+                      ) : (
+                        <View style={[styles.artistPfp, styles.artistPfpEmpty]}>
+                          <Text style={styles.artistInitial}>
+                            {item.name.trim().charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      {index === 0 && (
+                        <View style={styles.first}>
+                          <Text style={styles.firstText}>#1</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={styles.artistName} numberOfLines={1}>
                       {item.name}
                     </Text>
@@ -449,10 +474,22 @@ export const SearchScreen = React.memo(function SearchScreen({
                 {genres.map((g, i) => (
                   <TouchableOpacity
                     key={`${g.perma_url || g.name}-${i}`}
-                    style={[styles.tile, {backgroundColor: tileColor(i)}]}
+                    style={[styles.tile, {backgroundColor: tilePal(i).bg}]}
                     activeOpacity={0.8}
                     onPress={() => onOpenBrowse(g)}>
-                    <Text style={styles.tileText} numberOfLines={2}>
+                    <Svg
+                      width={110}
+                      height={110}
+                      style={styles.tileBlob}
+                      pointerEvents="none">
+                      <Path
+                        d={TILE_BLOBS[i % TILE_BLOBS.length]}
+                        fill={tilePal(i).a}
+                      />
+                    </Svg>
+                    <Text
+                      style={[styles.tileText, {color: tilePal(i).ink}]}
+                      numberOfLines={2}>
                       {g.name || g.title}
                     </Text>
                     {!!g.image && (
@@ -472,7 +509,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           keyExtractor={t => getTrackId(t)}
           keyboardShouldPersistTaps="handled"
           {...listWindowing}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             query.trim() && !error ? (
@@ -553,7 +590,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#fff',
   },
-  input: {flex: 1, color: '#000', fontSize: 15, fontWeight: '600', padding: 0},
+  inputBox: {flex: 1, alignSelf: 'stretch', justifyContent: 'center'},
+  input: {color: '#000', fontSize: 15, fontWeight: '600', padding: 0},
   spotify: {
     marginHorizontal: S.gutter,
     marginTop: 12,
@@ -606,6 +644,7 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   tileText: {color: '#fff', fontSize: 15, fontWeight: '800', maxWidth: '75%'},
+  tileBlob: {position: 'absolute', right: -26, bottom: -30},
   // The cover sits half off the corner, rotated — the Spotify browse-tile look,
   // and it means a square cover never has to be cropped to fit.
   tileArt: {
@@ -618,6 +657,25 @@ const styles = StyleSheet.create({
     transform: [{rotate: '25deg'}],
   },
   artistStrip: {paddingHorizontal: S.gutter, gap: 16, paddingBottom: 6},
+  ring: {
+    width: 84,
+    height: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringArt: {position: 'absolute', left: 0, top: 0},
+  // A black gap between the photo and the ring, as a sticker's edge.
+  pfpTop: {borderWidth: 3, borderColor: C.bg},
+  first: {
+    position: 'absolute',
+    right: -2,
+    top: -2,
+    backgroundColor: '#FFE14D',
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  firstText: {color: '#111014', fontSize: 11, fontWeight: '800'},
   artistCard: {width: 84, alignItems: 'center'},
   artistPfp: {
     width: 76,

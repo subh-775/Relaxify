@@ -1714,6 +1714,10 @@ def _import_snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
             "total": job["total"], "done": job["done"], "matched": job["matched"],
             "tracks": job["tracks"], "missing": job["missing"],
             "finished": job["finished"], "error": job["error"],
+            "cancelled": job.get("cancelled", False),
+            # Each song as it is checked, in the order the checks finish, so
+            # the import screen can fill in live instead of all at the end.
+            "checked": list(job.get("checked", [])),
         }
 
 
@@ -1741,15 +1745,34 @@ def _run_import(kind: str, sid: str, job: Dict[str, Any]) -> None:
     with ThreadPoolExecutor(max_workers=6) as ex:
         fut_to_i = {ex.submit(_match_track, it): i for i, it in enumerate(items)}
         for fut in as_completed(fut_to_i):
+            if job.get("cancelled"):
+                # Songs not started yet are dropped; the six in flight finish
+                # on their own and are ignored.
+                for f in fut_to_i:
+                    f.cancel()
+                break
             i = fut_to_i[fut]
             try:
                 matched[i] = fut.result()
             except Exception:
                 matched[i] = None
             with _import_lock:
+                if job["finished"]:
+                    break  # cancelled while this one was being checked
                 job["done"] += 1
+                job["matched"] += 1 if matched[i] else 0
+                if matched[i]:
+                    job.setdefault("found_at", {})[i] = matched[i]
+                job.setdefault("checked", []).append({
+                    "title": items[i]["title"],
+                    "artist": items[i]["artist"],
+                    "found": bool(matched[i]),
+                    "artwork_url": (matched[i] or {}).get("artwork_url"),
+                })
 
     with _import_lock:
+        if job.get("finished"):
+            return  # cancelled: the cancel call already settled the snapshot
         job["tracks"] = [t for t in matched if t]          # original order preserved
         job["missing"] = [f"{items[i]['title']} — {items[i]['artist']}"
                           for i, t in enumerate(matched) if not t]
@@ -1770,12 +1793,28 @@ def spotify_import():
     if not kind:
         return jsonify({"error": "Not a Spotify playlist or album link"}), 400
 
+    if _arg("cancel"):
+        # Stop where it is and keep what was found, so the app can offer to
+        # save those songs or throw them away.
+        with _import_lock:
+            job = _import_jobs.get(url)
+            if job and not job["finished"]:
+                job["cancelled"] = True
+                found = job.get("found_at", {})
+                job["tracks"] = [found[i] for i in sorted(found)]  # playlist order
+                job["matched"] = len(job["tracks"])
+                job["finished"] = True
+        return jsonify(_import_snapshot(job) if job else {"error": "No import running"})
+
     with _import_lock:
         job = _import_jobs.get(url)
-        # Start a fresh job if none exists, or if the last attempt failed (retry).
-        if job is None or (job["finished"] and job["error"]):
+        # Start a fresh job if none exists, or if the last one failed, found
+        # nothing or was cancelled: asking again means trying again.
+        if job is None or (job["finished"] and (
+                job["error"] or job["matched"] <= 0 or job.get("cancelled"))):
             job = {"name": "", "image": "", "total": 0, "done": 0, "matched": 0,
-                   "tracks": [], "missing": [], "finished": False, "error": None}
+                   "tracks": [], "missing": [], "finished": False, "error": None,
+                   "checked": []}
             _import_jobs[url] = job
             # Evict oldest finished jobs so the dict can't grow without bound.
             if len(_import_jobs) > _IMPORT_JOBS_MAX:
@@ -1976,6 +2015,47 @@ def _cache_bytes() -> int:
 @app.get("/api/cache")
 def cache_info():
     return jsonify({"bytes": _cache_bytes()})
+
+
+@app.get("/api/storage")
+def storage_info():
+    """What Relaxify takes up on the phone, and what the phone has left.
+
+    Downloads are the audio files in the download folder (the same files the
+    Downloaded collection lists); the cache is exactly what Clear cache frees;
+    total and free are the whole phone's, read from the download folder's
+    volume, so the Settings bar can show Relaxify against everything else.
+    """
+    import shutil
+
+    folder = get_default_download_dir()
+    songs = 0
+    song_bytes = 0
+    if folder and os.path.isdir(folder):
+        for dirpath, _dirs, filenames in os.walk(folder):
+            for name in filenames:
+                if os.path.splitext(name)[1].lower() in _LOCAL_AUDIO_EXTS:
+                    try:
+                        song_bytes += os.path.getsize(os.path.join(dirpath, name))
+                        songs += 1
+                    except OSError:
+                        pass
+    total = free = 0
+    for probe in (folder, android_env.cache_dir()):
+        if probe and os.path.isdir(probe):
+            try:
+                usage = shutil.disk_usage(probe)
+                total, free = usage.total, usage.free
+                break
+            except OSError:
+                pass
+    return jsonify({
+        "downloads_bytes": song_bytes,
+        "downloads_count": songs,
+        "cache_bytes": _cache_bytes(),
+        "total_bytes": total,
+        "free_bytes": free,
+    })
 
 
 @app.post("/api/cache/clear")

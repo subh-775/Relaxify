@@ -12,6 +12,8 @@ class BackendPackage : ReactPackage {
             AudioModule(reactContext),
             UpdateModule(reactContext),
             AnalyticsModule(reactContext),
+            WidgetModule(reactContext),
+            DeviceModule(reactContext),
         )
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =

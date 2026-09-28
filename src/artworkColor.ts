@@ -43,7 +43,13 @@ const cache = new Map<string, string | null>();
  * surfaces. Pinned rather than scaled, so the result is the same kind of
  * surface whether the cover is neon or nearly grey.
  */
-export function surfaceTint(hex: string, lightness: number): string {
+export function surfaceTint(
+  hex: string,
+  lightness: number,
+  /** The saturation ceiling. Surfaces keep the restrained default; a thin
+   *  accent line (the mini player's progress) can afford more. */
+  maxSat = 0.34,
+): string {
   const n = parseInt(hex.replace('#', ''), 16);
   if (!Number.isFinite(n)) {
     return '#000000';
@@ -72,7 +78,7 @@ export function surfaceTint(hex: string, lightness: number): string {
   }
   // A ceiling, not a scale: a nearly-grey cover keeps its own low saturation
   // and a neon one is brought down to the same restrained level.
-  const S = Math.min(sat, 0.34);
+  const S = Math.min(sat, maxSat);
   const L = Math.max(0, Math.min(1, lightness));
   const q = L < 0.5 ? L * (1 + S) : L + S - L * S;
   const pp = 2 * L - q;

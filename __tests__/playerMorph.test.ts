@@ -239,7 +239,7 @@ test('the bar and the panel agree on their final corner', () => {
   // PlayerBar builds its own corner from MINI_BAR_RADIUS for exactly this
   // reason: the surface interpolates to that number, and a bar rounded
   // differently would finish the transition with a visible step.
-  expect(MINI_BAR_RADIUS).toBe(11);
+  expect(MINI_BAR_RADIUS).toBe(10);
   // Concentric with the artwork inside it: PAD (5) + the cover's own radius.
-  expect(MINI_BAR_RADIUS).toBe(5 + MINI_ART_RADIUS);
+  expect(MINI_BAR_RADIUS).toBe(4 + MINI_ART_RADIUS);
 });

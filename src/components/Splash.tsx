@@ -11,10 +11,10 @@
  * finished screen.
  */
 import React, {useEffect, useRef} from 'react';
-import {Animated, Easing, Image, StyleSheet, View} from 'react-native';
+import {Animated, Easing, StyleSheet, View} from 'react-native';
 import {C} from '../theme';
 
-const ICON = require('../assets/app-icon-bl.png');
+import {LogoMark} from './Logo';
 
 export function Splash() {
   const enter = useRef(new Animated.Value(0)).current;
@@ -37,7 +37,7 @@ export function Splash() {
             {scale: enter.interpolate({inputRange: [0, 1], outputRange: [0.88, 1]})},
           ],
         }}>
-        <Image source={ICON} style={styles.icon} />
+        <LogoMark size={210} />
       </Animated.View>
     </View>
   );
@@ -50,10 +50,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: C.bg,
   },
-  // 248, about two thirds of a 360dp phone: the mark is the only thing on
-  // the screen, so it should read as the app arriving. At 0.62 the white
-  // line-art settles to a dull grey on the black, while the black of the
-  // image stays black and keeps the square invisible. The radius keeps the
-  // proportion it had at every earlier size.
-  icon: {width: 248, height: 248, borderRadius: 56, opacity: 0.62},
 });

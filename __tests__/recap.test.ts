@@ -11,7 +11,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: async () => undefined,
 }));
 
-import {buildRecap, hourLabel, personaFor} from '../src/recap';
+import {buildRecap, hourLabel, personaFor, reminderText, streaks} from '../src/recap';
 import type {Stats} from '../src/stats';
 
 const HOUR = 3_600_000;
@@ -35,6 +35,13 @@ const stats: Stats = {
   artists: {
     'mohit chauhan': {name: 'Mohit Chauhan', count: 12, last: NOW},
     'sunidhi chauhan': {name: 'Sunidhi Chauhan', count: 9, last: NOW},
+    // First heard two days ago: a discovery. The others predate `first`.
+    'vishal bhardwaj': {
+      name: 'Vishal Bhardwaj',
+      count: 2,
+      last: NOW,
+      first: NOW - 48 * HOUR,
+    },
   },
   plays: 30,
   log: [
@@ -46,6 +53,7 @@ const stats: Stats = {
     // Older than a week: outside every weekly figure.
     {at: NOW - 8 * 24 * HOUR, full: 200, src: 'jiosaavn', k: 'b'},
   ],
+  days: {},
 };
 
 test('this week: top song and artist come from the id-carrying plays', () => {
@@ -82,7 +90,7 @@ test('the listening hour and its persona', () => {
 
 test('nothing played: no names, no persona', () => {
   const r = buildRecap(
-    {tracks: {}, artists: {}, plays: 0, log: []},
+    {tracks: {}, artists: {}, plays: 0, log: [], days: {}},
     NOW,
     'week',
   );
@@ -90,4 +98,34 @@ test('nothing played: no names, no persona', () => {
   expect(r.topArtist).toBeNull();
   expect(r.persona).toBeNull();
   expect(r.busiest).toBe(-1);
+});
+
+test('this week: top five, discoveries, on repeat and last week', () => {
+  const r = buildRecap(stats, NOW, 'week');
+  expect(r.topSongs.map(t => t.track.title)).toEqual(['Beedi', 'Rabba']);
+  expect(r.topArtists.length).toBe(3);
+  expect(r.discoveries.map(a => a.name)).toEqual(['Vishal Bhardwaj']);
+  expect(r.onRepeat).toBeNull(); // two plays in a day is not "on repeat"
+  expect(r.lastMinutes).toBe(3); // the one play 8 days ago, capped at 200 s
+});
+
+test('streaks: a run ending yesterday is still alive, gaps break it', () => {
+  const days = {
+    '2026-09-20': 1,
+    '2026-09-21': 4,
+    '2026-09-22': 2,
+    '2026-09-25': 1,
+    '2026-09-26': 3,
+  };
+  expect(streaks(days, NOW)).toEqual({streak: 2, best: 3});
+  expect(streaks({...days, '2026-09-27': 1}, NOW).streak).toBe(3);
+  expect(streaks({}, NOW)).toEqual({streak: 0, best: 0});
+});
+
+test("Sunday's notification: the week's count and top song, silent when empty", () => {
+  expect(reminderText(buildRecap(stats, NOW, 'week'))).toBe(
+    '4 songs this week, most of all Beedi. Tap for your Recap.',
+  );
+  const empty = {tracks: {}, artists: {}, plays: 0, log: [], days: {}};
+  expect(reminderText(buildRecap(empty, NOW, 'week'))).toBe('');
 });

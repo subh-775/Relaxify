@@ -76,7 +76,7 @@ import {useSongSwipe, type Neighbour} from '../songSwipe';
 /** Concentric corners: PAD + ART_R = BAR_R, so the two curves are parallel.
  *  ART_R comes from playerSheet because the full player's cover has to round
  *  DOWN to exactly this value as it morphs into the slot below. */
-const PAD = 5;
+const PAD = 4;
 const ART_R = MINI_ART_RADIUS;
 /** Asserted against MINI_BAR_RADIUS by the test: the full player's surface
  *  interpolates its corners to that constant, and a bar whose own corner
@@ -91,10 +91,24 @@ const BAR_R = MINI_BAR_RADIUS;
  * component containing a Marquee, forever, on every screen. Here it re-renders
  * one 2px view.
  */
-const MiniProgress = React.memo(function MiniProgress() {
+const MiniProgress = React.memo(function MiniProgress({
+  color,
+}: {
+  /** The song's own colour, lifted to read as a bright line; white until the
+   *  cover's colour is known. */
+  color?: string;
+}) {
   const {position, duration} = useProgress(1000);
   const pct = duration > 0 ? Math.min(1, position / duration) : 0;
-  return <View style={[styles.progressFill, {width: `${pct * 100}%`}]} />;
+  return (
+    <View
+      style={[
+        styles.progressFill,
+        color ? {backgroundColor: color} : null,
+        {width: `${pct * 100}%`},
+      ]}
+    />
+  );
 });
 
 /**
@@ -479,7 +493,9 @@ export const PlayerBar = React.memo(function PlayerBar({
           </View>
 
           <View style={styles.progressTrack}>
-            <MiniProgress />
+            <MiniProgress
+              color={tint ? surfaceTint(tint, 0.66, 0.8) : undefined}
+            />
           </View>
         </Animated.View>
       </GestureDetector>
@@ -491,7 +507,8 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 10,
+    // Nearly edge to edge: 4 from each side leaves the title more room.
+    marginHorizontal: 4,
     marginBottom: 4,
     borderRadius: BAR_R,
     // Translucent, not opaque. Against the fade at the foot of the page this
@@ -527,8 +544,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   art: {
-    width: 54,
-    height: 54,
+    width: 48,
+    height: 48,
     borderRadius: ART_R,
     backgroundColor: C.surface,
     // Stops a cover with a light background from bleeding into the bar.

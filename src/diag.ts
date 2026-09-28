@@ -17,7 +17,7 @@
  */
 import {NativeModules} from 'react-native';
 
-const nativeLog = (NativeModules.Audio as {log?: (t: string, m: string) => void})
+const nativeLog = (NativeModules?.Audio as {log?: (t: string, m: string) => void} | undefined)
   ?.log;
 
 const MAX = 200;

@@ -55,6 +55,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {Toggle} from '../components/Toggle';
 import {BOTTOM_INSET} from '../layout';
+import {currentDevice} from '../deviceMemory';
 
 /** Renders a preset's glyph by name — the preset list owns which icon it uses,
  *  so adding a preset never means editing this screen too. */
@@ -123,7 +124,15 @@ export function EqualizerScreen({onClose}: {onClose: () => void}) {
         <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.barBtn}>
           <ChevronLeft size={28} color={C.text} />
         </TouchableOpacity>
-        <Text style={styles.barTitle}>Equalizer</Text>
+        <View>
+          <Text style={styles.barTitle}>Equalizer</Text>
+          {/* Headphone memory: say which device this curve belongs to. */}
+          {settings.deviceMemory && (
+            <Text style={styles.device} numberOfLines={1}>
+              {`For ${currentDevice()}`}
+            </Text>
+          )}
+        </View>
       </View>
 
       <GHScrollView
@@ -399,6 +408,7 @@ const styles = StyleSheet.create({
   },
   barBtn: {padding: 4},
   barTitle: {...T.screenTitle, color: C.text, fontSize: 22},
+  device: {color: C.sub, fontSize: 12.5, fontWeight: '600'},
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   body: {paddingBottom: BOTTOM_INSET},

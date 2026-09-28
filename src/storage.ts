@@ -32,7 +32,6 @@ export type Store<T> = {
 // Keyed by storage key so hydrateAll can hand each store back the raw string
 // multiGet read for it. `any` because the map is heterogeneous by nature —
 // every store has a different T and only the key-agnostic methods are used.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const registry = new Map<string, Store<any>>();
 
 /**
@@ -41,6 +40,23 @@ const registry = new Map<string, Store<any>>();
  * Called when the app leaves the foreground — the last moment Android reliably
  * gives us before it may reclaim the process.
  */
+/**
+ * Roughly how much the app's own saved data takes: likes, playlists, stats,
+ * settings and history, as the JSON written to disk. For the Storage bar; a
+ * character is about a byte for this data.
+ */
+export function storedBytes(): number {
+  let n = 0;
+  registry.forEach(st => {
+    try {
+      n += JSON.stringify(st.get())?.length ?? 0;
+    } catch {
+      // A value that cannot be serialised is not on disk either.
+    }
+  });
+  return n;
+}
+
 export function flushAll(): void {
   registry.forEach(st => st.flush());
 }

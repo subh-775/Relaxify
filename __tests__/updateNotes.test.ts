@@ -14,6 +14,14 @@ test('a body that is only a compare link comes back empty', () => {
   ).toBe('');
 });
 
+test('the markdown GitHub writes today is stripped too', () => {
+  expect(
+    readableNotes(
+      "## What's Changed\n**Full Changelog**: https://github.com/subh-775/Relaxify/compare/v1.2.23...v1.2.24",
+    ),
+  ).toBe('');
+});
+
 test('real notes survive, and the generated tail is stripped', () => {
   const body = [
     "What's Changed",

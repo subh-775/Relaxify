@@ -35,6 +35,7 @@ import {
 } from './tracks';
 import {getArtworkColor} from './artworkColor';
 import {logEvent, songParams} from './analytics';
+import {diag} from './diag';
 import {
   applyAudioEffects,
   endCrossfade,
@@ -50,6 +51,9 @@ import {
   sleepTimerOnTrackChange,
 } from './sleepTimer';
 import {remember} from './recentlyPlayed';
+import {recordPlay} from './stats';
+import {toast} from './toast';
+import {pushWidget, pushWidgetPlaying} from './widget';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
 
 let ready = false;
@@ -101,6 +105,10 @@ let manualStepAt = 0;
 export function markManualTrackChange(): void {
   manualStepAt = Date.now();
 }
+
+/** The last time the person moved playback themselves: a seek or a skip.
+ *  Anything else that moves it is reported as playback_jump. */
+let userMoveAt = 0;
 
 /**
  * The one place playback resumes from silence.
@@ -345,8 +353,19 @@ export async function setupPlayer(): Promise<boolean> {
       } catch {}
     });
 
+    // The home-screen widget follows play and pause. Only the two settled
+    // states: the buffering flicker around a seek would blink its button.
+    TrackPlayer.addEventListener(Event.PlaybackState, e => {
+      if (e.state === State.Playing) {
+        pushWidgetPlaying(true);
+      } else if (e.state === State.Paused || e.state === State.Stopped) {
+        pushWidgetPlaying(false);
+      }
+    });
+
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
       logEvent('playback_error', {message: e.message, code: e.code});
+      skipPastError();
     });
 
     TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async e => {
@@ -378,8 +397,21 @@ export async function setupPlayer(): Promise<boolean> {
       // Cheap to call: topUpFromRadio() returns immediately unless the queue is
       // nearly out.
       topUpFromRadio().catch(() => {});
+      // The song that just ended gets its play counted here if it earned one
+      // and the watcher never saw it (screen off). Not for the same row again.
+      if (e.lastTrack && e.lastTrack._qid !== e.track?._qid) {
+        countListened(
+          e.lastTrack,
+          e.lastPosition || 0,
+          Number(e.lastTrack.duration) || 0,
+          true,
+        );
+      }
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
+        TrackPlayer.getPlaybackState()
+          .then(p => pushWidget(src, p.state === State.Playing))
+          .catch(() => pushWidget(src, false));
         remember(src);
         // The same queue ROW again is not a new play. Tapping a song part-way
         // down a list starts it alone, then inserts the earlier songs in front
@@ -397,6 +429,12 @@ export async function setupPlayer(): Promise<boolean> {
               ...songParams(last),
               seconds: Math.round(e.lastPosition || 0),
               completed: dur > 0 && e.lastPosition >= dur - 5 ? 1 : 0,
+              // Not a skip: the song moved on by itself. With `completed` 0
+              // that is a song cut short, which is worth seeing with the
+              // speed and crossfade it happened at.
+              auto: Date.now() - Math.max(manualStepAt, userMoveAt) > 3000 ? 1 : 0,
+              rate: playbackRate(),
+              crossfade: readSettings().crossfadeDuration,
             });
           }
         }
@@ -566,6 +604,11 @@ export async function restoreSession(): Promise<boolean> {
  * instead, so by the time ExoPlayer actually asks, the answer is often
  * already cached.
  */
+/** Resolve a song's stream ahead of playing it (Jam warms the next song). */
+export function warmTrack(track: Track | null | undefined): void {
+  warmStream(track, currentQuality());
+}
+
 function warmStream(track: Track | null | undefined, bitrate: number): void {
   if (!track || track.file_path) {
     return; // downloaded file — nothing to resolve
@@ -1002,6 +1045,12 @@ export function useActiveTrack(): RNTPTrack | null {
 export async function skipNext(): Promise<void> {
   cancelCrossfade(); // a manual skip isn't a crossfade — kill any overlap
   markManualTrackChange();
+  // Nothing after this song: find some before skipping, or Next was a dead
+  // button at the end of the queue.
+  if (activeIndex >= engineQueue.length - 1) {
+    await topUpFromRadio(true);
+    await refreshEngineMirror();
+  }
   publishStep(1); // show the committed track NOW, before the engine catches up
   // publishStep already moved the mirror — warm the track it's now pointing
   // at before the engine even starts skipping to it.
@@ -1027,7 +1076,7 @@ export async function skipPrevious(always = false): Promise<void> {
   try {
     const pos = await TrackPlayer.getPosition();
     if (!always && pos > 3) {
-      await TrackPlayer.seekTo(0);
+      await seekTo(0); // a restart is a seek the person made
       return;
     }
     // Only publish once we know this is a real track change, not a restart.
@@ -1270,8 +1319,24 @@ export async function stop(): Promise<void> {
   }
 }
 
+const seekListeners = new Set<() => void>();
+
+/** Runs after every seek the person makes, wherever it came from (the Jam
+ *  announces it at once rather than waiting to notice the jump). */
+export function onUserSeek(fn: () => void): () => void {
+  seekListeners.add(fn);
+  return () => {
+    seekListeners.delete(fn);
+  };
+}
+
+/** A seek the PERSON made: the scrubber, a lyric line, ±10 s, the
+ *  notification or a headset. The app's own corrections call TrackPlayer
+ *  directly, so they are never mistaken for a choice. */
 export async function seekTo(seconds: number): Promise<void> {
+  userMoveAt = Date.now();
   await TrackPlayer.seekTo(seconds);
+  seekListeners.forEach(fn => fn());
 }
 
 /**
@@ -1314,7 +1379,20 @@ let buildingQueue = false;
 
 /** Exported for the playback service's PlaybackQueueEnded backstop — that
  *  runs outside the UI, which is exactly when the JS timer is frozen. */
-export async function topUpFromRadio(): Promise<void> {
+/**
+ * Held while this phone follows someone else's Jam (jam.ts): the song after
+ * this one is the Jam's choice, so autoplay must not append its own picks.
+ */
+let autoplayHeld = false;
+export function holdAutoplay(held: boolean): void {
+  autoplayHeld = held;
+}
+
+/**
+ * `force` is a person pressing Next with nothing queued: that is a choice, so
+ * it goes ahead even while a Jam holds autoplay (the Jam hears about it).
+ */
+export async function topUpFromRadio(force = false): Promise<void> {
   // buildingQueue: playTrack starts the song on a one-track queue and appends
   // the rest a moment later. Without this, a watcher tick landing in that gap
   // sees "only one track left" and appends radio picks BETWEEN the tapped song
@@ -1325,6 +1403,7 @@ export async function topUpFromRadio(): Promise<void> {
   if (
     radioBusy ||
     buildingQueue ||
+    (autoplayHeld && !force) ||
     !readSettings().autoplay ||
     sleepMode() === 'endOfTrack'
   ) {
@@ -1351,26 +1430,34 @@ export async function topUpFromRadio(): Promise<void> {
     if (!queue.length || index == null || queue.length - index > 3) {
       return;
     }
-    const seed =
-      sourceTrackFor(queue[index]) ?? queueSource[queueSource.length - 1];
-    if (!seed) {
-      return;
+    // The song playing now first, then the two before it: a song the radio
+    // knows nothing about must not end the music, which is what a single
+    // seed with no answer used to do.
+    const seeds = [queue[index], queue[index - 1], queue[index - 2]]
+      .map(q => sourceTrackFor(q ?? null))
+      .filter((t): t is Track => !!t);
+    if (!seeds.length && queueSource.length) {
+      seeds.push(queueSource[queueSource.length - 1]);
     }
     // getDownloadKey, not getTrackId: the ISRC is part of getTrackId, and a
     // radio pick arrives unenriched while the same song already in the queue
     // came from a catalogue lookup WITH one. Two ids for one song is a dedupe
     // that passes everything through.
     const seen = new Set(queueSource.map(getDownloadKey));
-    const picks: Track[] = (
-      await getRadio(cleanText(seed.title), cleanText(seed.artist))
-    )
-      .map(raw => normalizeTrack(raw))
-      .filter(
-        (t): t is Track =>
-          !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
-      )
-      .slice(0, 8)
-      .map(t => ({...t, _autoplay: true}));
+    let picks: Track[] = [];
+    for (const seed of seeds) {
+      picks = (await getRadio(cleanText(seed.title), cleanText(seed.artist)))
+        .map(raw => normalizeTrack(raw))
+        .filter(
+          (t): t is Track =>
+            !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
+        )
+        .slice(0, 8)
+        .map(t => ({...t, _autoplay: true}));
+      if (picks.length) {
+        break;
+      }
+    }
     const items = picks
       .map(t => ({t, q: toQueueItem(t, currentQuality())}))
       .filter(x => x.q !== null);
@@ -1419,6 +1506,102 @@ async function prefetchNext(position: number, idx: number): Promise<void> {
   }
 }
 
+/**
+ * A play counts for the Recap once it has been LISTENED to for 30 s (half the
+ * song, if it is shorter than a minute): Spotify's rule, so a song you skip
+ * every time does not become your song of the week.
+ *
+ * Two callers, one per situation. The watcher tick sees the song cross the
+ * line while the app is in front; the track-change event (a native event, so
+ * it runs with the screen off) counts the song that just ended from its last
+ * position, if the tick never got the chance.
+ *
+ * `from` is where this row was first seen. A session restored at 2:00 would
+ * otherwise count the moment play is pressed; it has to be heard for 30 s.
+ */
+const PLAY_COUNTS_AFTER = 30;
+let countRow: string | undefined;
+let countFrom = 0;
+let counted = false;
+
+export function playThreshold(duration: number): number {
+  return duration > 0
+    ? Math.min(PLAY_COUNTS_AFTER, duration / 2)
+    : PLAY_COUNTS_AFTER;
+}
+
+/** True when a play heard from `from` to `position` has earned its count. */
+export function earnedPlay(
+  from: number,
+  position: number,
+  duration: number,
+): boolean {
+  const need = playThreshold(duration);
+  return position >= need && (from < need || position - from >= need);
+}
+
+function countListened(
+  row: RNTPTrack | null,
+  position: number,
+  duration: number,
+  ended = false,
+): void {
+  const qid = row?._qid as string | undefined;
+  if (!row || !qid) {
+    return;
+  }
+  if (qid !== countRow) {
+    if (ended) {
+      // Never watched: heard from wherever it started, which for a song that
+      // ran out behind a locked screen is the beginning.
+      countRow = undefined;
+      if (earnedPlay(0, position, duration)) {
+        const src = sourceTrackFor(row);
+        src && recordPlay(src, Date.now() - position * 1000);
+      }
+      return;
+    }
+    countRow = qid;
+    countFrom = position;
+    counted = false;
+  }
+  // A seek back re-opens the window from the earlier point.
+  countFrom = Math.min(countFrom, position);
+  if (counted || !earnedPlay(countFrom, position, duration)) {
+    return;
+  }
+  counted = true;
+  const src = sourceTrackFor(row);
+  src && recordPlay(src, Date.now() - position * 1000);
+}
+
+/**
+ * A stream that fails outright (a dead link, a source that refuses) used to
+ * stop the queue until someone pressed next. It skips on now, as every other
+ * player does — but at most three times in a row inside half a minute, so a
+ * phone that has lost the network does not race through the whole queue.
+ */
+let errorSkips: number[] = [];
+function skipPastError(): void {
+  const now = Date.now();
+  errorSkips = errorSkips.filter(t => now - t < 30000);
+  if (errorSkips.length >= 3) {
+    toast("Couldn't play these songs. Check your connection.", 'warn');
+    return;
+  }
+  errorSkips.push(now);
+  // Named, and in its own colour, so it is clear which song went.
+  TrackPlayer.getActiveTrack()
+    .catch(() => undefined)
+    .then(t => {
+      const name = t?.title ? cleanText(String(t.title)) : '';
+      toast(name ? `Couldn't play ${name}, skipped` : "Couldn't play this song, skipped", 'info', {
+        art: typeof t?.artwork === 'string' ? t.artwork : null,
+      });
+    });
+  skipNext().catch(() => {});
+}
+
 let fadeTimer: ReturnType<typeof setInterval> | null = null;
 /** Whether the previous watcher tick saw audio running — see the idle gate. */
 let wasPlaying = false;
@@ -1444,6 +1627,46 @@ let pushedSpan = -1;
  */
 const STALL_KICK_MS = 10000;
 let stalledSince = 0;
+
+/**
+ * Playback that moved by itself: the position a second later is not where
+ * a second of playing (at the set speed) would put it, and the person did
+ * not seek or skip. Reported as `playback_jump` with the song, both
+ * positions, the speed and the crossfade, so a jump like "it went back a
+ * few seconds on its own" can be traced to its cause from Analytics.
+ */
+let jumpLast = {pos: -1, at: 0, idx: -1};
+function noteJump(state: State | undefined, position: number, idx: number): void {
+  const now = Date.now();
+  const prev = jumpLast;
+  jumpLast = {pos: state === State.Playing ? position : -1, at: now, idx};
+  if (
+    state !== State.Playing ||
+    prev.pos < 0 ||
+    prev.idx !== idx ||
+    now - Math.max(userMoveAt, manualStepAt) < 3000 ||
+    now - prev.at > 3000 // a frozen tick (screen off) is not a jump
+  ) {
+    return;
+  }
+  const expected = prev.pos + ((now - prev.at) / 1000) * playbackRate();
+  if (Math.abs(position - expected) < 2) {
+    return;
+  }
+  diag('jump', `${expected.toFixed(1)} -> ${position.toFixed(1)}`);
+  TrackPlayer.getActiveTrack()
+    .then(t => {
+      const src = sourceTrackFor(t ?? null);
+      logEvent('playback_jump', {
+        ...(src ? songParams(src) : {}),
+        from: Math.round(expected),
+        to: Math.round(position),
+        rate: playbackRate(),
+        crossfade: readSettings().crossfadeDuration,
+      });
+    })
+    .catch(() => {});
+}
 
 export function kickIfStalled(position: number, duration: number): void {
   const now = Date.now();
@@ -1579,6 +1802,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
     // One progress/index read for the rest of the tick. It used to be two of
     // each: prefetchNext read them, then the resume save read them again.
     let position = 0;
+    let duration = 0;
     let idx = 0;
     try {
       const [p, i] = await Promise.all([
@@ -1586,10 +1810,12 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
         TrackPlayer.getActiveTrackIndex(),
       ]);
       position = p.position;
+      duration = p.duration;
       idx = i ?? 0;
       if (state === State.Buffering || state === State.Loading) {
         kickIfStalled(position, p.duration);
       }
+      noteJump(state, position, idx);
     } catch {
       return;
     }
@@ -1602,7 +1828,11 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
     // …and remember the current position, throttled inside saveResume, so a
     // reopen resumes at the timestamp you left rather than the song's start.
     try {
-      const src = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
+      const active = (await TrackPlayer.getActiveTrack()) ?? null;
+      if (state === State.Playing) {
+        countListened(active, position, duration);
+      }
+      const src = sourceTrackFor(active);
       if (src) {
         saveResume({track: src, position, queue: queueSource, index: idx});
       }

@@ -3,7 +3,9 @@ import {
   Animated,
   BackHandler,
   Easing,
+  Linking,
   NativeModules,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,15 +16,16 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  Gauge,
   HardDrive,
-  Radio,
   RefreshCw,
-  SlidersHorizontal,
-  ChartColumn,
+  Trash2,
 } from '../icons';
-import {ANALYTICS_NOTE, logEvent} from '../analytics';
+import {
+  COLLECTED_ITEMS,
+  COLLECTED_PROMISE,
+  JAM_NOTE,
+  logEvent,
+} from '../analytics';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 // Aliased: this file already has react-native's own Animated, for the refresh
 // glyph's rotation loop. Two different `Animated`s in one file is a bug waiting
@@ -39,17 +42,26 @@ import {
   appVersion,
   clearBackendCache,
   getCacheSize,
+  deleteDownload,
   getDownloadsInfo,
+  getLocalLibrary,
+  getStorageInfo,
   getYouTubeExperimental,
   setDownloadsDir,
   setYouTubeExperimental,
   type DownloadsInfo,
+  type StorageInfo,
 } from '../backend';
-import {resetSettings, useStore, writeSetting} from '../store';
-import {createStore, useStoreValue} from '../storage';
+import {DATA_SAVER_KBPS, resetSettings, useStore, writeSetting} from '../store';
+import {createStore, storedBytes, useStoreValue} from '../storage';
+import {StorageBreakdown} from '../components/StorageBreakdown';
+import {forgetDownloads} from '../downloads';
+import {DOCS_URL, LICENCE_URL, reportUrl} from '../links';
+import {LICENCES} from '../licences';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
+import {LanguageChips, languagesLabel} from '../components/LanguageChips';
 import {EqualizerScreen} from './EqualizerScreen';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {applyAudioEffects} from '../audioEffects';
@@ -101,12 +113,14 @@ type RemoteCache = {
   downloads: DownloadsInfo | null;
   yt: {supported: boolean; enabled: boolean} | null;
   cacheBytes: number | null;
+  storage: StorageInfo | null;
 };
 
 const EMPTY_REMOTE: RemoteCache = {
   downloads: null,
   yt: null,
   cacheBytes: null,
+  storage: null,
 };
 
 const remoteCache = createStore<RemoteCache>(
@@ -118,6 +132,10 @@ const remoteCache = createStore<RemoteCache>(
       downloads: r.downloads ?? null,
       yt: r.yt ?? null,
       cacheBytes: typeof r.cacheBytes === 'number' ? r.cacheBytes : null,
+      storage:
+        r.storage && typeof r.storage === 'object'
+          ? (r.storage as StorageInfo)
+          : null,
     };
   },
 );
@@ -152,6 +170,14 @@ export function prefetchSettingsRemote(): void {
     .catch(() => {});
   getCacheSize()
     .then(v => patchRemote({cacheBytes: v.bytes}))
+    .catch(() => {});
+  refreshStorage();
+}
+
+/** Re-measure the storage bar: after a clear, a removal, or on opening. */
+function refreshStorage(): void {
+  getStorageInfo()
+    .then(v => patchRemote({storage: v}))
     .catch(() => {});
 }
 
@@ -217,20 +243,30 @@ function Section({
   );
 }
 
+type RowIcon = typeof HardDrive;
+
+/** A row's leading icon, the same size and colour everywhere. */
+function Lead({Icon}: {Icon?: RowIcon}) {
+  return Icon ? <Icon size={19} color={C.sub} strokeWidth={2} /> : null;
+}
+
 function Row({
   label,
   value,
   hint,
   onPress,
+  Icon,
 }: {
   label: string;
   value?: string;
   hint?: string;
   onPress?: () => void;
+  Icon?: RowIcon;
 }) {
   const Wrap: React.ElementType = onPress ? TouchableOpacity : View;
   return (
     <Wrap style={styles.row} onPress={onPress} activeOpacity={0.7}>
+      <Lead Icon={Icon} />
       <View style={styles.rowText}>
         <Text style={styles.rowLabel}>{label}</Text>
         {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
@@ -254,15 +290,18 @@ function ToggleRow({
   value,
   onChange,
   disabled,
+  Icon,
 }: {
   label: string;
   hint?: string;
   value: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  Icon?: RowIcon;
 }) {
   return (
     <View style={styles.row}>
+      <Lead Icon={Icon} />
       <View style={styles.rowText}>
         <Text style={styles.rowLabel}>{label}</Text>
         {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
@@ -454,15 +493,22 @@ function NavRow({
   label,
   value,
   onPress,
+  Icon,
 }: {
   label: string;
   value?: string;
   onPress: () => void;
+  Icon?: RowIcon;
 }) {
   return (
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
+      <Lead Icon={Icon} />
       <Text style={[styles.rowLabel, styles.rowText]}>{label}</Text>
-      {!!value && <Text style={styles.rowValue}>{value}</Text>}
+      {!!value && (
+        <Text style={styles.rowValue} numberOfLines={1}>
+          {value}
+        </Text>
+      )}
       <ChevronRight size={18} color={C.faint} />
     </TouchableOpacity>
   );
@@ -477,7 +523,12 @@ export function SettingsScreen({
    *  rings it briefly — what the dot on the hamburger now points at. */
   focus?: 'update' | null;
 }) {
-  const [panel, setPanel] = useState<'equalizer' | 'playback' | null>(null);
+  const [panel, setPanel] = useState<
+    'equalizer' | 'playback' | 'about' | null
+  >(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [licencesOpen, setLicencesOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [cacheOpen, setCacheOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -486,13 +537,13 @@ export function SettingsScreen({
   // meant every answer had to be written twice and could disagree with itself;
   // the store IS the state now, so a prefetch that lands while the screen is
   // open simply shows up.
-  const {downloads, yt, cacheBytes} = useStoreValue(remoteCache);
+  const {downloads, yt, cacheBytes, storage} = useStoreValue(remoteCache);
   const [ytBusy, setYtBusy] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
 
   const sleep = useSleepTimer();
   const scrollRef = useRef<ScrollView>(null);
-  const updateY = useRef(0);
   const [glow, setGlow] = useState(false);
 
   // A sub-panel (Equalizer, Playback) must catch the hardware back itself and
@@ -616,6 +667,7 @@ export function SettingsScreen({
       patchRemote({cacheBytes: 0});
       toast(freed > 0 ? `Cleared ${formatBytes(freed)}` : 'Cache cleared');
       // Re-read rather than assume zero — Android may hold files open.
+      refreshStorage();
       getCacheSize()
         .then(r => patchRemote({cacheBytes: r.bytes}))
         .catch(() => {});
@@ -668,13 +720,8 @@ export function SettingsScreen({
     if (focus !== 'update') {
       return;
     }
-    const t = setTimeout(() => {
-      scrollRef.current?.scrollTo({
-        y: Math.max(0, updateY.current - 80),
-        animated: true,
-      });
-      setGlow(true);
-    }, 260);
+    setPanel('about');
+    const t = setTimeout(() => setGlow(true), 260);
     // Long enough to say "this one", gone before it nags.
     const off = setTimeout(() => setGlow(false), 2100);
     return () => {
@@ -682,6 +729,33 @@ export function SettingsScreen({
       clearTimeout(off);
     };
   }, [focus]);
+
+  /** Delete every downloaded song, one by one through the same guarded
+   *  endpoint a single delete uses, then tell the library what is gone. */
+  const doRemoveDownloads = useCallback(async () => {
+    setRemoveOpen(false);
+    setRemoving(true);
+    try {
+      const {tracks} = await getLocalLibrary();
+      const gone = [];
+      for (const t of tracks) {
+        if (t.file_path && (await deleteDownload(t.file_path).catch(() => false))) {
+          gone.push(t);
+        }
+      }
+      forgetDownloads(gone);
+      toast(
+        gone.length
+          ? `Removed ${gone.length} download${gone.length === 1 ? '' : 's'}`
+          : 'There were no downloads to remove',
+      );
+    } catch {
+      toast('Could not remove the downloads');
+    } finally {
+      setRemoving(false);
+      refreshStorage();
+    }
+  }, []);
 
   // Anything with more than a switch's worth of choice gets its OWN screen,
   // not an inline expander — the list stays scannable.
@@ -698,7 +772,7 @@ export function SettingsScreen({
             style={styles.back}>
             <ChevronLeft size={28} color={C.text} />
           </TouchableOpacity>
-          <Text style={styles.barTitle}>Playback</Text>
+          <Text style={styles.barTitle}>Crossfade and sleep</Text>
         </View>
         <ScrollView
           ref={scrollRef}
@@ -706,33 +780,6 @@ export function SettingsScreen({
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           bounces={false}>
-          <Section title="Listening controls">
-            <ToggleRow
-              label="Autoplay"
-              hint="Keep playing similar songs when the queue ends"
-              value={settings.autoplay}
-              onChange={v => {
-                writeSetting('autoplay', v);
-                // Switching it OFF has to clear the picks radio already
-                // queued, or the setting reads as ignored: the top-up runs a
-                // few songs ahead, so there are normally eight of them sitting
-                // there and playback carried straight on into them.
-                if (!v) {
-                  dropQueuedRadio().catch(() => {});
-                }
-              }}
-            />
-            <ToggleRow
-              label="Normalize volume"
-              hint="Play every track at the same loudness"
-              value={settings.normalizeVolume}
-              onChange={v => {
-                writeSetting('normalizeVolume', v);
-                applyAudioEffects();
-              }}
-            />
-          </Section>
-
           <Section title="Crossfade">
             <StepSlider
               label="Crossfade"
@@ -802,215 +849,38 @@ export function SettingsScreen({
       ? 'You are up to date'
       : 'See whether a newer version is out';
 
-  return (
-    <View style={styles.wrap}>
-      <View style={styles.bar}>
-        <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.back}>
-          <ChevronLeft size={28} color={C.text} />
-        </TouchableOpacity>
-        <Text style={styles.barTitle}>Settings</Text>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        overScrollMode="never"
-        bounces={false}>
-        {/* Order is deliberate: the things you change often first, the
-              things you set once near the bottom, and the destructive one
-              last and on its own. */}
-        <Section title="Playback" Icon={SlidersHorizontal}>
-          <NavRow
-            label="Crossfade"
-            value={
-              settings.crossfadeDuration > 0
-                ? `${settings.crossfadeDuration} seconds`
-                : 'Off'
-            }
-            onPress={() => setPanel('playback')}
-          />
-          <NavRow
-            label="Equalizer"
-            value={
-              settings.eqEnabled
-                ? EQ_PRESETS.find(p => p.id === settings.eqPreset)?.label ||
-                  'Custom'
-                : 'Off'
-            }
-            onPress={() => setPanel('equalizer')}
-          />
-        </Section>
-
-        <Section
-          title="Audio quality"
-          Icon={Gauge}
-          footer="Downloads always use the best quality a source offers, regardless of this setting.">
-          <Row
-            label="Streaming quality"
-            value={qualityLabel}
-            onPress={() => setQualityOpen(true)}
-          />
-          {/* A sheet, not an inline expander: five rows appearing in the
-              middle of the list shoved everything below them down with no
-              motion, on a grey slab that matched nothing else here. */}
-          <Sheet open={qualityOpen} onClose={() => setQualityOpen(false)}>
-            <Text style={styles.sheetTitle}>Streaming quality</Text>
-            {QUALITIES.map(q => (
-              <TouchableOpacity
-                key={q.value}
-                style={styles.row}
-                activeOpacity={0.7}
-                onPress={() => {
-                  writeSetting('audioQuality', q.value);
-                  setQualityOpen(false);
-                }}>
-                <View style={styles.rowText}>
-                  <Text
-                    style={[
-                      styles.rowLabel,
-                      settings.audioQuality === q.value && styles.choiceOn,
-                    ]}>
-                    {q.label}
-                  </Text>
-                  <Text style={styles.rowHint}>{q.hint}</Text>
-                </View>
-                {settings.audioQuality === q.value && (
-                  <Check size={18} color={C.accent} strokeWidth={2.6} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </Sheet>
-        </Section>
-
-        {/*
-          Rendered from a STATIC list, not from the network answer.
-
-          These three are known at build time, so their rows never had any
-          business waiting on a reachability probe — and rendering
-          `Object.entries(sources)` meant that until it returned, the section
-          was one line of "Checking sources…" and nothing else. The row's
-          existence is a fact about the app; only its status is a fact about
-          the network.
-        */}
-        <Section
-          title="Content sources"
-          Icon={Radio}
-          footer="JioSaavn and SoundCloud are always on. YouTube is optional: its streams are protected, and the app has to decode each one before it can play it. Turning YouTube on first tests this by opening one YouTube stream on this phone, and it turns on only if the test succeeds.">
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>JioSaavn</Text>
-            </View>
-            {/* On and locked: the core catalogues cannot be switched off,
-                and a switch in the slot reads as a setting at a glance. */}
-            <Toggle value disabled onChange={() => {}} />
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>SoundCloud</Text>
-            </View>
-            <Toggle value disabled onChange={() => {}} />
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>YouTube</Text>
-            </View>
-            <Toggle
-              value={!!yt?.enabled}
-              disabled={ytBusy || (!!yt && !yt.supported)}
-              onChange={toggleYt}
-            />
-          </View>
-        </Section>
-
-        {/* Three ghost buttons in a row read as a toolbar, not as settings.
-            Each is its own row now, and the path is a VALUE — right-aligned,
-            middle-ellipsised, so a long path shows the start and the end
-            rather than wrapping to two lines of body text. */}
-        <Section title="Downloads" Icon={HardDrive}>
+  if (panel === 'about') {
+    // Android's own fields; React Native's shared type does not list them.
+    const phone = Platform.constants as {
+      Brand?: string;
+      Model?: string;
+      Release?: string;
+    };
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.bar}>
           <TouchableOpacity
-            style={styles.row}
-            onPress={pickDownloadFolder}
-            activeOpacity={0.7}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>Download location</Text>
-            </View>
-            <Text
-              style={styles.rowValue}
-              numberOfLines={1}
-              ellipsizeMode="middle">
-              {folder ||
-                (downloads?.using_fallback ? 'App storage' : 'Not set yet')}
-            </Text>
-            <ChevronRight size={17} color={C.faint} />
+            onPress={() => setPanel(null)}
+            hitSlop={12}
+            style={styles.back}>
+            <ChevronLeft size={28} color={C.text} />
           </TouchableOpacity>
-
-          <Row label="Open in Files" onPress={openDownloadFolder} />
-
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => setCacheOpen(true)}
-            disabled={clearing}
-            activeOpacity={0.7}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>
-                {clearing ? 'Clearing…' : 'Clear cached data'}
-              </Text>
-              <Text style={styles.rowHint}>
-                {cacheBytes == null
-                  ? 'Downloaded songs are kept.'
-                  : `Frees ${formatBytes(
-                      cacheBytes,
-                    )}. Downloaded songs are kept.`}
-              </Text>
-            </View>
-            <ChevronRight size={17} color={C.faint} />
-          </TouchableOpacity>
-
-          <StepSlider
-            label="Clear cache automatically"
-            hint="When cached data passes this size, it is cleared the next time you open the app. Downloaded songs and search history are kept."
-            value={settings.cacheLimitMb}
-            max={100}
-            step={10}
-            format={mb => `${mb} MB`}
-            onChange={mb => {
-              writeSetting('cacheLimitMb', mb);
-              enforceCacheLimit(true).then(() =>
-                getCacheSize()
-                  .then(r => patchRemote({cacheBytes: r.bytes}))
-                  .catch(() => {}),
-              );
-            }}
-          />
-        </Section>
-
-        <Section title="Appearance" Icon={Eye}>
-          <ToggleRow
-            label="Show source label"
-            hint="Marks which service each track came from"
-            value={settings.showSourceBadge}
-            onChange={v => writeSetting('showSourceBadge', v)}
-          />
-          <ToggleRow
-            label="Show quality label"
-            hint="Marks each track with its bitrate"
-            value={settings.showQualityBadge}
-            onChange={v => writeSetting('showQualityBadge', v)}
-          />
-        </Section>
-
+          <Text style={styles.barTitle}>About and support</Text>
+        </View>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          bounces={false}>
         {/* Its OWN section, not a composite row buried in "About".
               The update was a RefreshCw icon, an "Installed" label, a version,
               a status line and a nested button all inside one styles.row —
               nothing else on this screen looked like that. And the update dot
               on the hamburger dropped you at the top of an eight-section list
               to go hunting for it; see `focus`. */}
-        <View onLayout={e => (updateY.current = e.nativeEvent.layout.y)}>
+        <View>
           <Section
-            title="Software update"
-            Icon={RefreshCw}
+            title="Updates"
             highlight={glow}
             footer={
               update.phase === 'failed'
@@ -1058,8 +928,380 @@ export function SettingsScreen({
           </Section>
         </View>
 
-        <Section title="Usage statistics" Icon={ChartColumn}>
-          <Row label="What Relaxify collects" hint={ANALYTICS_NOTE} />
+
+          <Section title="Help">
+            <Row
+              label="How to use"
+              hint="The guide, in your browser"
+              onPress={() =>
+                Linking.openURL(DOCS_URL).catch(() =>
+                  toast('Could not open the guide'),
+                )
+              }
+            />
+            <Row
+              label="Report a problem"
+              hint="Opens a report on GitHub with your version and phone filled in"
+              onPress={() =>
+                Linking.openURL(
+                  reportUrl(
+                    appVersion,
+                    `${phone.Brand ?? ''} ${phone.Model ?? ''}`.trim(),
+                    String(phone.Release ?? Platform.Version),
+                  ),
+                ).catch(() => toast('Could not open GitHub'))
+              }
+            />
+          </Section>
+
+        {/* A statement, not a setting: there is nothing to switch, so it is
+            set as a boxed paragraph rather than dressed as a row. */}
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>What we collect</Text>
+          </View>
+          <View style={styles.statement}>
+            <Text style={styles.statementText}>
+              We collect usage statistics to make Relaxify better:{' '}
+              <Text style={styles.statementStrong}>{COLLECTED_ITEMS}</Text>.{' '}
+              {COLLECTED_PROMISE}
+            </Text>
+            <Text style={[styles.statementText, styles.statementMore]}>
+              {JAM_NOTE}
+            </Text>
+          </View>
+        </View>
+
+
+          <Section title="Legal">
+            <Row
+              label="Licence"
+              value="GPL-3.0"
+              onPress={() => Linking.openURL(LICENCE_URL).catch(() => {})}
+            />
+            <Row
+              label="Open-source licences"
+              onPress={() => setLicencesOpen(true)}
+            />
+          </Section>
+          <View style={styles.tail} />
+        </ScrollView>
+
+        <Sheet open={licencesOpen} onClose={() => setLicencesOpen(false)}>
+          <Text style={styles.sheetTitle}>Open-source licences</Text>
+          <ScrollView style={styles.licences}>
+            {LICENCES.map(g => (
+              <View key={g.group} style={styles.licenceGroup}>
+                <Text style={styles.sectionTitle}>{g.group}</Text>
+                {g.items.map(([name, licence]) => (
+                  <View key={name} style={styles.licenceRow}>
+                    <Text style={styles.licenceName}>{name}</Text>
+                    <Text style={styles.rowValue}>{licence}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </Sheet>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.bar}>
+        <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.back}>
+          <ChevronLeft size={28} color={C.text} />
+        </TouchableOpacity>
+        <Text style={styles.barTitle}>Settings</Text>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        bounces={false}>
+        {/* Order is deliberate: the things you change often first, the
+              things you set once near the bottom, and the destructive one
+              last and on its own. */}
+        <Section title="Playback">
+          <ToggleRow
+            label="Autoplay"
+            hint="Keep playing similar songs when the queue ends"
+            value={settings.autoplay}
+            onChange={v => {
+              writeSetting('autoplay', v);
+              // Switching it OFF has to clear the picks radio already
+              // queued, or the setting reads as ignored: the top-up runs a
+              // few songs ahead, so there are normally eight of them sitting
+              // there and playback carried straight on into them.
+              if (!v) {
+                dropQueuedRadio().catch(() => {});
+              }
+            }}
+          />
+          <ToggleRow
+            label="Normalize volume"
+            hint="Play every track at the same loudness"
+            value={settings.normalizeVolume}
+            onChange={v => {
+              writeSetting('normalizeVolume', v);
+              applyAudioEffects();
+            }}
+          />
+          <ToggleRow
+            label="Headphone memory"
+            hint="Each pair of headphones, speaker or car keeps its own equalizer"
+            value={settings.deviceMemory}
+            onChange={v => writeSetting('deviceMemory', v)}
+          />
+          <ToggleRow
+            label="Resume when headphones connect"
+            hint="Carry on playing when you put your headphones on"
+            value={settings.resumeOnConnect}
+            onChange={v => writeSetting('resumeOnConnect', v)}
+          />
+          <NavRow
+            label="Crossfade"
+            value={
+              settings.crossfadeDuration > 0
+                ? `${settings.crossfadeDuration} seconds`
+                : 'Off'
+            }
+            onPress={() => setPanel('playback')}
+          />
+          <NavRow
+            label="Equalizer"
+            value={
+              settings.eqEnabled
+                ? EQ_PRESETS.find(p => p.id === settings.eqPreset)?.label ||
+                  'Custom'
+                : 'Off'
+            }
+            onPress={() => setPanel('equalizer')}
+          />
+        </Section>
+
+        <Section
+          title="Sound"
+          footer="Downloads always use the best quality a source offers, regardless of this setting.">
+          <Row
+            label="Streaming quality"
+            value={qualityLabel}
+            onPress={() => setQualityOpen(true)}
+          />
+          <ToggleRow
+            label="Data saver on mobile data"
+            hint={`Streams at ${DATA_SAVER_KBPS} kbps off Wi-Fi`}
+            value={settings.dataSaver}
+            onChange={v => writeSetting('dataSaver', v)}
+          />
+          {/* A sheet, not an inline expander: five rows appearing in the
+              middle of the list shoved everything below them down with no
+              motion, on a grey slab that matched nothing else here. */}
+          <Sheet open={qualityOpen} onClose={() => setQualityOpen(false)}>
+            <Text style={styles.sheetTitle}>Streaming quality</Text>
+            {QUALITIES.map(q => (
+              <TouchableOpacity
+                key={q.value}
+                style={styles.row}
+                activeOpacity={0.7}
+                onPress={() => {
+                  writeSetting('audioQuality', q.value);
+                  setQualityOpen(false);
+                }}>
+                <View style={styles.rowText}>
+                  <Text
+                    style={[
+                      styles.rowLabel,
+                      settings.audioQuality === q.value && styles.choiceOn,
+                    ]}>
+                    {q.label}
+                  </Text>
+                  <Text style={styles.rowHint}>{q.hint}</Text>
+                </View>
+                {settings.audioQuality === q.value && (
+                  <Check size={18} color={C.accent} strokeWidth={2.6} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </Sheet>
+        </Section>
+
+        <Section title="Your music">
+          <NavRow
+            label="Home languages"
+            value={languagesLabel(settings.homeLanguages)}
+            onPress={() => setLangOpen(true)}
+          />
+          <Sheet open={langOpen} onClose={() => setLangOpen(false)}>
+            <Text style={styles.sheetTitle}>Home languages</Text>
+            <Text style={styles.sheetHint}>
+              Home and Browse are drawn from these. Search always covers everything.
+            </Text>
+            <LanguageChips />
+          </Sheet>
+          <ToggleRow
+            label="Weekly Recap"
+            hint="A notification on Sunday evening with your week in music"
+            value={settings.recapReminder}
+            onChange={v => writeSetting('recapReminder', v)}
+          />
+        </Section>
+
+        {/*
+          Rendered from a STATIC list, not from the network answer.
+
+          These three are known at build time, so their rows never had any
+          business waiting on a reachability probe — and rendering
+          `Object.entries(sources)` meant that until it returned, the section
+          was one line of "Checking sources…" and nothing else. The row's
+          existence is a fact about the app; only its status is a fact about
+          the network.
+        */}
+        <Section
+          title="Sources"
+          footer="JioSaavn and SoundCloud are always on. YouTube is optional: its streams are protected, and the app has to decode each one before it can play it. Turning YouTube on first tests this by opening one YouTube stream on this phone, and it turns on only if the test succeeds.">
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>JioSaavn</Text>
+            </View>
+            {/* On and locked: the core catalogues cannot be switched off,
+                and a switch in the slot reads as a setting at a glance. */}
+            <Toggle value disabled onChange={() => {}} />
+          </View>
+
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>SoundCloud</Text>
+            </View>
+            <Toggle value disabled onChange={() => {}} />
+          </View>
+
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>YouTube</Text>
+            </View>
+            <Toggle
+              value={!!yt?.enabled}
+              disabled={ytBusy || (!!yt && !yt.supported)}
+              onChange={toggleYt}
+            />
+          </View>
+        </Section>
+
+        {/* Three ghost buttons in a row read as a toolbar, not as settings.
+            Each is its own row now, and the path is a VALUE — right-aligned,
+            middle-ellipsised, so a long path shows the start and the end
+            rather than wrapping to two lines of body text. */}
+        <Section title="Storage">
+          {storage && storage.total_bytes > 0 && (
+            <StorageBreakdown info={storage} savedBytes={storedBytes()} />
+          )}
+          <TouchableOpacity
+            style={styles.row}
+            onPress={pickDownloadFolder}
+            activeOpacity={0.7}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Download location</Text>
+              {/* A path, set as one: its own box, a fixed-width face, cut in
+                  the middle so the start and the end both stay visible. */}
+              <View style={styles.pathBox}>
+                <Text
+                  style={styles.pathText}
+                  numberOfLines={1}
+                  ellipsizeMode="middle">
+                  {folder ||
+                    (downloads?.using_fallback ? 'App storage' : 'Not set yet')}
+                </Text>
+              </View>
+            </View>
+            <ChevronRight size={17} color={C.faint} />
+          </TouchableOpacity>
+
+          <Row
+            label="Open in Files"
+            onPress={openDownloadFolder}
+          />
+
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setRemoveOpen(true)}
+            disabled={removing || !storage?.downloads_count}
+            activeOpacity={0.7}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>
+                {removing ? 'Removing…' : 'Remove all downloads'}
+              </Text>
+              <Text style={styles.rowHint}>
+                {storage?.downloads_count
+                  ? `Deletes the ${storage.downloads_count} songs saved on this phone. Playlists and likes stay.`
+                  : 'No downloaded songs on this phone.'}
+              </Text>
+            </View>
+            <ChevronRight size={17} color={C.faint} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setCacheOpen(true)}
+            disabled={clearing}
+            activeOpacity={0.7}>
+            <Lead Icon={Trash2} />
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>
+                {clearing ? 'Clearing…' : 'Clear cached data'}
+              </Text>
+              <Text style={styles.rowHint}>
+                {cacheBytes == null
+                  ? 'Downloaded songs are kept.'
+                  : `Frees ${formatBytes(
+                      cacheBytes,
+                    )}. Downloaded songs are kept.`}
+              </Text>
+            </View>
+            <ChevronRight size={17} color={C.faint} />
+          </TouchableOpacity>
+
+          <StepSlider
+            label="Clear cache automatically"
+            hint="When cached data passes this size, it is cleared the next time you open the app. Downloaded songs and search history are kept."
+            value={settings.cacheLimitMb}
+            max={100}
+            step={10}
+            format={mb => `${mb} MB`}
+            onChange={mb => {
+              writeSetting('cacheLimitMb', mb);
+              enforceCacheLimit(true).then(() =>
+                getCacheSize()
+                  .then(r => patchRemote({cacheBytes: r.bytes}))
+                  .catch(() => {}),
+              );
+            }}
+          />
+        </Section>
+
+        <Section title="Appearance">
+          <ToggleRow
+            label="Show source label"
+            hint="Marks which service each track came from"
+            value={settings.showSourceBadge}
+            onChange={v => writeSetting('showSourceBadge', v)}
+          />
+          <ToggleRow
+            label="Show quality label"
+            hint="Marks each track with its bitrate"
+            value={settings.showQualityBadge}
+            onChange={v => writeSetting('showQualityBadge', v)}
+          />
+        </Section>
+
+        <Section title="About">
+          <NavRow
+            label="About and support"
+            value={updateAvailable ? 'Update ready' : appVersion || undefined}
+            onPress={() => setPanel('about')}
+          />
         </Section>
 
         <TouchableOpacity
@@ -1083,6 +1325,16 @@ export function SettingsScreen({
         danger
         onConfirm={doReset}
         onCancel={() => setResetOpen(false)}
+      />
+
+      <ConfirmModal
+        visible={removeOpen}
+        title="Remove all downloads?"
+        message={`Deletes the ${storage?.downloads_count ?? 0} songs saved on this phone. Your playlists and likes are kept, and every song can be downloaded again.`}
+        confirmLabel="Remove"
+        danger
+        onConfirm={doRemoveDownloads}
+        onCancel={() => setRemoveOpen(false)}
       />
 
       <ConfirmModal
@@ -1116,6 +1368,37 @@ const styles = StyleSheet.create({
   // end above them or its last row is permanently behind one. See src/layout.ts.
   scroll: {paddingBottom: BOTTOM_INSET},
   section: {paddingTop: 22},
+  licences: {maxHeight: 420},
+  licenceGroup: {paddingHorizontal: S.gutter, paddingTop: 14, gap: 8},
+  licenceRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  licenceName: {flex: 1, color: C.text, fontSize: 14},
+  pathBox: {
+    marginTop: 8,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: '#0b0b0d',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  pathText: {
+    fontFamily: 'monospace',
+    color: '#cfd1d6',
+    fontSize: 12.5,
+  },
+  statement: {
+    marginHorizontal: S.gutter,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    padding: 14,
+  },
+  statementText: {color: '#d3d5da', fontSize: 13.5, lineHeight: 21},
+  statementMore: {marginTop: 10},
+  // Its own weight, stated: a nested span without one falls back to Regular.
+  statementStrong: {color: C.text, fontWeight: '700'},
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1180,6 +1463,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   choiceOn: {color: C.accent},
+  sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   rowText: {flex: 1, minWidth: 0},
   rowLabel: {...T.body, color: C.text},
   rowLabelAccent: {color: C.accent},

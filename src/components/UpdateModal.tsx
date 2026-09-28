@@ -1,9 +1,9 @@
 /**
- * The in-app update prompt: a card floating above the mini player. Appears when
- * a newer release is found, shows the download progress in place, and lets
+ * The in-app update prompt: a slim strip floating above the mini player.
+ * Appears when a newer release is found, fills up as it downloads, and lets
  * the user install or put it off.
  *
- * A card, not a sheet or a dialog: the page stays visible and usable around
+ * A strip, not a sheet or a dialog: the page stays visible and usable around
  * it, so a new version is news rather than an interruption.
  *
  * A failure shows here only when a DOWNLOAD failed (see `attempted` in
@@ -12,13 +12,13 @@
  * The same spot carries the one-time usage-statistics notice, after any update
  * card, so the two never stack.
  */
-import React from 'react';
+import React, {useMemo} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Animated, {FadeInDown, FadeOutDown} from 'react-native-reanimated';
-import {AlertTriangle, ChartColumn, RefreshCw, X} from '../icons';
+import {AlertTriangle, ArrowDownToLine, ChartColumn, X} from '../icons';
 import {C, S} from '../theme';
 import {dismissUpdate, startUpdateInstall, useUpdate} from '../update';
-import {formatSize, readableNotes} from '../updateNotes';
+import {formatSize} from '../updateNotes';
 import {BOTTOM_INSET} from '../layout';
 import {createStore, useStoreValue} from '../storage';
 import {ANALYTICS_NOTE} from '../analytics';
@@ -31,92 +31,105 @@ const noticeSeen = createStore<boolean>(
   raw => raw === true,
 );
 
-const FALLBACK =
-  'This update contains several bug fixes and performance improvements.';
+/** The strip's height, and the room a page's list leaves for it. */
+const STRIP_H = 46;
+const STRIP_ROOM = STRIP_H + 14;
+const INK = '#000000';
+const LEMON = '#FFE14D';
+const BUTTER = '#FFF3A3';
 
-export function UpdateModal() {
-  const {phase, info, pct, error, attempted} = useUpdate();
+/** Is the update strip up? The same test UpdateModal renders by. */
+function stripUp(u: ReturnType<typeof useUpdate>): boolean {
+  return (
+    u.phase === 'found' ||
+    u.phase === 'downloading' ||
+    (u.phase === 'failed' && u.attempted)
+  );
+}
+
+/**
+ * Extra end-of-list room while the strip is up, so the last row of a page can
+ * still be scrolled clear of it. Only the END of a list grows, so nothing on
+ * screen moves when the strip comes or goes.
+ */
+export function useUpdateStripRoom(): number {
+  return stripUp(useUpdate()) ? STRIP_ROOM : 0;
+}
+
+/** A list's end padding: clear of the bottom bars, and of the strip if up. */
+export function useListEnd(): {paddingBottom: number} {
+  const room = useUpdateStripRoom();
+  return useMemo(() => ({paddingBottom: BOTTOM_INSET + room}), [room]);
+}
+
+/**
+ * The update, as one slim line docked above the mini player: yellow, a thick
+ * black edge and a hard shadow, so it reads as news without covering the page.
+ * The notes live in Settings; the strip says only what to do.
+ */
+export function UpdateModal({hidden = false}: {hidden?: boolean}) {
+  const u = useUpdate();
+  const {phase, info, pct} = u;
   const seen = useStoreValue(noticeSeen);
-  const failed = phase === 'failed' && attempted;
-  if (phase !== 'found' && phase !== 'downloading' && !failed) {
+  if (hidden) {
+    return null;
+  }
+  if (!stripUp(u)) {
     return seen ? null : <Notice />;
   }
+  const failed = phase === 'failed';
   const downloading = phase === 'downloading';
   const size = formatSize(info?.sizeBytes);
-
   const title = failed
     ? 'Update failed'
     : downloading
-    ? `Downloading ${info?.version ?? 'update'}`
-    : `Version ${info?.version} is now available!`;
-  const message = failed
-    ? error && error !== 'Download failed'
-      ? error
-      : "Couldn't download the update. Check your connection and try again."
-    : readableNotes(info?.notes ?? '') || FALLBACK;
+    ? `Downloading v${info?.version ?? ''}`
+    : `v${info?.version} is ready`;
 
   return (
     <Animated.View
       entering={FadeInDown.duration(260)}
       exiting={FadeOutDown.duration(180)}
-      style={styles.card}
+      style={styles.strip}
       accessibilityLiveRegion="polite">
-      <View style={styles.row}>
-        <View style={[styles.badge, failed && styles.badgeWarn]}>
-          {failed ? (
-            <AlertTriangle size={18} color={C.danger} strokeWidth={2.2} />
-          ) : (
-            <RefreshCw size={18} color={C.accent} strokeWidth={2.2} />
-          )}
-        </View>
-        <View style={styles.text}>
-          <Text style={styles.title}>{title}</Text>
-          {downloading ? (
-            <>
-              <View style={styles.barTrack}>
-                <View
-                  style={[styles.barFill, {width: `${Math.max(4, pct)}%`}]}
-                />
-              </View>
-              <Text style={styles.meta}>
-                {pct}%{size ? ` of ${size}` : ''}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={styles.message} numberOfLines={3}>
-                {message}
-              </Text>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.install}
-                  onPress={startUpdateInstall}
-                  accessibilityRole="button">
-                  <Text style={styles.installText}>
-                    {failed ? 'Retry' : 'Install'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.later}
-                  onPress={dismissUpdate}
-                  accessibilityRole="button">
-                  <Text style={styles.laterText}>Later</Text>
-                </TouchableOpacity>
-                {!failed && !!size && <Text style={styles.size}>{size}</Text>}
-              </View>
-            </>
-          )}
-        </View>
-        {!downloading && (
+      {/* While downloading, the strip itself fills up. */}
+      {downloading && (
+        <View
+          style={[styles.fill, {width: `${Math.max(3, Math.min(100, pct))}%`}]}
+        />
+      )}
+      {failed ? (
+        <AlertTriangle size={18} color={INK} strokeWidth={2.4} />
+      ) : (
+        <ArrowDownToLine size={18} color={INK} strokeWidth={2.4} />
+      )}
+      <Text style={styles.stripTitle} numberOfLines={1}>
+        {title}
+        {!downloading && !failed && !!size && (
+          <Text style={styles.stripMeta}>{`  ${size}`}</Text>
+        )}
+      </Text>
+      {downloading ? (
+        <Text style={styles.stripPct}>{pct}%</Text>
+      ) : (
+        <>
+          <TouchableOpacity
+            style={styles.stripBtn}
+            onPress={startUpdateInstall}
+            accessibilityRole="button">
+            <Text style={styles.stripBtnText}>
+              {failed ? 'Retry' : 'Install'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={dismissUpdate}
             hitSlop={12}
             accessibilityRole="button"
-            accessibilityLabel="Close">
-            <X size={18} color={C.sub} strokeWidth={2.2} />
+            accessibilityLabel="Not now">
+            <X size={18} color={INK} strokeWidth={2.6} />
           </TouchableOpacity>
-        )}
-      </View>
+        </>
+      )}
     </Animated.View>
   );
 }
@@ -150,6 +163,44 @@ function Notice() {
 }
 
 const styles = StyleSheet.create({
+  strip: {
+    position: 'absolute',
+    left: S.gutter,
+    right: S.gutter + 4, // room for the hard shadow
+    bottom: BOTTOM_INSET + 10,
+    height: STRIP_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingLeft: 12,
+    paddingRight: 12,
+    borderRadius: 10,
+    borderWidth: 2.5,
+    borderColor: INK,
+    backgroundColor: BUTTER,
+    overflow: 'hidden',
+    // The neobrutalist hard shadow: an offset slab, no blur. elevation would
+    // blur it on Android, so it is drawn as a border instead.
+    borderRightWidth: 6,
+    borderBottomWidth: 6,
+  },
+  fill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: LEMON,
+  },
+  stripTitle: {flex: 1, color: INK, fontSize: 14.5, fontWeight: '900'},
+  stripMeta: {color: INK, fontSize: 12, fontWeight: '700', opacity: 0.6},
+  stripPct: {color: INK, fontSize: 14, fontWeight: '900'},
+  stripBtn: {
+    backgroundColor: INK,
+    borderRadius: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  stripBtnText: {color: LEMON, fontSize: 13.5, fontWeight: '900'},
   card: {
     position: 'absolute',
     left: S.gutter,
@@ -177,10 +228,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(29,185,84,0.35)',
     backgroundColor: 'rgba(29,185,84,0.10)',
   },
-  badgeWarn: {
-    borderColor: 'rgba(255,107,107,0.35)',
-    backgroundColor: 'rgba(255,107,107,0.10)',
-  },
   text: {flex: 1, minWidth: 0},
   title: {color: C.text, fontSize: 15, fontWeight: '800'},
   message: {color: C.sub, fontSize: 13, lineHeight: 19, marginTop: 4},
@@ -197,16 +244,4 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   installText: {color: C.bg, fontWeight: '800', fontSize: 14},
-  later: {paddingHorizontal: 14, paddingVertical: 9},
-  laterText: {color: C.text, fontWeight: '700', fontSize: 14},
-  size: {color: C.faint, fontSize: 12, marginLeft: 'auto'},
-  barTrack: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  barFill: {height: '100%', borderRadius: 3, backgroundColor: C.accent},
-  meta: {color: C.sub, fontSize: 12, marginTop: 6},
 });

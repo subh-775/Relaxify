@@ -17,8 +17,8 @@
  * use, and it costs nothing — unlike a value that changes under a list mid
  * scroll, which moves the content under the reader's thumb.
  *
- * Measured, not guessed: PlayerBar is a 54px cover + 5px padding either side +
- * an 8px margin = 72, and BottomNav is 23px icons + 9px padding either side +
- * a 4px label gap + 4px = 61.
+ * Measured, not guessed: PlayerBar is a 48px cover + 4px padding either side +
+ * 3px for the progress line + a 4px margin = 63, and BottomNav is 23px icons +
+ * 9px padding either side + a 4px label gap + 4px = 61. Rounded up for air.
  */
-export const BOTTOM_INSET = 136;
+export const BOTTOM_INSET = 128;

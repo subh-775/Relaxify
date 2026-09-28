@@ -21,7 +21,6 @@
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
 import {
   BackHandler,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -39,6 +38,7 @@ import {
   BookOpen,
   ChevronRight,
   Clock,
+  Headphones,
   Settings as SettingsIcon,
   SlidersHorizontal,
 } from '../icons';
@@ -47,9 +47,9 @@ import {appVersion} from '../backend';
 import {useUpdateAvailable} from '../update';
 import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
-const ICON = require('../assets/app-icon-bl.png');
+import {LogoMark} from './Logo';
 
-export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer';
+export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
 
 // No per-item hint text any more — "Everything you have listened to" under
 // "Recents" was explaining a label that already explains itself, and it made
@@ -79,6 +79,9 @@ const ITEMS: {id: SidebarDest; label: string; Icon: typeof Clock}[] = [
   // is also the badge on the update popup — the same glyph meaning two
   // unrelated things. A waveform reads as "your listening" with no caption.
   {id: 'stats', label: 'Recap', Icon: AudioLines},
+  // Listening together; lives here beside Recap, the other "about you and
+  // your friends" place.
+  {id: 'jam', label: 'Jam', Icon: Headphones},
   {id: 'help', label: 'How to use', Icon: BookOpen},
   {id: 'settings', label: 'Settings', Icon: SettingsIcon},
 ];
@@ -214,7 +217,7 @@ export const Sidebar = React.memo(function Sidebar({
             stray label; the icon is what makes the drawer feel like part of
             the product. */}
           <View style={styles.brandRow}>
-            <Image source={ICON} style={styles.brandIcon} />
+            <LogoMark size={56} />
             <View style={styles.brandText}>
               <Text style={styles.brand}>Relaxify</Text>
               <Text style={styles.brandSub}>Your library, your sound</Text>
@@ -248,8 +251,11 @@ export const Sidebar = React.memo(function Sidebar({
             ))}
           </View>
 
-          {/* Version, centred, and nothing else — as specified. */}
-          <Text style={styles.version}>v{appVersion || '—'}</Text>
+          {/* Version, centred, and under it the licence the code ships under. */}
+          <View style={styles.foot}>
+            <Text style={styles.version}>v{appVersion || '—'}</Text>
+            <Text style={styles.license}>Released under GPL-3.0</Text>
+          </View>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -291,7 +297,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     marginBottom: 28,
   },
-  brandIcon: {width: 56, height: 56, borderRadius: 14},
   brandText: {flex: 1, minWidth: 0},
   brand: {...T.screenTitle, color: C.text, fontSize: 24, letterSpacing: 0.1},
   brandSub: {color: C.sub, fontSize: 12.5, marginTop: 2},
@@ -313,11 +318,12 @@ const styles = StyleSheet.create({
   },
   itemLabel: {color: C.text, fontSize: 15.5, fontWeight: '700'},
   itemValue: {color: C.accent, fontSize: 12.5, fontWeight: '700'},
+  foot: {paddingBottom: 22, gap: 3},
   version: {
     color: C.faint,
     fontSize: 12,
     textAlign: 'center',
-    paddingBottom: 22,
     letterSpacing: 0.4,
   },
+  license: {color: C.faint, fontSize: 11, textAlign: 'center', opacity: 0.8},
 });

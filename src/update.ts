@@ -189,7 +189,11 @@ function ensureRegistered() {
       emit();
       return;
     }
-    state = {...state, pct: p, phase: 'downloading'};
+    // 100 means the system installer is now in front. The card goes back to
+    // offering Install: left on "Downloading… 100%" it had no close button and
+    // blocked every later check, so backing out of the installer stranded it
+    // there until the app was restarted.
+    state = {...state, pct: p, phase: p >= 100 ? 'found' : 'downloading'};
     emit();
   });
 }

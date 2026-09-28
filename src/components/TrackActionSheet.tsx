@@ -36,6 +36,7 @@ import {cleanText, getBestArtworkUrl} from '../tracks';
 import {isLiked, toggleLike} from '../store';
 import {removeTrackFromPlaylist} from '../playlists';
 import {addToQueue} from '../player';
+import {addToJam, inJam} from '../jam';
 import {toast} from '../toast';
 import {Sheet} from './Sheet';
 
@@ -92,7 +93,9 @@ function TrackActionSheetView({
     setBusy(true);
     try {
       await enqueueDownload(track);
-      toast(`Downloading "${cleanText(track.title)}"`);
+      toast(`Downloading "${cleanText(track.title)}"`, 'info', {
+        art: getBestArtworkUrl(track),
+      });
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not start that download');
     } finally {
@@ -159,10 +162,15 @@ function TrackActionSheetView({
     {
       key: 'queue',
       Icon: ListPlus,
-      label: 'Add to queue',
+      // In a Jam the queue is everyone's: the song goes there instead.
+      label: inJam() ? 'Add to Jam queue' : 'Add to queue',
       onPress: run(() => {
-        addToQueue(t)
-          .then(() => toast('Added to queue'))
+        (inJam() ? addToJam(t) : addToQueue(t))
+          .then(() =>
+            toast(inJam() ? 'Added to the Jam' : 'Added to queue', 'info', {
+              art: getBestArtworkUrl(t),
+            }),
+          )
           .catch(() => toast('Nothing is playing yet'));
       }),
     },

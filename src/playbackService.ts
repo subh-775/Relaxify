@@ -10,7 +10,12 @@
  */
 import TrackPlayer, {Event, State} from 'react-native-track-player';
 import {setPausedByDuck, wasPausedByDuck} from './duckState';
-import {markManualTrackChange, playWithFade, topUpFromRadio} from './player';
+import {
+  markManualTrackChange,
+  playWithFade,
+  seekTo,
+  topUpFromRadio,
+} from './player';
 
 /**
  * Did WE pause because we lost audio focus, or did the user?
@@ -42,7 +47,7 @@ module.exports = async function playbackService() {
     TrackPlayer.reset();
   });
   TrackPlayer.addEventListener(Event.RemoteSeek, ({position}) =>
-    TrackPlayer.seekTo(position),
+    seekTo(position),
   );
 
   /**
@@ -77,7 +82,15 @@ module.exports = async function playbackService() {
       markManualTrackChange();
       await TrackPlayer.skipToNext();
     } catch {
-      /* end of queue — nothing to skip to */
+      // End of the queue: find similar songs first, as the app's own Next
+      // button does (skipNext), then move on to them.
+      try {
+        await topUpFromRadio(true);
+        await TrackPlayer.skipToNext();
+        await playWithFade();
+      } catch {
+        /* still nothing to skip to */
+      }
     }
   });
 
@@ -88,13 +101,13 @@ module.exports = async function playbackService() {
     try {
       const position = await TrackPlayer.getPosition();
       if (position > 3) {
-        await TrackPlayer.seekTo(0);
+        await seekTo(0);
       } else {
         markManualTrackChange();
         await TrackPlayer.skipToPrevious();
       }
     } catch {
-      await TrackPlayer.seekTo(0);
+      await seekTo(0);
     }
   });
 

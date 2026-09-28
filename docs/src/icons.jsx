@@ -1,9 +1,6 @@
 /**
- * Inline SVG, not an icon package.
- *
- * Nine icons do not justify a dependency, a tree-shaking config and a font
- * download. These are drawn on the same 24-unit grid with the same 1.9 stroke,
- * which is what actually makes a set look like a set.
+ * The two icons the site draws itself: GitHub's mark and the small arrow on
+ * links that leave the site. Inline SVG; two icons don't justify a package.
  */
 const base = {
   viewBox: '0 0 24 24',
@@ -15,40 +12,6 @@ const base = {
   'aria-hidden': true,
 };
 
-export const Search = p => (
-  <svg {...base} width={p.size || 17} height={p.size || 17}>
-    <circle cx="11" cy="11" r="7" />
-    <path d="m20 20-3.9-3.9" />
-  </svg>
-);
-
-export const Menu = p => (
-  <svg {...base} width={p.size || 20} height={p.size || 20}>
-    <path d="M3 6h18M3 12h18M3 18h18" />
-  </svg>
-);
-
-export const Close = p => (
-  <svg {...base} width={p.size || 20} height={p.size || 20}>
-    <path d="M18 6 6 18M6 6l12 12" />
-  </svg>
-);
-
-/**
- * The official mark, taken from @primer/octicons rather than reproduced.
- *
- * Two wrong versions preceded this one, and the second is the instructive one.
- * The first swept most of the way round the circle and then closed with `Z`,
- * which drew a chord straight back across the bottom — a disc with a slice out
- * of it. The replacement fixed that and was still wrong: it traversed the outer
- * circle ANTICLOCKWISE, and the cat's inner contours are wound to be counters
- * of a clockwise one. Under the nonzero fill rule that inverts the whole mark —
- * the disc fills and the cat becomes a hole in it, which is what "the logo is
- * cut" actually was.
- *
- * It is not reproduced from memory again. This is the published path, fetched
- * and pasted, and the only safe way to carry a logo someone else owns.
- */
 export const Github = p => (
   <svg
     viewBox="0 0 16 16"
@@ -66,23 +29,3 @@ export const External = p => (
   </svg>
 );
 
-export const Pencil = p => (
-  <svg {...base} width={p.size || 15} height={p.size || 15}>
-    <path d="M12 20h9" />
-    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-  </svg>
-);
-
-export const Download = p => (
-  <svg {...base} width={p.size || 17} height={p.size || 17}>
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <path d="m7 10 5 5 5-5M12 15V3" />
-  </svg>
-);
-
-export const Link = p => (
-  <svg {...base} width={p.size || 15} height={p.size || 15}>
-    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5" />
-    <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19" />
-  </svg>
-);

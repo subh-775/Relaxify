@@ -23,6 +23,9 @@ import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
 import {RecentsGrid} from '../components/RecentsGrid';
+import {HomeCardCarousel} from '../components/HomeCards';
+import {shapedRow} from '../components/HomeRows';
+import type {Collection} from '../collections';
 import {
   DRAWER_EDGE,
   DRAWER_GRAB,
@@ -32,6 +35,8 @@ import {
   shouldOpen,
 } from '../drawer';
 import {BOTTOM_INSET} from '../layout';
+import {useListEnd} from '../components/UpdateModal';
+import {homeLanguageParam, useSettings} from '../store';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -72,6 +77,14 @@ type Props = {
   onEndDrag: (open: boolean, velocity: number) => void;
   /** Home has something to show — the app lifts its splash on this. */
   onReady?: () => void;
+  /** Open the Recap, from the teaser card. */
+  onOpenRecap?: () => void;
+  /** Open the Jam screen, from the Jam card. */
+  onOpenJam?: () => void;
+  /** Start importing a Spotify link, from the import card. */
+  onImportSpotify?: (url: string) => void;
+  /** Open a playlist or album, from the Continue and import cards. */
+  onOpenCollection?: (c: Collection) => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
    *  greeting takes new colours then. */
@@ -115,9 +128,15 @@ export const HomeScreen = React.memo(function HomeScreen({
   onBeginDrag,
   onEndDrag,
   onReady,
+  onOpenRecap,
+  onOpenJam,
+  onImportSpotify,
+  onOpenCollection,
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
+  // Room for the update strip too, while it is up.
+  const listEnd = useListEnd();
   // Subscribed, so cached rows appear the moment disk hydration finishes even
   // if that lands after first render.
   const cachedRows = useStoreValue(homeCache);
@@ -128,6 +147,13 @@ export const HomeScreen = React.memo(function HomeScreen({
   // Empty rows used to render as null inside the ScrollView. As list DATA they
   // would each cost a cell for nothing, and they throw the windowing counts off.
   const rows = useMemo(() => allRows.filter(r => !!r.items?.length), [allRows]);
+  // Before anything has been played, the Continue card offers the top chart
+  // in the chosen languages instead of disappearing.
+  const starter = useMemo(() => {
+    const charts = rows.find(r => r.title === 'Charts')?.items ?? [];
+    const all = [...charts, ...rows.flatMap(r => r.items)];
+    return all.find(i => i.type === 'playlist' && !!i.perma_url);
+  }, [rows]);
   const phase: 'boot' | 'ready' | 'error' = allRows.length
     ? 'ready'
     : error
@@ -221,7 +247,7 @@ export const HomeScreen = React.memo(function HomeScreen({
       if (!(await waitForBackend())) {
         throw new Error('The music engine did not start.');
       }
-      const data = await getHome();
+      const data = await getHome(homeLanguageParam());
       if (data.length) {
         setFresh(data);
         homeCache.set(trimForCache(data)); // seed the next launch
@@ -235,9 +261,11 @@ export const HomeScreen = React.memo(function HomeScreen({
     }
   }, []);
 
+  // Again whenever the languages change (Settings, or the welcome).
+  const langs = useSettings().homeLanguages.join(',');
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, langs]);
 
   // Claiming the left strip back from Android's system back gesture happens in
   // onLayout, below — NOT here. Home mounts while the splash is still up, and
@@ -278,6 +306,18 @@ export const HomeScreen = React.memo(function HomeScreen({
    */
   const header = (
     <>
+      {/* The cards, one shape, one swiped row with dots (HomeCards). */}
+      {onOpenRecap && onOpenJam && onImportSpotify && onOpenCollection && (
+        <HomeCardCarousel
+          onOpenRecap={onOpenRecap}
+          onOpenJam={onOpenJam}
+          onImport={onImportSpotify}
+          onOpenImport={onImportSpotify}
+          onOpenCollection={onOpenCollection}
+          starter={starter}
+          onOpenStarter={onPickTrack}
+        />
+      )}
       {/* Recents: the last nine songs, as the YouTube Music speed dial. */}
       <RecentsGrid recent={recent} onPlay={onPlayTrack} />
     </>
@@ -317,7 +357,7 @@ export const HomeScreen = React.memo(function HomeScreen({
             data={rows}
             keyExtractor={row => row.title}
             renderItem={({item}) => <Row row={item} onPick={onPickTrack} />}
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, listEnd]}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             bounces={false}
@@ -334,6 +374,12 @@ export const HomeScreen = React.memo(function HomeScreen({
 function Row({row, onPick}: {row: HomeRow; onPick: (i: HomeItem) => void}) {
   if (!row.items?.length) {
     return null;
+  }
+  // Trending, New releases, Charts and Top playlists each have their own
+  // shape (HomeRows); anything else is the plain strip below.
+  const Shaped = shapedRow(row.title);
+  if (Shaped) {
+    return <Shaped row={row} onPick={onPick} />;
   }
   return (
     <View style={styles.row}>
