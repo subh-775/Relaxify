@@ -593,6 +593,11 @@ export async function restoreSession(): Promise<boolean> {
  * instead, so by the time ExoPlayer actually asks, the answer is often
  * already cached.
  */
+/** Resolve a song's stream ahead of playing it (Jam warms the next song). */
+export function warmTrack(track: Track | null | undefined): void {
+  warmStream(track, currentQuality());
+}
+
 function warmStream(track: Track | null | undefined, bitrate: number): void {
   if (!track || track.file_path) {
     return; // downloaded file — nothing to resolve
@@ -1029,6 +1034,12 @@ export function useActiveTrack(): RNTPTrack | null {
 export async function skipNext(): Promise<void> {
   cancelCrossfade(); // a manual skip isn't a crossfade — kill any overlap
   markManualTrackChange();
+  // Nothing after this song: find some before skipping, or Next was a dead
+  // button at the end of the queue.
+  if (activeIndex >= engineQueue.length - 1) {
+    await topUpFromRadio(true);
+    await refreshEngineMirror();
+  }
   publishStep(1); // show the committed track NOW, before the engine catches up
   // publishStep already moved the mirror — warm the track it's now pointing
   // at before the engine even starts skipping to it.
@@ -1350,7 +1361,11 @@ export function holdAutoplay(held: boolean): void {
   autoplayHeld = held;
 }
 
-export async function topUpFromRadio(): Promise<void> {
+/**
+ * `force` is a person pressing Next with nothing queued: that is a choice, so
+ * it goes ahead even while a Jam holds autoplay (the Jam hears about it).
+ */
+export async function topUpFromRadio(force = false): Promise<void> {
   // buildingQueue: playTrack starts the song on a one-track queue and appends
   // the rest a moment later. Without this, a watcher tick landing in that gap
   // sees "only one track left" and appends radio picks BETWEEN the tapped song
@@ -1361,7 +1376,7 @@ export async function topUpFromRadio(): Promise<void> {
   if (
     radioBusy ||
     buildingQueue ||
-    autoplayHeld ||
+    (autoplayHeld && !force) ||
     !readSettings().autoplay ||
     sleepMode() === 'endOfTrack'
   ) {
@@ -1388,26 +1403,34 @@ export async function topUpFromRadio(): Promise<void> {
     if (!queue.length || index == null || queue.length - index > 3) {
       return;
     }
-    const seed =
-      sourceTrackFor(queue[index]) ?? queueSource[queueSource.length - 1];
-    if (!seed) {
-      return;
+    // The song playing now first, then the two before it: a song the radio
+    // knows nothing about must not end the music, which is what a single
+    // seed with no answer used to do.
+    const seeds = [queue[index], queue[index - 1], queue[index - 2]]
+      .map(q => sourceTrackFor(q ?? null))
+      .filter((t): t is Track => !!t);
+    if (!seeds.length && queueSource.length) {
+      seeds.push(queueSource[queueSource.length - 1]);
     }
     // getDownloadKey, not getTrackId: the ISRC is part of getTrackId, and a
     // radio pick arrives unenriched while the same song already in the queue
     // came from a catalogue lookup WITH one. Two ids for one song is a dedupe
     // that passes everything through.
     const seen = new Set(queueSource.map(getDownloadKey));
-    const picks: Track[] = (
-      await getRadio(cleanText(seed.title), cleanText(seed.artist))
-    )
-      .map(raw => normalizeTrack(raw))
-      .filter(
-        (t): t is Track =>
-          !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
-      )
-      .slice(0, 8)
-      .map(t => ({...t, _autoplay: true}));
+    let picks: Track[] = [];
+    for (const seed of seeds) {
+      picks = (await getRadio(cleanText(seed.title), cleanText(seed.artist)))
+        .map(raw => normalizeTrack(raw))
+        .filter(
+          (t): t is Track =>
+            !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
+        )
+        .slice(0, 8)
+        .map(t => ({...t, _autoplay: true}));
+      if (picks.length) {
+        break;
+      }
+    }
     const items = picks
       .map(t => ({t, q: toQueueItem(t, currentQuality())}))
       .filter(x => x.q !== null);

@@ -77,7 +77,15 @@ module.exports = async function playbackService() {
       markManualTrackChange();
       await TrackPlayer.skipToNext();
     } catch {
-      /* end of queue — nothing to skip to */
+      // End of the queue: find similar songs first, as the app's own Next
+      // button does (skipNext), then move on to them.
+      try {
+        await topUpFromRadio(true);
+        await TrackPlayer.skipToNext();
+        await playWithFade();
+      } catch {
+        /* still nothing to skip to */
+      }
     }
   });
 

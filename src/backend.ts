@@ -485,6 +485,8 @@ export type ImportSnapshot = {
   missing: string[];
   finished: boolean;
   error: string | null;
+  /** Each song as it was checked, in the order the checks finished. */
+  checked?: {title: string; artist: string; found: boolean; artwork_url?: string}[];
 };
 
 /** Poll (and on the first call, start) the background import job for `url`.

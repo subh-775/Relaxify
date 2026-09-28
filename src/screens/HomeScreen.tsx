@@ -23,10 +23,9 @@ import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
 import {RecentsGrid} from '../components/RecentsGrid';
-import {RecapTeaser} from '../components/RecapTeaser';
-import {ContinueCard, ImportCard, JamCard} from '../components/HomeCards';
+import {HomeCardCarousel} from '../components/HomeCards';
 import {shapedRow} from '../components/HomeRows';
-import type {LastCollection} from '../lastCollection';
+import type {Collection} from '../collections';
 import {
   DRAWER_EDGE,
   DRAWER_GRAB,
@@ -83,8 +82,8 @@ type Props = {
   onOpenJam?: () => void;
   /** Start importing a Spotify link, from the import card. */
   onImportSpotify?: (url: string) => void;
-  /** Reopen the last playlist or album, from the Continue card. */
-  onOpenCollection?: (c: LastCollection) => void;
+  /** Open a playlist or album, from the Continue and import cards. */
+  onOpenCollection?: (c: Collection) => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
    *  greeting takes new colours then. */
@@ -297,14 +296,16 @@ export const HomeScreen = React.memo(function HomeScreen({
    */
   const header = (
     <>
-      {/* The cards, one shape (FeatureCard), stacked: Recap, Jam, the
-          Spotify import until it has been used, the last playlist or album. */}
-      <View style={styles.cards}>
-        {onOpenRecap && <RecapTeaser onOpen={onOpenRecap} />}
-        {onOpenJam && <JamCard onOpen={onOpenJam} />}
-        {onImportSpotify && <ImportCard onImport={onImportSpotify} />}
-        {onOpenCollection && <ContinueCard onOpen={onOpenCollection} />}
-      </View>
+      {/* The cards, one shape, one swiped row with dots (HomeCards). */}
+      {onOpenRecap && onOpenJam && onImportSpotify && onOpenCollection && (
+        <HomeCardCarousel
+          onOpenRecap={onOpenRecap}
+          onOpenJam={onOpenJam}
+          onImport={onImportSpotify}
+          onOpenImport={onImportSpotify}
+          onOpenCollection={onOpenCollection}
+        />
+      )}
       {/* Recents: the last nine songs, as the YouTube Music speed dial. */}
       <RecentsGrid recent={recent} onPlay={onPlayTrack} />
     </>
@@ -462,7 +463,6 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   row: {marginTop: 22},
-  cards: {paddingTop: 4, paddingBottom: 6},
   rowTitle: {
     ...T.rowTitle,
     color: C.text,

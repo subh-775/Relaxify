@@ -30,6 +30,7 @@ export function FeatureCard({
   art,
   spin = true,
   label,
+  width,
   children,
 }: {
   pal: Pal;
@@ -43,6 +44,8 @@ export function FeatureCard({
   /** Turn the artwork slowly. */
   spin?: boolean;
   label?: string;
+  /** Set inside the carousel: the card's own width, no page margin. */
+  width?: number;
   /** Replaces the pill row (the Spotify card's inline link box). */
   children?: React.ReactNode;
 }) {
@@ -68,7 +71,11 @@ export function FeatureCard({
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
-      style={[styles.card, {backgroundColor: pal.bg}]}
+      style={[
+        styles.card,
+        {backgroundColor: pal.bg},
+        width != null && [styles.inRow, {width}],
+      ]}
       accessibilityRole="button"
       accessibilityLabel={label ?? `${kicker}. ${title}. ${action}`}>
       {!!art && (
@@ -117,6 +124,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'space-between',
   },
+  inRow: {marginHorizontal: 0},
   art: {
     position: 'absolute',
     right: -34,

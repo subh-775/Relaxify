@@ -19,8 +19,10 @@
  * locally with their own autoplay held, so when a song ends they move on in
  * step even with the screen off, without asking the network.
  *
- * Phones check the record every POLL_MS while the app is open, and at once on
- * every track change (a native event, so also with the screen off). Clocks
+ * Changes arrive through the database's live stream (server-sent events, read
+ * with an XMLHttpRequest that reports text as it comes), about a second after
+ * they are written; a slow poll backs it up, and every track change fetches
+ * at once (a native event, so also with the screen off). Clocks
  * differ between phones, so positions are timed against the database's own
  * clock, measured once when joining.
  *
@@ -28,7 +30,7 @@
  * a Jam cannot be found without being given its code. The database rules
  * (firebase/database.rules.json) allow nothing else.
  */
-import {AppState} from 'react-native';
+import {AppState, Platform} from 'react-native';
 import {useSyncExternalStore} from 'react';
 import {search, type Track} from './backend';
 import {
@@ -40,6 +42,8 @@ import {
   peekAdjacentTrack,
   playTrack,
   sourceTrackFor,
+  topUpFromRadio,
+  warmTrack,
 } from './player';
 import {getTrackId} from './tracks';
 import {logEvent} from './analytics';
@@ -50,7 +54,8 @@ export const JAM_DB =
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LEN = 6;
-const POLL_MS = 1500;
+/** A slow backup: changes arrive through the live stream (listen). */
+const POLL_MS = 5000;
 /** Past this much disagreement, a following phone jumps to the Jam's spot. */
 const DRIFT_S = 1.5;
 /** Local player events this soon after following the Jam are the echo of
@@ -115,6 +120,42 @@ let echoUntil = 0;
 let poll: ReturnType<typeof setInterval> | null = null;
 let lastBeat = 0;
 let unsubs: (() => void)[] = [];
+let stream: XMLHttpRequest | null = null;
+
+/**
+ * The live stream: the database pushes an event whenever the Jam changes, and
+ * each event triggers a fetch of the whole (small) record. Uncompressed on
+ * purpose: gzip makes the server hold events back until a buffer fills.
+ * Reopened when it drops, and every half megabyte, since the text piles up.
+ */
+function listen(code: string): void {
+  const xhr = new XMLHttpRequest();
+  stream = xhr;
+  let seen = 0;
+  xhr.onprogress = () => {
+    const text = xhr.responseText || '';
+    const chunk = text.slice(seen);
+    seen = text.length;
+    if (/event: (put|patch)/.test(chunk)) {
+      sync().catch(() => {});
+    }
+    if (text.length > 512 * 1024) {
+      xhr.abort();
+    }
+  };
+  const again = () => {
+    if (stream === xhr && view?.code === code) {
+      setTimeout(() => stream === xhr && listen(code), 2000);
+    }
+  };
+  xhr.onerror = again;
+  xhr.onload = again;
+  xhr.onabort = again;
+  xhr.open('GET', url(`jams/${code}`));
+  xhr.setRequestHeader('Accept', 'text/event-stream');
+  xhr.setRequestHeader('Accept-Encoding', 'identity');
+  xhr.send();
+}
 
 // ── REST ─────────────────────────────────────────────────────────────────
 const url = (path: string) => `${JAM_DB}/${path}.json`;
@@ -130,6 +171,12 @@ async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T>
     throw new Error(`Jam ${method} ${res.status}`);
   }
   return (await res.json()) as T;
+}
+
+/** The name a phone shows in a Jam when nobody typed one: its model. */
+function phoneName(): string {
+  const c = Platform.constants as {Model?: string};
+  return (c?.Model || 'Friend').slice(0, 24);
 }
 
 export function newCode(rand: () => number = Math.random): string {
@@ -223,7 +270,9 @@ async function playable(t: Track): Promise<Track> {
 
 async function follow(now: Now): Promise<void> {
   echoUntil = Date.now() + ECHO_MS;
-  holdAutoplay(now.by !== myId);
+  // Held only while someone else is choosing; with no chooser (they left),
+  // this phone plays on by itself.
+  holdAutoplay(!!now.by && now.by !== myId);
   const active = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
   const expected =
     now.pos + (now.playing ? Math.max(0, serverNow() - now.at) / 1000 : 0);
@@ -232,6 +281,9 @@ async function follow(now: Now): Promise<void> {
     const next = now.next ? await playable(now.next) : null;
     await playTrack(track, next ? [track, next] : [track]);
     echoUntil = Date.now() + ECHO_MS;
+    // Start resolving the song after this one now, so when the Jam moves on
+    // this phone is not the one everyone waits for.
+    warmTrack(next);
     if (expected > 2) {
       await TrackPlayer.seekTo(expected);
     }
@@ -359,7 +411,7 @@ function watchLocal(code: string): void {
   }, 1000);
   // A following phone that ran out of songs asks the Jam what is next.
   const q = TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
-    sync().catch(() => {});
+    takeOverIfStuck(code).catch(() => {});
   });
   const c = AppState.addEventListener('change', s => {
     if (s === 'active') {
@@ -375,12 +427,43 @@ function watchLocal(code: string): void {
   ];
 }
 
+/**
+ * This phone ran out of songs. If the Jam has moved on, follow it; if not,
+ * whoever was choosing has left or stopped, so this phone carries the Jam on:
+ * similar songs, then tells everyone. Without this a Jam whose chooser left
+ * went silent on every other phone, with Next doing nothing.
+ */
+async function takeOverIfStuck(code: string): Promise<void> {
+  const rec = await call<Record_ | null>(`jams/${code}`).catch(() => null);
+  if (!view || view.code !== code) {
+    return;
+  }
+  const now = rec?.now;
+  const active = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
+  if (now && now.seq > appliedSeq && now.by !== myId && !same(active, now.track)) {
+    appliedSeq = now.seq;
+    await follow(now);
+    return;
+  }
+  holdAutoplay(false);
+  await topUpFromRadio(true);
+  try {
+    await TrackPlayer.skipToNext();
+    await TrackPlayer.play();
+    echoUntil = 0;
+    await publish(code);
+  } catch {
+    // Nothing to play on even after asking the radio: stay stopped.
+  }
+}
+
 function begin(code: string, host: boolean): void {
   view = {code, me: myId, host, members: [], now: null, queue: []};
   appliedSeq = -1;
   emit();
   watchLocal(code);
   poll = setInterval(() => sync().catch(() => {}), POLL_MS);
+  listen(code);
   sync().catch(() => {});
 }
 
@@ -391,6 +474,9 @@ function stop(): void {
   }
   unsubs.forEach(u => u());
   unsubs = [];
+  const s = stream;
+  stream = null;
+  s?.abort();
   holdAutoplay(false);
   view = null;
   emit();
@@ -399,7 +485,7 @@ function stop(): void {
 // ── what the Jam screen calls ────────────────────────────────────────────
 export async function startJam(name: string): Promise<string> {
   myId = myId || newCode();
-  myName = name.trim() || 'Friend';
+  myName = name.trim() || phoneName();
   let code = newCode();
   for (let i = 0; i < 3; i++) {
     const taken = await call<Record_ | null>(`jams/${code}/expiresAt`).catch(() => null);
@@ -429,7 +515,7 @@ export async function joinJam(raw: string, name: string): Promise<boolean> {
     return false;
   }
   myId = myId || newCode();
-  myName = name.trim() || 'Friend';
+  myName = name.trim() || phoneName();
   await call(`jams/${code}/members/${myId}`, 'PUT', {name: myName, seen: SERVER_TIME});
   await measureOffset(code);
   begin(code, false);
@@ -439,8 +525,13 @@ export async function joinJam(raw: string, name: string): Promise<boolean> {
 
 export async function leaveJam(): Promise<void> {
   const v = view;
+  const choosing = v?.now?.by === myId;
   stop();
   if (v) {
+    if (!v.host && choosing) {
+      // Nobody is choosing now; the next phone to run out carries it on.
+      await call(`jams/${v.code}/now/by`, 'PUT', '').catch(() => {});
+    }
     if (v.host) {
       await call(`jams/${v.code}`, 'DELETE').catch(() => {});
     } else {

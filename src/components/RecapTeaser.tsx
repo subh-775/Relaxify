@@ -28,7 +28,13 @@ function duration(minutes: number): string {
   return h ? `${h} h ${m} min` : `${m} min`;
 }
 
-export function RecapTeaser({onOpen}: {onOpen: () => void}) {
+export function RecapTeaser({
+  onOpen,
+  width,
+}: {
+  onOpen: () => void;
+  width?: number;
+}) {
   const stats = useStatsState();
   const week = weekOf(Date.now());
   const sum = useMemo(() => summarizeWeek(stats.log, Date.now()), [stats]);
@@ -51,6 +57,7 @@ export function RecapTeaser({onOpen}: {onOpen: () => void}) {
       }
       action="Open Recap"
       onPress={onOpen}
+      width={width}
       art={
         <Svg width={CARD_ART} height={CARD_ART}>
           <Path d={BURST} fill={pal.a} />

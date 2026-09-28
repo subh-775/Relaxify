@@ -1714,6 +1714,9 @@ def _import_snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
             "total": job["total"], "done": job["done"], "matched": job["matched"],
             "tracks": job["tracks"], "missing": job["missing"],
             "finished": job["finished"], "error": job["error"],
+            # Each song as it is checked, in the order the checks finish, so
+            # the import screen can fill in live instead of all at the end.
+            "checked": list(job.get("checked", [])),
         }
 
 
@@ -1748,6 +1751,13 @@ def _run_import(kind: str, sid: str, job: Dict[str, Any]) -> None:
                 matched[i] = None
             with _import_lock:
                 job["done"] += 1
+                job["matched"] += 1 if matched[i] else 0
+                job.setdefault("checked", []).append({
+                    "title": items[i]["title"],
+                    "artist": items[i]["artist"],
+                    "found": bool(matched[i]),
+                    "artwork_url": (matched[i] or {}).get("artwork_url"),
+                })
 
     with _import_lock:
         job["tracks"] = [t for t in matched if t]          # original order preserved
@@ -1775,7 +1785,8 @@ def spotify_import():
         # Start a fresh job if none exists, or if the last attempt failed (retry).
         if job is None or (job["finished"] and job["error"]):
             job = {"name": "", "image": "", "total": 0, "done": 0, "matched": 0,
-                   "tracks": [], "missing": [], "finished": False, "error": None}
+                   "tracks": [], "missing": [], "finished": False, "error": None,
+                   "checked": []}
             _import_jobs[url] = job
             # Evict oldest finished jobs so the dict can't grow without bound.
             if len(_import_jobs) > _IMPORT_JOBS_MAX:

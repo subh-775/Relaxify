@@ -7,7 +7,7 @@
  * afterwards exactly like one you made yourself. There is only one kind of
  * playlist in this app.
  */
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useEffect} from 'react';
 import {
   FlatList,
   Image,
@@ -16,14 +16,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {Check, ChevronLeft, Play, Plus} from '../icons';
+import {Check, ChevronLeft, Play} from '../icons';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
 import {cleanText, getTrackId, normalizeTracks} from '../tracks';
 import {startImport, useSpotifyImport} from '../spotifyImport';
-import {addTracksToPlaylist, createPlaylist} from '../playlists';
 import {TrackRow} from '../components/TrackRow';
-import {toast} from '../toast';
 import {BOTTOM_INSET} from '../layout';
 
 export function SpotifyImportScreen({
@@ -35,9 +33,6 @@ export function SpotifyImportScreen({
   onClose: () => void;
   onPlay: (track: Track, context: Track[]) => void;
 }) {
-  // Track WHICH url was saved rather than a bare boolean, so "saved" resets by
-  // itself when a different playlist is opened.
-  const [savedUrl, setSavedUrl] = useState<string | null>(null);
   const data = useSpotifyImport();
 
   useEffect(() => {
@@ -56,18 +51,8 @@ export function SpotifyImportScreen({
     active && active.total > 0
       ? Math.round((active.done / active.total) * 100)
       : 0;
-  const saved = savedUrl === url;
-
-  const save = useCallback(() => {
-    const pl = createPlaylist(active?.name || 'Spotify playlist');
-    if (!pl) {
-      return;
-    }
-    // One write for the whole tracklist rather than N — this can be 100 songs.
-    addTracksToPlaylist(pl.id, tracks);
-    setSavedUrl(url);
-    toast(`Saved "${pl.name}" to your library`);
-  }, [active?.name, tracks, url]);
+  // Newest check first, so the list grows at the top where the eye is.
+  const checked = [...(active?.checked ?? [])].reverse();
 
   return (
     <View style={styles.wrap}>
@@ -96,7 +81,7 @@ export function SpotifyImportScreen({
       </View>
 
       {loading && (
-        <View style={styles.center}>
+        <View style={styles.loadingTop}>
           <View style={styles.barTrack}>
             <View
               style={[
@@ -111,10 +96,39 @@ export function SpotifyImportScreen({
               : 'Reading the playlist…'}
           </Text>
           <Text style={styles.hint}>
-            Finding each song across your music sources. You can keep browsing —
-            this carries on in the background.
+            Keep browsing: this carries on in the background, and the playlist
+            is saved to Your Library when it finishes.
           </Text>
         </View>
+      )}
+      {loading && (
+        <FlatList
+          data={checked}
+          keyExtractor={(c, i) => `${c.title}|${c.artist}|${i}`}
+          style={styles.checked}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          renderItem={({item}) => (
+            <View style={styles.checkRow}>
+              {item.artwork_url ? (
+                <Image source={{uri: item.artwork_url}} style={styles.checkArt} />
+              ) : (
+                <View style={[styles.checkArt, styles.checkArtEmpty]} />
+              )}
+              <View style={styles.checkText}>
+                <Text style={styles.checkTitle} numberOfLines={1}>
+                  {cleanText(item.title)}
+                </Text>
+                <Text style={styles.checkSub} numberOfLines={1}>
+                  {cleanText(item.artist)}
+                </Text>
+              </View>
+              <Text style={item.found ? styles.found : styles.notFound}>
+                {item.found ? 'Found' : 'Not found'}
+              </Text>
+            </View>
+          )}
+        />
       )}
 
       {!loading && !!active?.error && (
@@ -129,20 +143,13 @@ export function SpotifyImportScreen({
       {!loading && !active?.error && (
         <>
           <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={save}
-              disabled={saved || !tracks.length}
-              activeOpacity={0.8}
-              style={[styles.saveBtn, saved && styles.saveBtnDone]}>
-              {saved ? (
-                <Check size={17} color={C.text} />
-              ) : (
-                <Plus size={17} color={C.text} />
-              )}
+            {/* Saved by itself when the import finished (spotifyImport). */}
+            <View style={[styles.saveBtn, styles.saveBtnDone]}>
+              <Check size={17} color={C.text} />
               <Text style={styles.saveText}>
-                {saved ? 'Saved to library' : 'Add to library'}
+                {tracks.length ? 'Saved to Your Library' : 'Nothing to save'}
               </Text>
-            </TouchableOpacity>
+            </View>
             <TouchableOpacity
               onPress={() => tracks.length && onPlay(tracks[0], tracks)}
               disabled={!tracks.length}
@@ -184,6 +191,22 @@ export function SpotifyImportScreen({
 }
 
 const styles = StyleSheet.create({
+  checked: {flex: 1, marginTop: 12},
+  loadingTop: {alignItems: 'center', paddingHorizontal: 40, paddingTop: 12},
+  checkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: S.gutter,
+    paddingVertical: 7,
+  },
+  checkArt: {width: 40, height: 40, borderRadius: 6},
+  checkArtEmpty: {backgroundColor: C.surfaceHi},
+  checkText: {flex: 1, minWidth: 0},
+  checkTitle: {color: C.text, fontSize: 14, fontWeight: '700'},
+  checkSub: {color: C.sub, fontSize: 12, marginTop: 1},
+  found: {color: '#1ed760', fontSize: 11.5, fontWeight: '800'},
+  notFound: {color: C.danger, fontSize: 11.5, fontWeight: '800'},
   wrap: {flex: 1, backgroundColor: C.bg},
   bar: {flexDirection: 'row', paddingTop: 12, paddingHorizontal: 8},
   barBtn: {padding: 4},

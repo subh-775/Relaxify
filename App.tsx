@@ -378,6 +378,10 @@ function Shell() {
     setImportUrl(null);
     setSettingsOpen(false);
     setActivity(null);
+    // Every full-screen overlay closes on a tab change. The Equalizer and Jam
+    // were missing here, so the Equalizer stayed on top of every tab.
+    setEqOpen(false);
+    setJamOpen(false);
   }, []);
 
   /**

@@ -92,11 +92,13 @@ export function JamScreen({onClose}: {onClose: () => void}) {
               add songs. Friends need Relaxify too.
             </Text>
 
-            <Text style={styles.label}>Your name in the Jam</Text>
+            <Text style={styles.label}>
+              Your name in the Jam <Text style={styles.optional}>(optional)</Text>
+            </Text>
             <TextInput
               value={name}
               onChangeText={v => savedName.set(v.slice(0, 24))}
-              placeholder="Your name"
+              placeholder="Your phone's name is used if empty"
               placeholderTextColor={C.faint}
               style={styles.input}
             />
@@ -247,6 +249,7 @@ const styles = StyleSheet.create({
   body: {padding: S.gutter, paddingBottom: BOTTOM_INSET + 20, gap: 10},
   lede: {color: C.sub, fontSize: 14.5, lineHeight: 21, marginBottom: 8},
   label: {color: C.text, fontSize: 13.5, fontWeight: '800'},
+  optional: {color: C.faint, fontWeight: '600'},
   gap: {marginTop: 14},
   input: {
     backgroundColor: C.surfaceHi,
