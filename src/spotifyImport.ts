@@ -9,6 +9,11 @@
 import {useSyncExternalStore} from 'react';
 import {importSpotify, type ImportSnapshot} from './backend';
 import {logEvent} from './analytics';
+import {createStore, useStoreValue} from './storage';
+
+/** Set by the first import that brought songs in; Home's card then goes. */
+const importedOnce = createStore<boolean>('mp.spotifyImported.v1', false, raw => raw === true);
+export const useImportedOnce = () => useStoreValue(importedOnce);
 
 export type ImportState = ImportSnapshot & {url: string | null};
 
@@ -51,6 +56,15 @@ function stop() {
  * NOT restart the backend job, so re-entering the screen picks up where it got
  * to rather than throwing away the work.
  */
+/** A public Spotify playlist/album link (or spotify: URI). */
+export function isSpotifyUrl(text: string): boolean {
+  const s = (text || '').trim();
+  return (
+    /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(playlist|album)\//i.test(s) ||
+    /^spotify:(playlist|album):/i.test(s)
+  );
+}
+
 export function startImport(url: string): void {
   if (!url || (state.url === url && !state.error)) {
     return;
@@ -68,6 +82,9 @@ export function startImport(url: string): void {
       }
       state = {url, ...res};
       listeners.forEach(l => l());
+      if (res.finished && !res.error && res.matched > 0) {
+        importedOnce.set(true); // Home's import card has done its job
+      }
       if (res.finished || res.error) {
         stop();
       }

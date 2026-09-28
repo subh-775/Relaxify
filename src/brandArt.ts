@@ -22,6 +22,10 @@ export const PALS: Pal[] = [
   {bg: '#1FC3A6', ink: DARK, a: '#FF5A4E', b: '#FFE14D', c: '#6C2BFF'},
 ];
 
+/** The Home cards' own colours (HomeCards), fixed so the stack never repeats
+ *  one; the Recap card's weekly colour is picked from the rest. */
+export const CARD_PALS = {jam: PALS[1], import: PALS[3], continue: PALS[4]};
+
 /** The bright palettes only: for small tiles, where a dark one reads as a hole. */
 export const BRIGHT_PALS = PALS.filter(p => p.ink === DARK);
 

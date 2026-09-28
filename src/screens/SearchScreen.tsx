@@ -45,6 +45,9 @@ import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
+import {isSpotifyUrl} from '../spotifyImport';
+
+export {isSpotifyUrl};
 import {BRIGHT_PALS, blob} from '../brandArt';
 import Svg, {
   Circle,
@@ -54,14 +57,6 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 
-/** A public Spotify playlist/album link (or spotify: URI). */
-export function isSpotifyUrl(text: string): boolean {
-  const s = (text || '').trim();
-  return (
-    /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(playlist|album)\//i.test(s) ||
-    /^spotify:(playlist|album):/i.test(s)
-  );
-}
 
 const DEBOUNCE_MS = 180;
 

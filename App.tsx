@@ -16,6 +16,7 @@ import {RecapScreen} from './src/screens/RecapScreen';
 import {JamScreen} from './src/screens/JamScreen';
 import {DOCS_URL} from './src/links';
 import {startDeviceMemory} from './src/deviceMemory';
+import {rememberCollection} from './src/lastCollection';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
 import {
@@ -492,6 +493,7 @@ function Shell() {
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const closeRecap = useCallback(() => setActivity(null), []);
   const closeJam = useCallback(() => setJamOpen(false), []);
+  const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
 
   /**
@@ -664,6 +666,9 @@ function Shell() {
             onEndDrag={endDrawerDrag}
             onReady={onHomeReady}
             onOpenRecap={openRecap}
+            onOpenJam={openJam}
+            onImportSpotify={setImportUrl}
+            onOpenCollection={openFromLibrary}
             visible={tab === 'home'}
           />
         </View>
@@ -698,7 +703,11 @@ function Shell() {
               // that can tell the library where playback started. Everything
               // else — search, radio, a tap on Home — passes nothing, which is
               // the honest answer for a queue that came from no collection.
-              onPlay={(t, ctx) => play(t, ctx, collection.id)}
+              onPlay={(t, ctx) => {
+                // Home's Continue card reopens whatever was played from last.
+                rememberCollection(collection);
+                play(t, ctx, collection.id);
+              }}
               onMenu={openSheet}
               onOpenAlbum={openAlbumByName}
               onChanged={() => {

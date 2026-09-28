@@ -7,23 +7,14 @@
  * and is different next week. A week with nothing played yet invites a first
  * song rather than showing zeros.
  */
-import React, {useEffect, useMemo, useRef} from 'react';
-import {
-  Animated,
-  Easing,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, {useMemo} from 'react';
 import Svg, {Circle, Path} from 'react-native-svg';
-import {S} from '../theme';
-import {BRIGHT_PALS, burst} from '../brandArt';
+import {BRIGHT_PALS, CARD_PALS, burst} from '../brandArt';
+import {CARD_ART, FeatureCard} from './FeatureCard';
 import {dayKey, summarizeWeek, useStatsState} from '../stats';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const ART = 190;
-const BURST = burst(ART / 2, ART / 2, 88, 54, 12);
+const BURST = burst(CARD_ART / 2, CARD_ART / 2, 88, 54, 12);
 
 /** Monday of the week `at` falls in, as a day key. Exported for the test. */
 export function weekOf(at: number): string {
@@ -42,95 +33,30 @@ export function RecapTeaser({onOpen}: {onOpen: () => void}) {
   const week = weekOf(Date.now());
   const sum = useMemo(() => summarizeWeek(stats.log, Date.now()), [stats]);
   // Stable for the week: the Monday's date picks the palette.
-  const pal = BRIGHT_PALS[Number(week.replace(/-/g, '')) % BRIGHT_PALS.length];
-
-  const turn = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const spin = Animated.loop(
-      Animated.timing(turn, {
-        toValue: 1,
-        duration: 30000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    spin.start();
-    return () => spin.stop();
-  }, [turn]);
-
+  // Never the colour of another Home card (see brandArt CARD_PALS).
+  const taken = Object.values(CARD_PALS).map(x => x.bg);
+  const pals = BRIGHT_PALS.filter(x => !taken.includes(x.bg));
+  const pal = pals[Number(week.replace(/-/g, '')) % pals.length];
   const empty = sum.songs === 0;
-  const ink = {color: pal.ink};
   return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={onOpen}
-      style={[styles.card, {backgroundColor: pal.bg}]}
-      accessibilityRole="button"
-      accessibilityLabel={
+    <FeatureCard
+      pal={pal}
+      kicker="Your week in music"
+      title={
         empty
-          ? 'Your week in music. Open Recap'
-          : `Your week in music: ${sum.songs} songs. Open Recap`
-      }>
-      <Animated.View
-        style={[
-          styles.art,
-          {
-            transform: [
-              {
-                rotate: turn.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '360deg'],
-                }),
-              },
-            ],
-          },
-        ]}
-        pointerEvents="none">
-        <Svg width={ART} height={ART}>
-          <Path d={BURST} fill={pal.a} />
-          <Circle cx={ART / 2} cy={ART / 2} r={34} fill={pal.b} />
-        </Svg>
-      </Animated.View>
-      <Text style={[styles.kicker, ink]}>Your week in music</Text>
-      <Text style={[styles.big, ink]}>
-        {empty
-          ? 'Play a song\nto start it'
-          : `${sum.songs} ${sum.songs === 1 ? 'song' : 'songs'},\n${duration(
+          ? 'Play a song to start it'
+          : `${sum.songs} ${sum.songs === 1 ? 'song' : 'songs'}, ${duration(
               sum.minutes,
-            )}`}
-      </Text>
-      <View style={[styles.go, {backgroundColor: pal.ink}]}>
-        <Text style={[styles.goText, {color: pal.bg}]}>Open Recap</Text>
-      </View>
-    </TouchableOpacity>
+            )}`
+      }
+      action="Open Recap"
+      onPress={onOpen}
+      art={
+        <Svg width={CARD_ART} height={CARD_ART}>
+          <Path d={BURST} fill={pal.a} />
+          <Circle cx={CARD_ART / 2} cy={CARD_ART / 2} r={34} fill={pal.b} />
+        </Svg>
+      }
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    marginHorizontal: S.gutter,
-    marginTop: 4,
-    marginBottom: 18,
-    borderRadius: 16,
-    padding: 16,
-    overflow: 'hidden',
-    gap: 2,
-  },
-  art: {position: 'absolute', right: -34, top: -38, width: ART, height: ART},
-  kicker: {fontSize: 13, fontWeight: '800'},
-  big: {
-    fontSize: 30,
-    lineHeight: 33,
-    fontWeight: '800',
-    letterSpacing: -1.2,
-    maxWidth: '70%',
-  },
-  go: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-  },
-  goText: {fontSize: 13.5, fontWeight: '800'},
-});

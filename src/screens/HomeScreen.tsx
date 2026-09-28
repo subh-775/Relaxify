@@ -24,6 +24,9 @@ import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
 import {RecentsGrid} from '../components/RecentsGrid';
 import {RecapTeaser} from '../components/RecapTeaser';
+import {ContinueCard, ImportCard, JamCard} from '../components/HomeCards';
+import {shapedRow} from '../components/HomeRows';
+import type {LastCollection} from '../lastCollection';
 import {
   DRAWER_EDGE,
   DRAWER_GRAB,
@@ -76,6 +79,12 @@ type Props = {
   onReady?: () => void;
   /** Open the Recap, from the teaser card. */
   onOpenRecap?: () => void;
+  /** Open the Jam screen, from the Jam card. */
+  onOpenJam?: () => void;
+  /** Start importing a Spotify link, from the import card. */
+  onImportSpotify?: (url: string) => void;
+  /** Reopen the last playlist or album, from the Continue card. */
+  onOpenCollection?: (c: LastCollection) => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
    *  greeting takes new colours then. */
@@ -120,6 +129,9 @@ export const HomeScreen = React.memo(function HomeScreen({
   onEndDrag,
   onReady,
   onOpenRecap,
+  onOpenJam,
+  onImportSpotify,
+  onOpenCollection,
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
@@ -285,8 +297,14 @@ export const HomeScreen = React.memo(function HomeScreen({
    */
   const header = (
     <>
-      {/* The week's Recap, announced once there is enough to tell. */}
-      {onOpenRecap && <RecapTeaser onOpen={onOpenRecap} />}
+      {/* The cards, one shape (FeatureCard), stacked: Recap, Jam, the
+          Spotify import until it has been used, the last playlist or album. */}
+      <View style={styles.cards}>
+        {onOpenRecap && <RecapTeaser onOpen={onOpenRecap} />}
+        {onOpenJam && <JamCard onOpen={onOpenJam} />}
+        {onImportSpotify && <ImportCard onImport={onImportSpotify} />}
+        {onOpenCollection && <ContinueCard onOpen={onOpenCollection} />}
+      </View>
       {/* Recents: the last nine songs, as the YouTube Music speed dial. */}
       <RecentsGrid recent={recent} onPlay={onPlayTrack} />
     </>
@@ -343,6 +361,12 @@ export const HomeScreen = React.memo(function HomeScreen({
 function Row({row, onPick}: {row: HomeRow; onPick: (i: HomeItem) => void}) {
   if (!row.items?.length) {
     return null;
+  }
+  // Trending, New releases, Charts and Top playlists each have their own
+  // shape (HomeRows); anything else is the plain strip below.
+  const Shaped = shapedRow(row.title);
+  if (Shaped) {
+    return <Shaped row={row} onPick={onPick} />;
   }
   return (
     <View style={styles.row}>
@@ -438,6 +462,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   row: {marginTop: 22},
+  cards: {paddingTop: 4, paddingBottom: 6},
   rowTitle: {
     ...T.rowTitle,
     color: C.text,
