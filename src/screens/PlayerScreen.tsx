@@ -336,7 +336,13 @@ export const PlayerScreen = React.memo(function PlayerScreen({
     side: 1 | -1;
     secs: number;
   } | null>(null);
-  const tapRef = useRef<{t: number; side: 1 | -1; secs: number} | null>(null);
+  const tapRef = useRef<{
+    t: number;
+    side: 1 | -1;
+    secs: number;
+    /** Where the last tap sent playback, which the next one adds to. */
+    to: number;
+  } | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const doubleTapSeek = useCallback((side: 1 | -1) => {
@@ -361,11 +367,16 @@ export const PlayerScreen = React.memo(function PlayerScreen({
 
     const now = Date.now();
     const prev = tapRef.current;
-    const stacked =
-      prev && prev.side === side && now - prev.t < 900 ? prev.secs + 10 : 10;
-    tapRef.current = {t: now, side, secs: stacked};
+    const stacking = !!prev && prev.side === side && now - prev.t < 900;
+    const stacked = stacking && prev ? prev.secs + 10 : 10;
+    // A stacked tap goes 10 s past where the LAST tap sent playback. It used
+    // to add 20, 30… to the last progress sample, which may or may not have
+    // caught up with the first seek yet: the same taps landed in different
+    // places, sometimes behind where the previous tap had already gone.
+    const to = Math.max(0, stacking && prev ? prev.to + side * 10 : position + side * 10);
+    tapRef.current = {t: now, side, secs: stacked, to};
 
-    progressApi.current?.seek(position + side * stacked);
+    progressApi.current?.seek(to);
     // The disc holds steady while it's up; only the number changes here.
     setSeekFlash({side, secs: stacked});
     if (flashTimer.current) {

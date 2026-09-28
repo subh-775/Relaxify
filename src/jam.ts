@@ -49,6 +49,7 @@ import {
   holdAutoplay,
   peekAdjacentTrack,
   playTrack,
+  onUserSeek,
   playbackRate,
   sourceTrackFor,
   topUpFromRadio,
@@ -75,6 +76,8 @@ export const SEEK_S = 0.4;
 export const NUDGE = 0.04;
 /** A jump lands this far ahead, since playback takes a moment to restart. */
 const SEEK_LEAD_S = 0.08;
+/** After a choice made on this phone, leave it alone this long. */
+const SETTLE_MS = 3000;
 /** Local player events this soon after following the Jam are the echo of
  *  that, not a choice made on this phone. */
 const ECHO_MS = 2500;
@@ -288,6 +291,35 @@ function expectedAt(now: Now, serverMs: number): number {
 }
 
 let nudging: ReturnType<typeof setTimeout> | null = null;
+/** When this phone last made a choice (published). */
+let lastLocal = 0;
+/** When this phone last corrected itself; seekWatch ignores that jump. */
+let selfSeekAt = 0;
+
+/**
+ * Should this phone correct itself right now? Never against the person:
+ * not alone in the Jam (there is nobody to keep in step with, and a Jam left
+ * running used to pull solo listening about), not at a speed of their own
+ * choosing (the timeline runs at 1x, so it could only fight them), and not
+ * just after a choice made here, while it is still reaching the others.
+ */
+export function mayAlign(o: {
+  members: number;
+  rate: number;
+  sinceLocalMs: number;
+}): boolean {
+  return o.members > 1 && Math.abs(o.rate - 1) < 0.01 && o.sinceLocalMs > SETTLE_MS;
+}
+
+/** A jump target, or null when it would land at or past the song's end,
+ *  which moves the player on to the next song. */
+export function seekTarget(expected: number, duration: number): number | null {
+  const to = expected + SEEK_LEAD_S;
+  if (duration > 0 && to >= duration - 1) {
+    return null;
+  }
+  return Math.max(0, to);
+}
 
 function endNudge(): void {
   if (nudging) {
@@ -298,9 +330,18 @@ function endNudge(): void {
 }
 
 /** Check this phone against the Jam's timeline and correct it. */
-async function align(): Promise<void> {
-  const now = view?.now;
-  if (!now || !now.playing || nudging) {
+async function align(code: string): Promise<void> {
+  const v = view;
+  const now = v?.now;
+  if (!v || !now || !now.playing || nudging) {
+    return;
+  }
+  const ok = mayAlign({
+    members: v.members.length,
+    rate: playbackRate(),
+    sinceLocalMs: Date.now() - lastLocal,
+  });
+  if (!ok) {
     return;
   }
   const active = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
@@ -313,13 +354,24 @@ async function align(): Promise<void> {
   }
   // The position is read over a native round trip; time it at the middle.
   const t0 = Date.now();
-  const {position} = await TrackPlayer.getProgress();
+  const {position, duration} = await TrackPlayer.getProgress();
   const mid = (t0 + Date.now()) / 2;
   const drift = position - expectedAt(now, mid + offset);
-  const fix = correction(drift, playbackRate());
+  const fix = correction(drift);
+  if (now.by === myId) {
+    // This phone IS the timeline: it is never pulled about. If it has
+    // slipped (a stall), it tells the others where it really is instead.
+    if (fix.kind === 'seek') {
+      await publish(code);
+    }
+    return;
+  }
   if (fix.kind === 'seek') {
-    echoUntil = Date.now() + ECHO_MS;
-    await TrackPlayer.seekTo(expectedAt(now, serverNow()) + SEEK_LEAD_S);
+    const to = seekTarget(expectedAt(now, serverNow()), duration);
+    if (to !== null) {
+      selfSeekAt = Date.now();
+      await TrackPlayer.seekTo(to);
+    }
   } else if (fix.kind === 'nudge') {
     await TrackPlayer.setRate(fix.rate);
     // Back to normal speed once the gap is closed (clearing a timer that
@@ -370,6 +422,14 @@ async function publish(code: string): Promise<void> {
       by: myId,
       seq,
     };
+    // This phone's copy of the Jam moves at once. It used to wait for the
+    // database to echo it back, about a second, and in that second the
+    // aligner pulled the song back to where it was before the seek.
+    lastLocal = Date.now();
+    if (view && view.code === code) {
+      view = {...view, now};
+      emit();
+    }
     await call(`jams/${code}/now`, 'PUT', now);
     holdAutoplay(false); // the phone that chose plays on by itself
   } catch {
@@ -413,7 +473,12 @@ async function follow(now: Now): Promise<void> {
       // time (and none was made up at all under two seconds).
       await untilPlaying();
       echoUntil = Date.now() + ECHO_MS;
-      await TrackPlayer.seekTo(expectedAt(now, serverNow()) + SEEK_LEAD_S);
+      const {duration} = await TrackPlayer.getProgress();
+      const to = seekTarget(expectedAt(now, serverNow()), duration);
+      if (to !== null) {
+        selfSeekAt = Date.now();
+        await TrackPlayer.seekTo(to);
+      }
     } else {
       await TrackPlayer.seekTo(now.pos);
     }
@@ -522,7 +587,7 @@ function watchLocal(code: string): void {
   let lastPos = -1;
   let lastAt = 0;
   const seekWatch = setInterval(async () => {
-    if (!view || Date.now() < echoUntil) {
+    if (!view || Date.now() < echoUntil || Date.now() - selfSeekAt < 2000) {
       lastPos = -1;
       return;
     }
@@ -545,12 +610,20 @@ function watchLocal(code: string): void {
       sync().catch(() => {});
     }
   });
-  const aligner = setInterval(() => align().catch(() => {}), ALIGN_MS);
+  const aligner = setInterval(() => align(code).catch(() => {}), ALIGN_MS);
+  // Every seek made here is a choice, announced straight away: a lyric tap
+  // moves less than seekWatch's 3 s and was never announced at all.
+  const seeks = onUserSeek(() => {
+    if (view) {
+      publish(code).catch(() => {});
+    }
+  });
   unsubs = [
     () => a.remove(),
     () => b.remove(),
     () => clearInterval(seekWatch),
     () => clearInterval(aligner),
+    seeks,
     endNudge,
     () => q.remove(),
     () => c.remove(),

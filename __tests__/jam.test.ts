@@ -17,8 +17,10 @@ import {
   SYNC_OK_S,
   bestOffset,
   correction,
+  mayAlign,
   newCode,
   normalizeCode,
+  seekTarget,
   validCode,
 } from '../src/jam';
 
@@ -70,4 +72,23 @@ test('in step: nothing; a small gap: a nudge that closes it exactly; a big one: 
   } else {
     throw new Error('expected a nudge');
   }
+});
+
+test('never corrects against the person: alone, at their own speed, or just after a choice', () => {
+  const ok = {members: 2, rate: 1, sinceLocalMs: 10_000};
+  expect(mayAlign(ok)).toBe(true);
+  // A Jam left running with nobody else in it pulled solo listening about.
+  expect(mayAlign({...ok, members: 1})).toBe(false);
+  // The timeline runs at 1x; at 1.5x the phone drifts every second and was
+  // jumped back every two ("speed breakers").
+  expect(mayAlign({...ok, rate: 1.5})).toBe(false);
+  // A seek or lyric tap here is still reaching the others.
+  expect(mayAlign({...ok, sinceLocalMs: 500})).toBe(false);
+});
+
+test('a correction never jumps to the end of the song, which skips to the next', () => {
+  expect(seekTarget(30, 200)).toBeCloseTo(30.08);
+  expect(seekTarget(199.5, 200)).toBeNull();
+  expect(seekTarget(260, 200)).toBeNull(); // a timeline left running while paused
+  expect(seekTarget(12, 0)).toBeCloseTo(12.08); // length not known yet
 });

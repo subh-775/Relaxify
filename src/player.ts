@@ -35,6 +35,7 @@ import {
 } from './tracks';
 import {getArtworkColor} from './artworkColor';
 import {logEvent, songParams} from './analytics';
+import {diag} from './diag';
 import {
   applyAudioEffects,
   endCrossfade,
@@ -104,6 +105,10 @@ let manualStepAt = 0;
 export function markManualTrackChange(): void {
   manualStepAt = Date.now();
 }
+
+/** The last time the person moved playback themselves: a seek or a skip.
+ *  Anything else that moves it is reported as playback_jump. */
+let userMoveAt = 0;
 
 /**
  * The one place playback resumes from silence.
@@ -424,6 +429,12 @@ export async function setupPlayer(): Promise<boolean> {
               ...songParams(last),
               seconds: Math.round(e.lastPosition || 0),
               completed: dur > 0 && e.lastPosition >= dur - 5 ? 1 : 0,
+              // Not a skip: the song moved on by itself. With `completed` 0
+              // that is a song cut short, which is worth seeing with the
+              // speed and crossfade it happened at.
+              auto: Date.now() - Math.max(manualStepAt, userMoveAt) > 3000 ? 1 : 0,
+              rate: playbackRate(),
+              crossfade: readSettings().crossfadeDuration,
             });
           }
         }
@@ -1065,7 +1076,7 @@ export async function skipPrevious(always = false): Promise<void> {
   try {
     const pos = await TrackPlayer.getPosition();
     if (!always && pos > 3) {
-      await TrackPlayer.seekTo(0);
+      await seekTo(0); // a restart is a seek the person made
       return;
     }
     // Only publish once we know this is a real track change, not a restart.
@@ -1308,8 +1319,24 @@ export async function stop(): Promise<void> {
   }
 }
 
+const seekListeners = new Set<() => void>();
+
+/** Runs after every seek the person makes, wherever it came from (the Jam
+ *  announces it at once rather than waiting to notice the jump). */
+export function onUserSeek(fn: () => void): () => void {
+  seekListeners.add(fn);
+  return () => {
+    seekListeners.delete(fn);
+  };
+}
+
+/** A seek the PERSON made: the scrubber, a lyric line, ±10 s, the
+ *  notification or a headset. The app's own corrections call TrackPlayer
+ *  directly, so they are never mistaken for a choice. */
 export async function seekTo(seconds: number): Promise<void> {
+  userMoveAt = Date.now();
   await TrackPlayer.seekTo(seconds);
+  seekListeners.forEach(fn => fn());
 }
 
 /**
@@ -1601,6 +1628,46 @@ let pushedSpan = -1;
 const STALL_KICK_MS = 10000;
 let stalledSince = 0;
 
+/**
+ * Playback that moved by itself: the position a second later is not where
+ * a second of playing (at the set speed) would put it, and the person did
+ * not seek or skip. Reported as `playback_jump` with the song, both
+ * positions, the speed and the crossfade, so a jump like "it went back a
+ * few seconds on its own" can be traced to its cause from Analytics.
+ */
+let jumpLast = {pos: -1, at: 0, idx: -1};
+function noteJump(state: State | undefined, position: number, idx: number): void {
+  const now = Date.now();
+  const prev = jumpLast;
+  jumpLast = {pos: state === State.Playing ? position : -1, at: now, idx};
+  if (
+    state !== State.Playing ||
+    prev.pos < 0 ||
+    prev.idx !== idx ||
+    now - Math.max(userMoveAt, manualStepAt) < 3000 ||
+    now - prev.at > 3000 // a frozen tick (screen off) is not a jump
+  ) {
+    return;
+  }
+  const expected = prev.pos + ((now - prev.at) / 1000) * playbackRate();
+  if (Math.abs(position - expected) < 2) {
+    return;
+  }
+  diag('jump', `${expected.toFixed(1)} -> ${position.toFixed(1)}`);
+  TrackPlayer.getActiveTrack()
+    .then(t => {
+      const src = sourceTrackFor(t ?? null);
+      logEvent('playback_jump', {
+        ...(src ? songParams(src) : {}),
+        from: Math.round(expected),
+        to: Math.round(position),
+        rate: playbackRate(),
+        crossfade: readSettings().crossfadeDuration,
+      });
+    })
+    .catch(() => {});
+}
+
 export function kickIfStalled(position: number, duration: number): void {
   const now = Date.now();
   if (!stalledSince) {
@@ -1748,6 +1815,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
       if (state === State.Buffering || state === State.Loading) {
         kickIfStalled(position, p.duration);
       }
+      noteJump(state, position, idx);
     } catch {
       return;
     }
