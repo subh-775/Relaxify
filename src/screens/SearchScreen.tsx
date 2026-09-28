@@ -43,6 +43,7 @@ import {BOTTOM_INSET} from '../layout';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
+import {homeLanguageParam} from '../store';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
 import {isSpotifyUrl} from '../spotifyImport';
@@ -251,7 +252,7 @@ export const SearchScreen = React.memo(function SearchScreen({
     // Wait for the engine first: this mounts during cold start, and firing at
     // t=0 just burns the one attempt on a backend that isn't listening yet.
     waitForBackend()
-      .then(ok => (ok ? getGenres() : []))
+      .then(ok => (ok ? getGenres(homeLanguageParam()) : []))
       .then(setGenres)
       .catch(() => {
         // Browsing is a bonus; searching still works without it.

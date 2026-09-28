@@ -52,7 +52,7 @@ import {
   type DownloadsInfo,
   type StorageInfo,
 } from '../backend';
-import {resetSettings, useStore, writeSetting} from '../store';
+import {DATA_SAVER_KBPS, resetSettings, useStore, writeSetting} from '../store';
 import {createStore, storedBytes, useStoreValue} from '../storage';
 import {StorageBreakdown} from '../components/StorageBreakdown';
 import {forgetDownloads} from '../downloads';
@@ -61,6 +61,7 @@ import {LICENCES} from '../licences';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
+import {LanguageChips, languagesLabel} from '../components/LanguageChips';
 import {EqualizerScreen} from './EqualizerScreen';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {applyAudioEffects} from '../audioEffects';
@@ -503,7 +504,11 @@ function NavRow({
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
       <Lead Icon={Icon} />
       <Text style={[styles.rowLabel, styles.rowText]}>{label}</Text>
-      {!!value && <Text style={styles.rowValue}>{value}</Text>}
+      {!!value && (
+        <Text style={styles.rowValue} numberOfLines={1}>
+          {value}
+        </Text>
+      )}
       <ChevronRight size={18} color={C.faint} />
     </TouchableOpacity>
   );
@@ -535,6 +540,7 @@ export function SettingsScreen({
   const {downloads, yt, cacheBytes, storage} = useStoreValue(remoteCache);
   const [ytBusy, setYtBusy] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
 
   const sleep = useSleepTimer();
   const scrollRef = useRef<ScrollView>(null);
@@ -1084,6 +1090,12 @@ export function SettingsScreen({
             value={qualityLabel}
             onPress={() => setQualityOpen(true)}
           />
+          <ToggleRow
+            label="Data saver on mobile data"
+            hint={`Streams at ${DATA_SAVER_KBPS} kbps off Wi-Fi`}
+            value={settings.dataSaver}
+            onChange={v => writeSetting('dataSaver', v)}
+          />
           {/* A sheet, not an inline expander: five rows appearing in the
               middle of the list shoved everything below them down with no
               motion, on a grey slab that matched nothing else here. */}
@@ -1114,6 +1126,27 @@ export function SettingsScreen({
               </TouchableOpacity>
             ))}
           </Sheet>
+        </Section>
+
+        <Section title="Your music">
+          <NavRow
+            label="Home languages"
+            value={languagesLabel(settings.homeLanguages)}
+            onPress={() => setLangOpen(true)}
+          />
+          <Sheet open={langOpen} onClose={() => setLangOpen(false)}>
+            <Text style={styles.sheetTitle}>Home languages</Text>
+            <Text style={styles.sheetHint}>
+              Home and Browse are drawn from these. Search always covers everything.
+            </Text>
+            <LanguageChips />
+          </Sheet>
+          <ToggleRow
+            label="Weekly Recap"
+            hint="A notification on Sunday evening with your week in music"
+            value={settings.recapReminder}
+            onChange={v => writeSetting('recapReminder', v)}
+          />
         </Section>
 
         {/*
@@ -1430,6 +1463,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   choiceOn: {color: C.accent},
+  sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   rowText: {flex: 1, minWidth: 0},
   rowLabel: {...T.body, color: C.text},
   rowLabelAccent: {color: C.accent},

@@ -16,6 +16,8 @@ import {RecapScreen} from './src/screens/RecapScreen';
 import {JamScreen} from './src/screens/JamScreen';
 import {DOCS_URL} from './src/links';
 import {startDeviceMemory} from './src/deviceMemory';
+import {startDevice} from './src/device';
+import {WelcomeScreen, settleWelcome, useWelcomed} from './src/screens/WelcomeScreen';
 import {rememberCollection} from './src/lastCollection';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
@@ -150,6 +152,8 @@ function Shell() {
    * and Home's first rows are ready. Nothing pops in after that.
    */
   const [booted, setBooted] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const welcomed = useWelcomed();
   const engineDone = useRef(false);
   const homeDone = useRef(false);
   const liftSplash = useCallback(() => {
@@ -168,7 +172,11 @@ function Shell() {
     // logging, not the thing being investigated.
     diag('boot', `Relaxify ${appVersion || '?'} starting`);
     askForNotifications();
-    hydrate().then(applyAudioEffects);
+    hydrate().then(() => {
+      applyAudioEffects();
+      settleWelcome();
+      setHydrated(true);
+    });
     // Boot the engine, then restore the last session so the mini player is
     // there on reopen (same song, paused, at the timestamp you left).
     setupPlayer().then(async ok => {
@@ -211,6 +219,8 @@ function Shell() {
     // Each headphone and speaker keeps its own equalizer; also resumes on
     // connect when that is switched on.
     startDeviceMemory();
+    // Data saver on mobile data, and the weekly Recap notification.
+    startDevice();
     // Clear the cache once it passes the size set in Settings.
     const stopCacheLimit = watchCacheLimit();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
@@ -499,6 +509,18 @@ function Shell() {
   const closeJam = useCallback(() => setJamOpen(false), []);
   const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
+  // Sunday's Recap notification opens the app on relaxify://recap, whether it
+  // was closed (the initial URL) or already running (a url event).
+  useEffect(() => {
+    const go = (url: string | null) => {
+      if (url?.startsWith('relaxify://recap')) {
+        openRecap();
+      }
+    };
+    Linking.getInitialURL().then(go, () => {});
+    const sub = Linking.addEventListener('url', e => go(e.url));
+    return () => sub.remove();
+  }, [openRecap]);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -892,6 +914,8 @@ function Shell() {
         onClose={closeDrawer}
         onNavigate={navigateFromDrawer}
       />
+
+      {booted && hydrated && !welcomed && <WelcomeScreen />}
 
       {!booted && (
         <View style={styles.splash} pointerEvents="auto">

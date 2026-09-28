@@ -70,6 +70,9 @@
         </intent-filter>
       </activity>
 
+      <!-- Posts the weekly Recap notification (RecapReminder). -->
+      <receiver android:name=".RecapReminderReceiver" android:exported="false" />
+
       <!-- The home-screen widget: now playing with play, pause and skip. -->
       <receiver
         android:name=".NowPlayingWidget"

@@ -11,7 +11,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: async () => undefined,
 }));
 
-import {buildRecap, hourLabel, personaFor, streaks} from '../src/recap';
+import {buildRecap, hourLabel, personaFor, reminderText, streaks} from '../src/recap';
 import type {Stats} from '../src/stats';
 
 const HOUR = 3_600_000;
@@ -120,4 +120,12 @@ test('streaks: a run ending yesterday is still alive, gaps break it', () => {
   expect(streaks(days, NOW)).toEqual({streak: 2, best: 3});
   expect(streaks({...days, '2026-09-27': 1}, NOW).streak).toBe(3);
   expect(streaks({}, NOW)).toEqual({streak: 0, best: 0});
+});
+
+test("Sunday's notification: the week's count and top song, silent when empty", () => {
+  expect(reminderText(buildRecap(stats, NOW, 'week'))).toBe(
+    '4 songs this week, most of all Beedi. Tap for your Recap.',
+  );
+  const empty = {tracks: {}, artists: {}, plays: 0, log: [], days: {}};
+  expect(reminderText(buildRecap(empty, NOW, 'week'))).toBe('');
 });

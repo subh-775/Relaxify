@@ -256,3 +256,18 @@ export function buildRecap(s: Stats, now: number, mode: RecapMode): Recap {
     ...common,
   };
 }
+
+/** The weekly notification's line, from this week's Recap; '' for a week
+ *  with no music, which sends no notification at all. */
+export function reminderText(r: Recap): string {
+  if (!r.songs) {
+    return '';
+  }
+  const songs = `${r.songs} ${r.songs === 1 ? 'song' : 'songs'} this week`;
+  const top = r.topSong
+    ? `, most of all ${r.topSong.track.title}`
+    : r.topArtist
+    ? `, most of all ${r.topArtist.name}`
+    : '';
+  return `${songs}${top}. Tap for your Recap.`;
+}

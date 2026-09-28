@@ -36,6 +36,7 @@ import {
 } from '../drawer';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
+import {homeLanguageParam, useSettings} from '../store';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -239,7 +240,7 @@ export const HomeScreen = React.memo(function HomeScreen({
       if (!(await waitForBackend())) {
         throw new Error('The music engine did not start.');
       }
-      const data = await getHome();
+      const data = await getHome(homeLanguageParam());
       if (data.length) {
         setFresh(data);
         homeCache.set(trimForCache(data)); // seed the next launch
@@ -253,9 +254,11 @@ export const HomeScreen = React.memo(function HomeScreen({
     }
   }, []);
 
+  // Again whenever the languages change (Settings, or the welcome).
+  const langs = useSettings().homeLanguages.join(',');
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, langs]);
 
   // Claiming the left strip back from Android's system back gesture happens in
   // onLayout, below — NOT here. Home mounts while the splash is still up, and

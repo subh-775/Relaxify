@@ -115,6 +115,8 @@ function normalize(raw: unknown): Stats {
 }
 
 const store = createStore<Stats>('mp.stats.v1', EMPTY, normalize);
+export const readStats = store.get;
+export const onStatsChange = store.subscribe;
 
 /** Drop the least-recently-played half once a map is over its cap. */
 function trim<T extends {last: number}>(

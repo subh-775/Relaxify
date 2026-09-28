@@ -48,7 +48,22 @@ export type Settings = {
   deviceMemory: boolean;
   /** Carry on playing when headphones connect. */
   resumeOnConnect: boolean;
+  /** Home's rows and Search's Browse come in these (JioSaavn's names). */
+  homeLanguages: string[];
+  /** Stream at DATA_SAVER_KBPS while on mobile data. */
+  dataSaver: boolean;
+  /** A notification on Sunday evening when the week's Recap is ready. */
+  recapReminder: boolean;
 };
+
+/** The quality streamed on mobile data with the data saver on. */
+export const DATA_SAVER_KBPS = 96;
+
+/** Whether the phone is on mobile data right now (network.ts keeps it). */
+let cellular = false;
+export function setOnCellular(v: boolean): void {
+  cellular = v;
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
@@ -69,6 +84,9 @@ export const DEFAULT_SETTINGS: Settings = {
   cacheLimitMb: 100,
   deviceMemory: true,
   resumeOnConnect: false,
+  homeLanguages: ['hindi', 'english'],
+  dataSaver: true,
+  recapReminder: true,
 };
 
 const likesStore = createStore<Track[]>('mp.likes.v1', [], asArray);
@@ -129,8 +147,16 @@ export const onSettingsChange = (fn: () => void) => settingsStore.subscribe(fn);
 /** Effective streaming bitrate. "Auto" (0) resolves to 320 — the backend walks
  *  its own ladder down from there if the source can't serve it. */
 export function currentQuality(): number {
-  const q = settingsStore.get().audioQuality;
-  return q && q > 0 ? q : 320;
+  const s = settingsStore.get();
+  const q = s.audioQuality && s.audioQuality > 0 ? s.audioQuality : 320;
+  // The data saver caps it on mobile data only; Wi-Fi gets the choice as set.
+  return s.dataSaver && cellular ? Math.min(q, DATA_SAVER_KBPS) : q;
+}
+
+/** The chosen languages as the engine wants them: "hindi,english". */
+export function homeLanguageParam(): string {
+  const l = settingsStore.get().homeLanguages;
+  return (Array.isArray(l) && l.length ? l : ['hindi', 'english']).join(',');
 }
 
 // ─── Hydration + hooks ──────────────────────────────────────────────────────
