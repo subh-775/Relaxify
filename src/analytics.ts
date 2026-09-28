@@ -12,13 +12,21 @@ import {NativeModules} from 'react-native';
 import type {Track} from './backend';
 
 /** What is collected, in the words the app shows people: once as a notice,
- *  and always in Settings. There is no switch; this is the disclosure. */
-export const ANALYTICS_NOTE =
-  'Relaxify sends usage statistics to help improve the app: songs played and ' +
-  'how long you listened, searches, likes, playlists and downloads, settings ' +
-  'you change, errors, the app version, your phone model and your approximate ' +
-  'location (country and city). They are linked to an anonymous ID for this ' +
-  'phone, never to your name, account or contacts.';
+ *  and always in Settings ("What we collect"). There is no switch; this is the
+ *  disclosure. The list and the promise are shared, so the two cannot drift. */
+export const COLLECTED_ITEMS =
+  'songs played and how long you listened, searches, likes, playlists and ' +
+  'downloads, settings you change, errors, the app version, your phone model ' +
+  'and your approximate location (country and city)';
+export const COLLECTED_PROMISE =
+  'They are linked to an anonymous ID for this phone, never to your name, ' +
+  'account or contacts.';
+/** The one thing beyond statistics that leaves the phone, and only in a Jam. */
+export const JAM_NOTE =
+  'During a Jam, the song, where it is, the Jam queue and the names you enter ' +
+  'are shared through our database so the phones can follow each other. They ' +
+  'are deleted when the Jam ends.';
+export const ANALYTICS_NOTE = `Relaxify sends usage statistics to help improve the app: ${COLLECTED_ITEMS}. ${COLLECTED_PROMISE}`;
 
 type AnalyticsNative = {
   log?: (name: string, params: Record<string, string | number>) => void;

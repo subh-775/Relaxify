@@ -44,6 +44,10 @@ export type Settings = {
   eqGains: number[] | null;
   /** Clear the cache by itself once it passes this many MB; 0 = never. */
   cacheLimitMb: number;
+  /** Each output device (headphones, speaker, car) keeps its own equalizer. */
+  deviceMemory: boolean;
+  /** Carry on playing when headphones connect. */
+  resumeOnConnect: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -63,6 +67,8 @@ export const DEFAULT_SETTINGS: Settings = {
   // On by default: a downloaded update alone is ~48 MB and stayed in the cache
   // after installing, and a cache is re-fetchable by definition.
   cacheLimitMb: 100,
+  deviceMemory: true,
+  resumeOnConnect: false,
 };
 
 const likesStore = createStore<Track[]>('mp.likes.v1', [], asArray);
@@ -117,6 +123,8 @@ export function resetSettings(): void {
 }
 
 export const readSettings = settingsStore.get;
+/** Run `fn` after every settings change. Returns the unsubscribe. */
+export const onSettingsChange = (fn: () => void) => settingsStore.subscribe(fn);
 
 /** Effective streaming bitrate. "Auto" (0) resolves to 320 — the backend walks
  *  its own ladder down from there if the source can't serve it. */

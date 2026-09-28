@@ -39,6 +39,7 @@ import {
   BookOpen,
   ChevronRight,
   Clock,
+  Headphones,
   Settings as SettingsIcon,
   SlidersHorizontal,
 } from '../icons';
@@ -49,7 +50,7 @@ import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
 const ICON = require('../assets/app-icon-bl.png');
 
-export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer';
+export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
 
 // No per-item hint text any more — "Everything you have listened to" under
 // "Recents" was explaining a label that already explains itself, and it made
@@ -79,6 +80,9 @@ const ITEMS: {id: SidebarDest; label: string; Icon: typeof Clock}[] = [
   // is also the badge on the update popup — the same glyph meaning two
   // unrelated things. A waveform reads as "your listening" with no caption.
   {id: 'stats', label: 'Recap', Icon: AudioLines},
+  // Listening together; lives here beside Recap, the other "about you and
+  // your friends" place.
+  {id: 'jam', label: 'Jam', Icon: Headphones},
   {id: 'help', label: 'How to use', Icon: BookOpen},
   {id: 'settings', label: 'Settings', Icon: SettingsIcon},
 ];

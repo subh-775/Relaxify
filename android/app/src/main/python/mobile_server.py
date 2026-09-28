@@ -1978,6 +1978,47 @@ def cache_info():
     return jsonify({"bytes": _cache_bytes()})
 
 
+@app.get("/api/storage")
+def storage_info():
+    """What Relaxify takes up on the phone, and what the phone has left.
+
+    Downloads are the audio files in the download folder (the same files the
+    Downloaded collection lists); the cache is exactly what Clear cache frees;
+    total and free are the whole phone's, read from the download folder's
+    volume, so the Settings bar can show Relaxify against everything else.
+    """
+    import shutil
+
+    folder = get_default_download_dir()
+    songs = 0
+    song_bytes = 0
+    if folder and os.path.isdir(folder):
+        for dirpath, _dirs, filenames in os.walk(folder):
+            for name in filenames:
+                if os.path.splitext(name)[1].lower() in _LOCAL_AUDIO_EXTS:
+                    try:
+                        song_bytes += os.path.getsize(os.path.join(dirpath, name))
+                        songs += 1
+                    except OSError:
+                        pass
+    total = free = 0
+    for probe in (folder, android_env.cache_dir()):
+        if probe and os.path.isdir(probe):
+            try:
+                usage = shutil.disk_usage(probe)
+                total, free = usage.total, usage.free
+                break
+            except OSError:
+                pass
+    return jsonify({
+        "downloads_bytes": song_bytes,
+        "downloads_count": songs,
+        "cache_bytes": _cache_bytes(),
+        "total_bytes": total,
+        "free_bytes": free,
+    })
+
+
 @app.post("/api/cache/clear")
 def cache_clear():
     """Drop everything re-fetchable: resolved stream URLs, lyrics, home rows,

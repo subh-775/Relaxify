@@ -8,26 +8,31 @@ Open the menu (swipe in from the left edge of Home, or tap the Relaxify mark at 
 | --- | --- |
 | **Equalizer** | Eight bands and eleven presets. See [Equalizer](/guide/equalizer) |
 | **Recap** | Your listening as a short story: top song, top artist, time listened, your listening hour. See [Recap](/guide/recap) |
+| **Jam** | Listen together with friends, each on their own phone. See [Jam](/guide/jam) |
 | **How to use** | This site, in your browser |
 | **Settings** | Everything below |
 
+Settings is one list, in this order: Playback, Sound, Sources, Storage, Appearance, About, and Reset.
+
 ## Playback
 
-| Row | What it does |
-| --- | --- |
-| **Crossfade** | Opens the Playback screen. Shows the current crossfade, or Off |
-| **Equalizer** | Opens the equalizer. Shows the preset, or Off |
-
-### The Playback screen
-
-| Setting | Default | What it does |
+| Row | Default | What it does |
 | --- | --- | --- |
 | **Autoplay** | On | Adds similar songs when the queue runs low. See [The Queue](/guide/queue) |
 | **Normalize volume** | Off | Plays every song at about the same loudness |
-| **Crossfade** | Off | Fades one song into the next, 0 to 12 seconds |
-| **Sleep timer** | Off | Stops the music later. See below |
+| **Headphone memory** | On | Each pair of headphones, speaker or car keeps its own equalizer. See [Equalizer](/guide/equalizer#headphone-memory) |
+| **Resume when headphones connect** | Off | Carries on playing when your headphones connect |
+| **Crossfade** | Off | Opens the Crossfade and sleep screen. Shows the current crossfade, or Off |
+| **Equalizer** | Off | Opens the equalizer. Shows the preset, or Off |
 
 Turning Autoplay off also removes the suggested songs already waiting in the queue.
+
+### The Crossfade and sleep screen
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Crossfade** | Off | Fades one song into the next, 0 to 12 seconds |
+| **Sleep timer** | Off | Stops the music later. See below |
 
 ### Crossfade
 
@@ -41,7 +46,7 @@ A timed stop **fades out** over a couple of seconds instead of stopping suddenly
 
 **End of track** stops on the song's last second, even with the screen off. The next song does not start. Press play later and it carries on from there. Pressing next does **not** stop the music. The timer waits for a song to end by itself.
 
-## Audio quality
+## Sound
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -51,7 +56,7 @@ Tap the row to choose from a sheet. The setting is an **upper limit**. If a sour
 
 Downloads always use the best quality a source has, whatever this is set to.
 
-## Content sources
+## Sources
 
 | Source | Switch |
 | --- | --- |
@@ -63,12 +68,15 @@ JioSaavn and SoundCloud cannot be turned off. They are searched together, and ea
 
 YouTube protects its streams, and the app has to decode each one before it can play it. Turning YouTube on first tests this by opening one YouTube stream on your phone, and the switch turns on only if the test succeeds. If it stays off, the test failed on your phone; YouTube changes its protection from time to time, so trying again after an update can work.
 
-## Downloads
+## Storage
+
+At the top, one bar for your phone's storage: Relaxify's downloads, its cache, your library and history, other apps, and free space, with the size of each underneath.
 
 | Row | What it does |
 | --- | --- |
-| **Download location** | Where files are saved: **Download/Relaxify/music** unless you pick another folder. Tap to change it |
+| **Download location** | Where files are saved, shown as a path in its own box: **Download/Relaxify/music** unless you pick another folder. Tap to change it |
 | **Open in Files** | Opens that folder in your file manager |
+| **Remove all downloads** | Deletes every song Relaxify saved on the phone, after asking. Playlists and likes are kept, and every song can be downloaded again |
 | **Clear cached data** | Removes temporary files, saved lyrics and search history. Shows how much it frees |
 | **Clear cache automatically** | Off, or 10 to 100 MB (100 MB to start with). When the cache grows past it, it is cleared the next time you open the app |
 
@@ -83,19 +91,22 @@ Songs from older versions, saved in **Download/Fix_Spotify/music**, are moved to
 | **Show source label** | On | The JioSaavn, SoundCloud or YouTube label |
 | **Show quality label** | On | The kbps label |
 
-## Software update
+## About
+
+One row, **About and support**, opens a page of its own:
 
 | Row | What it does |
 | --- | --- |
 | **App version** | The version installed |
 | **Check for updates** | Checks now. If there is an update, the same row installs it |
 | **Automatic updates** | On by default. Checks GitHub in the background |
+| **How to use** | Opens this guide in your browser |
+| **Report a problem** | Opens a new report on GitHub with your version and phone already filled in |
+| **What we collect** | A short statement of what the app sends to help improve it, and what a Jam shares. There is no switch; this is the notice. See [Data & Storage](/reference/architecture#usage-statistics) |
+| **Licence** | GPL-3.0 |
+| **Open-source licences** | The software Relaxify is built on, and each one's licence |
 
-See **[Updates](/reference/updates)**.
-
-## Usage statistics
-
-**What Relaxify collects** lists what the app sends to help improve it. There is no switch; this is the notice. See [Data & Storage](/reference/architecture#usage-statistics).
+The update dot on the menu opens this page, with the update rows highlighted. See **[Updates](/reference/updates)**.
 
 ## Reset all settings
 

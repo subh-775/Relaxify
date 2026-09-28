@@ -52,6 +52,7 @@ import {
 import {remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
+import {pushWidget, pushWidgetPlaying} from './widget';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
 
 let ready = false;
@@ -347,6 +348,16 @@ export async function setupPlayer(): Promise<boolean> {
       } catch {}
     });
 
+    // The home-screen widget follows play and pause. Only the two settled
+    // states: the buffering flicker around a seek would blink its button.
+    TrackPlayer.addEventListener(Event.PlaybackState, e => {
+      if (e.state === State.Playing) {
+        pushWidgetPlaying(true);
+      } else if (e.state === State.Paused || e.state === State.Stopped) {
+        pushWidgetPlaying(false);
+      }
+    });
+
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
       logEvent('playback_error', {message: e.message, code: e.code});
       skipPastError();
@@ -393,6 +404,9 @@ export async function setupPlayer(): Promise<boolean> {
       }
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
+        TrackPlayer.getPlaybackState()
+          .then(p => pushWidget(src, p.state === State.Playing))
+          .catch(() => pushWidget(src, false));
         remember(src);
         // The same queue ROW again is not a new play. Tapping a song part-way
         // down a list starts it alone, then inserts the earlier songs in front
@@ -1327,6 +1341,15 @@ let buildingQueue = false;
 
 /** Exported for the playback service's PlaybackQueueEnded backstop — that
  *  runs outside the UI, which is exactly when the JS timer is frozen. */
+/**
+ * Held while this phone follows someone else's Jam (jam.ts): the song after
+ * this one is the Jam's choice, so autoplay must not append its own picks.
+ */
+let autoplayHeld = false;
+export function holdAutoplay(held: boolean): void {
+  autoplayHeld = held;
+}
+
 export async function topUpFromRadio(): Promise<void> {
   // buildingQueue: playTrack starts the song on a one-track queue and appends
   // the rest a moment later. Without this, a watcher tick landing in that gap
@@ -1338,6 +1361,7 @@ export async function topUpFromRadio(): Promise<void> {
   if (
     radioBusy ||
     buildingQueue ||
+    autoplayHeld ||
     !readSettings().autoplay ||
     sleepMode() === 'endOfTrack'
   ) {

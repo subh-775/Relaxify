@@ -392,6 +392,16 @@ export async function getGenres(
 
 // ─── Cache ──────────────────────────────────────────────────────────────────
 
+/** What Relaxify takes on the phone, and the phone's own total and free. */
+export type StorageInfo = {
+  downloads_bytes: number;
+  downloads_count: number;
+  cache_bytes: number;
+  total_bytes: number;
+  free_bytes: number;
+};
+export const getStorageInfo = () => apiGet<StorageInfo>('/storage');
+
 /** How much re-fetchable scratch data is on disk. Downloads are NOT counted —
  *  they're the user's files, not cache. */
 export const getCacheSize = () => apiGet<{bytes: number}>('/cache');

@@ -34,6 +34,7 @@ jest.mock('../src/recentlyPlayed', () => ({remember: () => undefined}));
 jest.mock('../src/resume', () => ({}));
 jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
 jest.mock('../src/toast', () => ({toast: () => undefined}));
+jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));
 
 test('waits out a normal rebuffer, then seeks past the buffer and re-arms', async () => {
   const seek = TrackPlayer.seekTo as unknown as jest.Mock;

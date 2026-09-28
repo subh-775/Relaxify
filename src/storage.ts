@@ -40,6 +40,23 @@ const registry = new Map<string, Store<any>>();
  * Called when the app leaves the foreground — the last moment Android reliably
  * gives us before it may reclaim the process.
  */
+/**
+ * Roughly how much the app's own saved data takes: likes, playlists, stats,
+ * settings and history, as the JSON written to disk. For the Storage bar; a
+ * character is about a byte for this data.
+ */
+export function storedBytes(): number {
+  let n = 0;
+  registry.forEach(st => {
+    try {
+      n += JSON.stringify(st.get())?.length ?? 0;
+    } catch {
+      // A value that cannot be serialised is not on disk either.
+    }
+  });
+  return n;
+}
+
 export function flushAll(): void {
   registry.forEach(st => st.flush());
 }

@@ -52,6 +52,7 @@ export const SIDEBAR = [
       {text: 'Your Library', link: '/guide/library'},
       {text: 'Downloads & Offline', link: '/guide/downloads'},
       {text: 'Recap', link: '/guide/recap'},
+      {text: 'Jam', link: '/guide/jam'},
     ],
   },
   {

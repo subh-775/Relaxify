@@ -3,38 +3,29 @@ import {
   Animated,
   BackHandler,
   Easing,
+  Linking,
   NativeModules,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import {
-  ArrowUpRight,
-  AudioLines,
   Check,
   ChevronLeft,
   ChevronRight,
-  Disc3,
-  Download,
-  Eye,
-  Gauge,
   HardDrive,
-  Headphones,
-  Radio,
   RefreshCw,
-  Repeat2,
-  Search as SearchIcon,
-  Shuffle,
-  SlidersHorizontal,
-  Sparkles,
-  ChartColumn,
   Trash2,
-  X,
 } from '../icons';
-import {ANALYTICS_NOTE, logEvent} from '../analytics';
+import {
+  COLLECTED_ITEMS,
+  COLLECTED_PROMISE,
+  JAM_NOTE,
+  logEvent,
+} from '../analytics';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 // Aliased: this file already has react-native's own Animated, for the refresh
 // glyph's rotation loop. Two different `Animated`s in one file is a bug waiting
@@ -51,14 +42,22 @@ import {
   appVersion,
   clearBackendCache,
   getCacheSize,
+  deleteDownload,
   getDownloadsInfo,
+  getLocalLibrary,
+  getStorageInfo,
   getYouTubeExperimental,
   setDownloadsDir,
   setYouTubeExperimental,
   type DownloadsInfo,
+  type StorageInfo,
 } from '../backend';
 import {resetSettings, useStore, writeSetting} from '../store';
-import {createStore, useStoreValue} from '../storage';
+import {createStore, storedBytes, useStoreValue} from '../storage';
+import {StorageBreakdown} from '../components/StorageBreakdown';
+import {forgetDownloads} from '../downloads';
+import {DOCS_URL, LICENCE_URL, reportUrl} from '../links';
+import {LICENCES} from '../licences';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
@@ -113,12 +112,14 @@ type RemoteCache = {
   downloads: DownloadsInfo | null;
   yt: {supported: boolean; enabled: boolean} | null;
   cacheBytes: number | null;
+  storage: StorageInfo | null;
 };
 
 const EMPTY_REMOTE: RemoteCache = {
   downloads: null,
   yt: null,
   cacheBytes: null,
+  storage: null,
 };
 
 const remoteCache = createStore<RemoteCache>(
@@ -130,6 +131,10 @@ const remoteCache = createStore<RemoteCache>(
       downloads: r.downloads ?? null,
       yt: r.yt ?? null,
       cacheBytes: typeof r.cacheBytes === 'number' ? r.cacheBytes : null,
+      storage:
+        r.storage && typeof r.storage === 'object'
+          ? (r.storage as StorageInfo)
+          : null,
     };
   },
 );
@@ -165,6 +170,14 @@ export function prefetchSettingsRemote(): void {
   getCacheSize()
     .then(v => patchRemote({cacheBytes: v.bytes}))
     .catch(() => {});
+  refreshStorage();
+}
+
+/** Re-measure the storage bar: after a clear, a removal, or on opening. */
+function refreshStorage(): void {
+  getStorageInfo()
+    .then(v => patchRemote({storage: v}))
+    .catch(() => {});
 }
 
 const QUALITIES = [
@@ -187,41 +200,14 @@ const QUALITIES = [
  * Separators are injected BETWEEN children rather than set as a border on each
  * row, so the first row never carries a stray line under the card's top edge.
  */
-/**
- * The search box at the top. A Section shows while the query is empty or
- * appears in its title or its `find` words (the names of its rows), so typing
- * "cache" leaves only Storage on screen.
- */
-const FindQuery = React.createContext('');
-
-/** The words each group answers to, beyond its title. One list, used by the
- *  groups and by the "nothing matches" line, so the two never disagree. */
-const FIND = {
-  playback: 'autoplay normalize volume loudness crossfade equalizer eq sleep timer',
-  sound: 'streaming quality bitrate data',
-  sources: 'content sources jiosaavn soundcloud youtube',
-  storage: 'downloads download location folder files cache clear space',
-  about: 'app version software update check install automatic updates',
-  appearance: 'show source label quality label badge',
-  stats: 'usage statistics analytics collects privacy',
-  reset: 'reset all settings defaults',
-};
-
-function matches(q: string, words: string): boolean {
-  return !q || words.toLowerCase().includes(q);
-}
-
 function Section({
   title,
   Icon,
   footer,
   highlight,
-  find,
   children,
 }: {
   title: string;
-  /** Extra words the search box finds this group by. */
-  find?: string;
   Icon?: typeof HardDrive;
   /** One line under the card, for the explanation that would otherwise be
    *  crammed into a row's `hint`. */
@@ -231,11 +217,7 @@ function Section({
   highlight?: boolean;
   children: React.ReactNode;
 }) {
-  const q = React.useContext(FindQuery);
   const items = React.Children.toArray(children);
-  if (!matches(q, `${title} ${find ?? ''}`)) {
-    return null;
-  }
   return (
     <View style={styles.section}>
       <View style={styles.sectionHead}>
@@ -536,22 +518,12 @@ export function SettingsScreen({
    *  rings it briefly — what the dot on the hamburger now points at. */
   focus?: 'update' | null;
 }) {
-  const [panel, setPanel] = useState<'equalizer' | 'playback' | null>(null);
-  const [find, setFind] = useState('');
-  const findQ = find.trim().toLowerCase();
-  const TITLES: Record<keyof typeof FIND, string> = {
-    playback: 'playback',
-    sound: 'sound',
-    sources: 'sources',
-    storage: 'storage',
-    about: 'about',
-    appearance: 'appearance',
-    stats: 'usage statistics',
-    reset: 'reset',
-  };
-  const anyMatch = (Object.keys(FIND) as (keyof typeof FIND)[]).some(k =>
-    matches(findQ, `${TITLES[k]} ${FIND[k]}`),
-  );
+  const [panel, setPanel] = useState<
+    'equalizer' | 'playback' | 'about' | null
+  >(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [licencesOpen, setLicencesOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [cacheOpen, setCacheOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -560,13 +532,12 @@ export function SettingsScreen({
   // meant every answer had to be written twice and could disagree with itself;
   // the store IS the state now, so a prefetch that lands while the screen is
   // open simply shows up.
-  const {downloads, yt, cacheBytes} = useStoreValue(remoteCache);
+  const {downloads, yt, cacheBytes, storage} = useStoreValue(remoteCache);
   const [ytBusy, setYtBusy] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
 
   const sleep = useSleepTimer();
   const scrollRef = useRef<ScrollView>(null);
-  const updateY = useRef(0);
   const [glow, setGlow] = useState(false);
 
   // A sub-panel (Equalizer, Playback) must catch the hardware back itself and
@@ -690,6 +661,7 @@ export function SettingsScreen({
       patchRemote({cacheBytes: 0});
       toast(freed > 0 ? `Cleared ${formatBytes(freed)}` : 'Cache cleared');
       // Re-read rather than assume zero — Android may hold files open.
+      refreshStorage();
       getCacheSize()
         .then(r => patchRemote({cacheBytes: r.bytes}))
         .catch(() => {});
@@ -742,13 +714,8 @@ export function SettingsScreen({
     if (focus !== 'update') {
       return;
     }
-    const t = setTimeout(() => {
-      scrollRef.current?.scrollTo({
-        y: Math.max(0, updateY.current - 80),
-        animated: true,
-      });
-      setGlow(true);
-    }, 260);
+    setPanel('about');
+    const t = setTimeout(() => setGlow(true), 260);
     // Long enough to say "this one", gone before it nags.
     const off = setTimeout(() => setGlow(false), 2100);
     return () => {
@@ -756,6 +723,33 @@ export function SettingsScreen({
       clearTimeout(off);
     };
   }, [focus]);
+
+  /** Delete every downloaded song, one by one through the same guarded
+   *  endpoint a single delete uses, then tell the library what is gone. */
+  const doRemoveDownloads = useCallback(async () => {
+    setRemoveOpen(false);
+    setRemoving(true);
+    try {
+      const {tracks} = await getLocalLibrary();
+      const gone = [];
+      for (const t of tracks) {
+        if (t.file_path && (await deleteDownload(t.file_path).catch(() => false))) {
+          gone.push(t);
+        }
+      }
+      forgetDownloads(gone);
+      toast(
+        gone.length
+          ? `Removed ${gone.length} download${gone.length === 1 ? '' : 's'}`
+          : 'There were no downloads to remove',
+      );
+    } catch {
+      toast('Could not remove the downloads');
+    } finally {
+      setRemoving(false);
+      refreshStorage();
+    }
+  }, []);
 
   // Anything with more than a switch's worth of choice gets its OWN screen,
   // not an inline expander — the list stays scannable.
@@ -849,6 +843,164 @@ export function SettingsScreen({
       ? 'You are up to date'
       : 'See whether a newer version is out';
 
+  if (panel === 'about') {
+    // Android's own fields; React Native's shared type does not list them.
+    const phone = Platform.constants as {
+      Brand?: string;
+      Model?: string;
+      Release?: string;
+    };
+    return (
+      <View style={styles.wrap}>
+        <View style={styles.bar}>
+          <TouchableOpacity
+            onPress={() => setPanel(null)}
+            hitSlop={12}
+            style={styles.back}>
+            <ChevronLeft size={28} color={C.text} />
+          </TouchableOpacity>
+          <Text style={styles.barTitle}>About and support</Text>
+        </View>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          bounces={false}>
+        {/* Its OWN section, not a composite row buried in "About".
+              The update was a RefreshCw icon, an "Installed" label, a version,
+              a status line and a nested button all inside one styles.row —
+              nothing else on this screen looked like that. And the update dot
+              on the hamburger dropped you at the top of an eight-section list
+              to go hunting for it; see `focus`. */}
+        <View>
+          <Section
+            title="Updates"
+            highlight={glow}
+            footer={
+              update.phase === 'failed'
+                ? 'The last check could not reach GitHub. Check your connection and try again.'
+                : undefined
+            }>
+            <Row label="App version" value={appVersion || '—'} />
+            {/* ONE row, four states — check / found / downloading / failed.
+                That is the pattern both iOS and Android use, and it means the
+                thing you came here to press is always in the same place. */}
+            <TouchableOpacity
+              style={styles.row}
+              activeOpacity={0.7}
+              onPress={updateAvailable ? startUpdateInstall : checkUpdates}
+              disabled={checking || update.phase === 'downloading'}>
+              <Animated.View style={{transform: [{rotate: spinDeg}]}}>
+                <RefreshCw
+                  size={19}
+                  color={updateAvailable ? C.accent : C.sub}
+                  strokeWidth={2}
+                />
+              </Animated.View>
+              <View style={styles.rowText}>
+                <Text
+                  style={[
+                    styles.rowLabel,
+                    updateAvailable && styles.rowLabelAccent,
+                  ]}>
+                  {update.phase === 'downloading'
+                    ? `Downloading… ${update.pct}%`
+                    : updateAvailable
+                    ? 'Download and install'
+                    : 'Check for updates'}
+                </Text>
+                <Text style={styles.rowHint}>{updateStatusText}</Text>
+              </View>
+              {!updateAvailable && <ChevronRight size={17} color={C.faint} />}
+            </TouchableOpacity>
+            <ToggleRow
+              label="Automatic updates"
+              hint="Check when the app opens and when it returns to the foreground"
+              value={settings.autoUpdateCheck}
+              onChange={v => writeSetting('autoUpdateCheck', v)}
+            />
+          </Section>
+        </View>
+
+
+          <Section title="Help">
+            <Row
+              label="How to use"
+              hint="The guide, in your browser"
+              onPress={() =>
+                Linking.openURL(DOCS_URL).catch(() =>
+                  toast('Could not open the guide'),
+                )
+              }
+            />
+            <Row
+              label="Report a problem"
+              hint="Opens a report on GitHub with your version and phone filled in"
+              onPress={() =>
+                Linking.openURL(
+                  reportUrl(
+                    appVersion,
+                    `${phone.Brand ?? ''} ${phone.Model ?? ''}`.trim(),
+                    String(phone.Release ?? Platform.Version),
+                  ),
+                ).catch(() => toast('Could not open GitHub'))
+              }
+            />
+          </Section>
+
+        {/* A statement, not a setting: there is nothing to switch, so it is
+            set as a boxed paragraph rather than dressed as a row. */}
+        <View style={styles.section}>
+          <View style={styles.sectionHead}>
+            <Text style={styles.sectionTitle}>What we collect</Text>
+          </View>
+          <View style={styles.statement}>
+            <Text style={styles.statementText}>
+              We collect usage statistics to make Relaxify better:{' '}
+              <Text style={styles.statementStrong}>{COLLECTED_ITEMS}</Text>.{' '}
+              {COLLECTED_PROMISE}
+            </Text>
+            <Text style={[styles.statementText, styles.statementMore]}>
+              {JAM_NOTE}
+            </Text>
+          </View>
+        </View>
+
+
+          <Section title="Legal">
+            <Row
+              label="Licence"
+              value="GPL-3.0"
+              onPress={() => Linking.openURL(LICENCE_URL).catch(() => {})}
+            />
+            <Row
+              label="Open-source licences"
+              onPress={() => setLicencesOpen(true)}
+            />
+          </Section>
+          <View style={styles.tail} />
+        </ScrollView>
+
+        <Sheet open={licencesOpen} onClose={() => setLicencesOpen(false)}>
+          <Text style={styles.sheetTitle}>Open-source licences</Text>
+          <ScrollView style={styles.licences}>
+            {LICENCES.map(g => (
+              <View key={g.group} style={styles.licenceGroup}>
+                <Text style={styles.sectionTitle}>{g.group}</Text>
+                {g.items.map(([name, licence]) => (
+                  <View key={name} style={styles.licenceRow}>
+                    <Text style={styles.licenceName}>{name}</Text>
+                    <Text style={styles.rowValue}>{licence}</Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </Sheet>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
       <View style={styles.bar}>
@@ -858,41 +1010,16 @@ export function SettingsScreen({
         <Text style={styles.barTitle}>Settings</Text>
       </View>
 
-      <View style={styles.find}>
-        <SearchIcon size={18} color={C.sub} />
-        <TextInput
-          value={find}
-          onChangeText={setFind}
-          placeholder="Search settings"
-          placeholderTextColor={C.faint}
-          style={styles.findInput}
-          autoCorrect={false}
-          returnKeyType="search"
-        />
-        {!!find && (
-          <TouchableOpacity
-            hitSlop={10}
-            onPress={() => setFind('')}
-            accessibilityRole="button"
-            accessibilityLabel="Clear search">
-            <X size={18} color={C.sub} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <FindQuery.Provider value={findQ}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
         overScrollMode="never"
         bounces={false}>
         {/* Order is deliberate: the things you change often first, the
               things you set once near the bottom, and the destructive one
               last and on its own. */}
-        <Section title="Playback" Icon={SlidersHorizontal} find={FIND.playback}>
+        <Section title="Playback">
           <ToggleRow
-            Icon={Repeat2}
             label="Autoplay"
             hint="Keep playing similar songs when the queue ends"
             value={settings.autoplay}
@@ -908,7 +1035,6 @@ export function SettingsScreen({
             }}
           />
           <ToggleRow
-            Icon={AudioLines}
             label="Normalize volume"
             hint="Play every track at the same loudness"
             value={settings.normalizeVolume}
@@ -917,8 +1043,19 @@ export function SettingsScreen({
               applyAudioEffects();
             }}
           />
+          <ToggleRow
+            label="Headphone memory"
+            hint="Each pair of headphones, speaker or car keeps its own equalizer"
+            value={settings.deviceMemory}
+            onChange={v => writeSetting('deviceMemory', v)}
+          />
+          <ToggleRow
+            label="Resume when headphones connect"
+            hint="Carry on playing when you put your headphones on"
+            value={settings.resumeOnConnect}
+            onChange={v => writeSetting('resumeOnConnect', v)}
+          />
           <NavRow
-            Icon={Shuffle}
             label="Crossfade"
             value={
               settings.crossfadeDuration > 0
@@ -928,7 +1065,6 @@ export function SettingsScreen({
             onPress={() => setPanel('playback')}
           />
           <NavRow
-            Icon={SlidersHorizontal}
             label="Equalizer"
             value={
               settings.eqEnabled
@@ -942,11 +1078,8 @@ export function SettingsScreen({
 
         <Section
           title="Sound"
-          Icon={Gauge}
-          find={FIND.sound}
           footer="Downloads always use the best quality a source offers, regardless of this setting.">
           <Row
-            Icon={Headphones}
             label="Streaming quality"
             value={qualityLabel}
             onPress={() => setQualityOpen(true)}
@@ -995,11 +1128,8 @@ export function SettingsScreen({
         */}
         <Section
           title="Sources"
-          Icon={Radio}
-          find={FIND.sources}
           footer="JioSaavn and SoundCloud are always on. YouTube is optional: its streams are protected, and the app has to decode each one before it can play it. Turning YouTube on first tests this by opening one YouTube stream on this phone, and it turns on only if the test succeeds.">
           <View style={styles.row}>
-            <Lead Icon={Disc3} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>JioSaavn</Text>
             </View>
@@ -1009,7 +1139,6 @@ export function SettingsScreen({
           </View>
 
           <View style={styles.row}>
-            <Lead Icon={Disc3} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>SoundCloud</Text>
             </View>
@@ -1017,7 +1146,6 @@ export function SettingsScreen({
           </View>
 
           <View style={styles.row}>
-            <Lead Icon={Disc3} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>YouTube</Text>
             </View>
@@ -1033,30 +1161,53 @@ export function SettingsScreen({
             Each is its own row now, and the path is a VALUE — right-aligned,
             middle-ellipsised, so a long path shows the start and the end
             rather than wrapping to two lines of body text. */}
-        <Section title="Storage" Icon={HardDrive} find={FIND.storage}>
+        <Section title="Storage">
+          {storage && storage.total_bytes > 0 && (
+            <StorageBreakdown info={storage} savedBytes={storedBytes()} />
+          )}
           <TouchableOpacity
             style={styles.row}
             onPress={pickDownloadFolder}
             activeOpacity={0.7}>
-            <Lead Icon={Download} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>Download location</Text>
+              {/* A path, set as one: its own box, a fixed-width face, cut in
+                  the middle so the start and the end both stay visible. */}
+              <View style={styles.pathBox}>
+                <Text
+                  style={styles.pathText}
+                  numberOfLines={1}
+                  ellipsizeMode="middle">
+                  {folder ||
+                    (downloads?.using_fallback ? 'App storage' : 'Not set yet')}
+                </Text>
+              </View>
             </View>
-            <Text
-              style={styles.rowValue}
-              numberOfLines={1}
-              ellipsizeMode="middle">
-              {folder ||
-                (downloads?.using_fallback ? 'App storage' : 'Not set yet')}
-            </Text>
             <ChevronRight size={17} color={C.faint} />
           </TouchableOpacity>
 
           <Row
-            Icon={ArrowUpRight}
             label="Open in Files"
             onPress={openDownloadFolder}
           />
+
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => setRemoveOpen(true)}
+            disabled={removing || !storage?.downloads_count}
+            activeOpacity={0.7}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>
+                {removing ? 'Removing…' : 'Remove all downloads'}
+              </Text>
+              <Text style={styles.rowHint}>
+                {storage?.downloads_count
+                  ? `Deletes the ${storage.downloads_count} songs saved on this phone. Playlists and likes stay.`
+                  : 'No downloaded songs on this phone.'}
+              </Text>
+            </View>
+            <ChevronRight size={17} color={C.faint} />
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.row}
@@ -1097,75 +1248,14 @@ export function SettingsScreen({
           />
         </Section>
 
-        {/* Its OWN section, not a composite row buried in "About".
-              The update was a RefreshCw icon, an "Installed" label, a version,
-              a status line and a nested button all inside one styles.row —
-              nothing else on this screen looked like that. And the update dot
-              on the hamburger dropped you at the top of an eight-section list
-              to go hunting for it; see `focus`. */}
-        <View onLayout={e => (updateY.current = e.nativeEvent.layout.y)}>
-          <Section
-            title="About"
-            Icon={Sparkles}
-            find={FIND.about}
-            highlight={glow}
-            footer={
-              update.phase === 'failed'
-                ? 'The last check could not reach GitHub. Check your connection and try again.'
-                : undefined
-            }>
-            <Row Icon={Sparkles} label="App version" value={appVersion || '—'} />
-            {/* ONE row, four states — check / found / downloading / failed.
-                That is the pattern both iOS and Android use, and it means the
-                thing you came here to press is always in the same place. */}
-            <TouchableOpacity
-              style={styles.row}
-              activeOpacity={0.7}
-              onPress={updateAvailable ? startUpdateInstall : checkUpdates}
-              disabled={checking || update.phase === 'downloading'}>
-              <Animated.View style={{transform: [{rotate: spinDeg}]}}>
-                <RefreshCw
-                  size={19}
-                  color={updateAvailable ? C.accent : C.sub}
-                  strokeWidth={2}
-                />
-              </Animated.View>
-              <View style={styles.rowText}>
-                <Text
-                  style={[
-                    styles.rowLabel,
-                    updateAvailable && styles.rowLabelAccent,
-                  ]}>
-                  {update.phase === 'downloading'
-                    ? `Downloading… ${update.pct}%`
-                    : updateAvailable
-                    ? 'Download and install'
-                    : 'Check for updates'}
-                </Text>
-                <Text style={styles.rowHint}>{updateStatusText}</Text>
-              </View>
-              {!updateAvailable && <ChevronRight size={17} color={C.faint} />}
-            </TouchableOpacity>
-            <ToggleRow
-              Icon={RefreshCw}
-              label="Automatic updates"
-              hint="Check when the app opens and when it returns to the foreground"
-              value={settings.autoUpdateCheck}
-              onChange={v => writeSetting('autoUpdateCheck', v)}
-            />
-          </Section>
-        </View>
-
-        <Section title="Appearance" Icon={Eye} find={FIND.appearance}>
+        <Section title="Appearance">
           <ToggleRow
-            Icon={Radio}
             label="Show source label"
             hint="Marks which service each track came from"
             value={settings.showSourceBadge}
             onChange={v => writeSetting('showSourceBadge', v)}
           />
           <ToggleRow
-            Icon={Gauge}
             label="Show quality label"
             hint="Marks each track with its bitrate"
             value={settings.showQualityBadge}
@@ -1173,38 +1263,26 @@ export function SettingsScreen({
           />
         </Section>
 
-        <Section
-          title="Usage statistics"
-          Icon={ChartColumn}
-          find={FIND.stats}>
-          <Row
-            Icon={ChartColumn}
-            label="What Relaxify collects"
-            hint={ANALYTICS_NOTE}
+        <Section title="About">
+          <NavRow
+            label="About and support"
+            value={updateAvailable ? 'Update ready' : appVersion || undefined}
+            onPress={() => setPanel('about')}
           />
         </Section>
 
-        {matches(findQ, FIND.reset) && (
-          <TouchableOpacity
-            style={styles.reset}
-            activeOpacity={0.7}
-            onPress={() => setResetOpen(true)}>
-            <Text style={styles.resetText}>Reset all settings</Text>
-            <Text style={styles.rowHint}>
-              Puts everything back to defaults. Your library isn&apos;t touched.
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {!!findQ && !anyMatch && (
-          <Text style={styles.noMatch}>
-            {`No settings match "${find.trim()}".`}
+        <TouchableOpacity
+          style={styles.reset}
+          activeOpacity={0.7}
+          onPress={() => setResetOpen(true)}>
+          <Text style={styles.resetText}>Reset all settings</Text>
+          <Text style={styles.rowHint}>
+            Puts everything back to defaults. Your library isn&apos;t touched.
           </Text>
-        )}
+        </TouchableOpacity>
 
         <View style={styles.tail} />
       </ScrollView>
-      </FindQuery.Provider>
 
       <ConfirmModal
         visible={resetOpen}
@@ -1214,6 +1292,16 @@ export function SettingsScreen({
         danger
         onConfirm={doReset}
         onCancel={() => setResetOpen(false)}
+      />
+
+      <ConfirmModal
+        visible={removeOpen}
+        title="Remove all downloads?"
+        message={`Deletes the ${storage?.downloads_count ?? 0} songs saved on this phone. Your playlists and likes are kept, and every song can be downloaded again.`}
+        confirmLabel="Remove"
+        danger
+        onConfirm={doRemoveDownloads}
+        onCancel={() => setRemoveOpen(false)}
       />
 
       <ConfirmModal
@@ -1246,26 +1334,38 @@ const styles = StyleSheet.create({
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   scroll: {paddingBottom: BOTTOM_INSET},
-  find: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginHorizontal: S.gutter,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: C.surfaceHi,
-  },
-  findInput: {flex: 1, color: C.text, fontSize: 14.5, padding: 0},
-  noMatch: {
-    color: C.sub,
-    fontSize: 14,
-    textAlign: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: S.gutter,
-  },
   section: {paddingTop: 22},
+  licences: {maxHeight: 420},
+  licenceGroup: {paddingHorizontal: S.gutter, paddingTop: 14, gap: 8},
+  licenceRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  licenceName: {flex: 1, color: C.text, fontSize: 14},
+  pathBox: {
+    marginTop: 8,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: '#0b0b0d',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  pathText: {
+    fontFamily: 'monospace',
+    color: '#cfd1d6',
+    fontSize: 12.5,
+  },
+  statement: {
+    marginHorizontal: S.gutter,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    padding: 14,
+  },
+  statementText: {color: '#d3d5da', fontSize: 13.5, lineHeight: 21},
+  statementMore: {marginTop: 10},
+  // Its own weight, stated: a nested span without one falls back to Regular.
+  statementStrong: {color: C.text, fontWeight: '700'},
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',

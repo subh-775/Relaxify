@@ -17,6 +17,8 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.abs
@@ -344,14 +346,43 @@ class AudioModule(private val ctx: ReactApplicationContext) :
             override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
                 val now = System.currentTimeMillis()
                 added?.forEach { seenAt[it.id] = now }
+                emitDevices(true, added)
             }
 
             override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
                 removed?.forEach { seenAt.remove(it.id) }
+                emitDevices(false, removed)
             }
         }
         deviceCallback = cb
         am.registerAudioDeviceCallback(cb, Handler(Looper.getMainLooper()))
+    }
+
+    /**
+     * Tell JS an output device came or went (headphone memory, resume on
+     * connect). A native event, so it arrives with the screen off. `headset`
+     * says whether any of them is something you listen through, rather than a
+     * call endpoint or a HDMI port; the phone's own speaker never fires this.
+     */
+    private fun emitDevices(added: Boolean, devices: Array<out AudioDeviceInfo>?) {
+        if (devices.isNullOrEmpty() || !ctx.hasActiveReactInstance()) return
+        val headset = devices.any {
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                (android.os.Build.VERSION.SDK_INT >= 31 &&
+                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+        }
+        try {
+            val map = Arguments.createMap()
+            map.putBoolean("added", added)
+            map.putBoolean("headset", headset)
+            ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit("mp.audio.devices", map)
+        } catch (e: Exception) {
+            Log.w("AudioModule", "device event not sent: ${e.message}")
+        }
     }
 
     @ReactMethod

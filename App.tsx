@@ -13,6 +13,9 @@ import {
 import {ErrorBoundary} from './src/ErrorBoundary';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {RecapScreen} from './src/screens/RecapScreen';
+import {JamScreen} from './src/screens/JamScreen';
+import {DOCS_URL} from './src/links';
+import {startDeviceMemory} from './src/deviceMemory';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
 import {
@@ -90,7 +93,6 @@ import {logEvent} from './src/analytics';
  * built", which is not the question anyone taps Help to ask. Settings used to
  * point its About row at the repo for want of anywhere better.
  */
-const DOCS_URL = 'https://subh-775.github.io/Relaxify/';
 
 function Shell() {
   const [tab, setTab] = useState<Tab>('home');
@@ -131,6 +133,8 @@ function Shell() {
   const [libraryNonce, setLibraryNonce] = useState(0);
   /** The drawer's Recap. null = closed. */
   const [activity, setActivity] = useState<'stats' | null>(null);
+  /** The drawer's Jam screen. */
+  const [jamOpen, setJamOpen] = useState(false);
   const updateWaiting = useUpdateAvailable();
   const exitArmedAt = useRef(0);
 
@@ -203,6 +207,9 @@ function Shell() {
     // …and again on every return to the foreground, because a process kept
     // alive by the playback service may not launch again for days.
     watchForegroundUpdates();
+    // Each headphone and speaker keeps its own equalizer; also resumes on
+    // connect when that is switched on.
+    startDeviceMemory();
     // Clear the cache once it passes the size set in Settings.
     const stopCacheLimit = watchCacheLimit();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
@@ -414,6 +421,10 @@ function Shell() {
       setActivity(null);
       return true;
     }
+    if (jamOpen) {
+      setJamOpen(false);
+      return true;
+    }
     if (importUrl) {
       setImportUrl(null);
       return true;
@@ -480,6 +491,7 @@ function Shell() {
 
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   const closeRecap = useCallback(() => setActivity(null), []);
+  const closeJam = useCallback(() => setJamOpen(false), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
 
   /**
@@ -537,6 +549,8 @@ function Shell() {
         );
       } else if (dest === 'stats') {
         setActivity(dest);
+      } else if (dest === 'jam') {
+        setJamOpen(true);
       }
       // updateWaiting is read above, so it has to be a dependency — with an empty
       // array this closure would keep whatever the flag was on first render and
@@ -751,6 +765,12 @@ function Shell() {
         {eqOpen && (
           <View style={StyleSheet.absoluteFill}>
             <EqualizerScreen onClose={() => setEqOpen(false)} />
+          </View>
+        )}
+
+        {jamOpen && (
+          <View style={StyleSheet.absoluteFill}>
+            <JamScreen onClose={closeJam} />
           </View>
         )}
       </Animated.View>

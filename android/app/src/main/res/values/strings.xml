@@ -5,4 +5,12 @@
          React root component is likewise still "MusicPlayer" and has to match
          index.js; neither is user-visible. -->
     <string name="app_name">Relaxify</string>
+    <!-- The home-screen widget (NowPlayingWidget). -->
+    <string name="widget_description">The song that is playing, with play, pause and skip</string>
+    <string name="widget_empty_title">Nothing playing</string>
+    <string name="widget_empty_artist">Tap to open Relaxify</string>
+    <string name="widget_open">Open Relaxify</string>
+    <string name="widget_play">Play or pause</string>
+    <string name="widget_prev">Previous song</string>
+    <string name="widget_next">Next song</string>
 </resources>

@@ -76,7 +76,7 @@ import {useSongSwipe, type Neighbour} from '../songSwipe';
 /** Concentric corners: PAD + ART_R = BAR_R, so the two curves are parallel.
  *  ART_R comes from playerSheet because the full player's cover has to round
  *  DOWN to exactly this value as it morphs into the slot below. */
-const PAD = 5;
+const PAD = 4;
 const ART_R = MINI_ART_RADIUS;
 /** Asserted against MINI_BAR_RADIUS by the test: the full player's surface
  *  interpolates its corners to that constant, and a bar whose own corner
@@ -507,7 +507,8 @@ const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 10,
+    // Nearly edge to edge: 4 from each side leaves the title more room.
+    marginHorizontal: 4,
     marginBottom: 4,
     borderRadius: BAR_R,
     // Translucent, not opaque. Against the fade at the foot of the page this
@@ -543,8 +544,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   art: {
-    width: 54,
-    height: 54,
+    width: 48,
+    height: 48,
     borderRadius: ART_R,
     backgroundColor: C.surface,
     // Stops a cover with a light background from bleeding into the bar.

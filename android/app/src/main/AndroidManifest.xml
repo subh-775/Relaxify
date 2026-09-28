@@ -70,6 +70,18 @@
         </intent-filter>
       </activity>
 
+      <!-- The home-screen widget: now playing with play, pause and skip. -->
+      <receiver
+        android:name=".NowPlayingWidget"
+        android:exported="false">
+        <intent-filter>
+            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+        </intent-filter>
+        <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/widget_now_playing_info" />
+      </receiver>
+
       <!-- Serves the downloaded update APK to the system installer as a
            content:// URI (a file:// URI throws FileUriExposedException on
            API 24+). -->

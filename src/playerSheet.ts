@@ -124,7 +124,7 @@ export const sheetRect: SharedValue<Box> = makeMutable({
 /** The mini bar's corner radius — PAD + MINI_ART_RADIUS, concentric with its
  *  artwork. The panel's corners interpolate to exactly this, and PlayerBar
  *  builds its own corner from the same constant so the two cannot drift. */
-export const MINI_BAR_RADIUS = 11;
+export const MINI_BAR_RADIUS = 10;
 
 /** The mini player's cover radius, and what the big cover rounds down to. */
 export const MINI_ART_RADIUS = 6;
