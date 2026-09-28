@@ -71,8 +71,11 @@ export const WORDS: [string, number][] = [
 
 /** The largest size the line is set at; narrower phones get less. */
 const MAX_SIZE = 32;
-/** "Listen up" at font size 1, measured the same way. */
-const LISTEN_EM = 4.096;
+/** "Listen" and "up" at font size 1, measured the same way. They are set as
+ *  two words with the line's GAP between them: the font's own space is only
+ *  0.18 em at this weight, which ran "Listen up" together into "Listenup". */
+const LISTEN_EM = 2.747;
+const UP_EM = 1.203;
 const LONGEST_EM = Math.max(...WORDS.map(w => w[1]));
 const GAP = 7;
 /** The pill's padding either side of its word. */
@@ -88,7 +91,9 @@ export function fitSize(room: number): number {
   }
   return Math.min(
     MAX_SIZE,
-    Math.floor((room - GAP - 2 * PAD) / (LISTEN_EM + LONGEST_EM)),
+    Math.floor(
+      (room - 2 * GAP - 2 * PAD) / (LISTEN_EM + UP_EM + LONGEST_EM),
+    ),
   );
 }
 
@@ -250,7 +255,12 @@ export function Greeting({visible = true}: {visible?: boolean}) {
         <Text
           style={[styles.word, styles.lead, word]}
           maxFontSizeMultiplier={1}>
-          Listen up
+          Listen
+        </Text>
+        <Text
+          style={[styles.word, styles.lead, word]}
+          maxFontSizeMultiplier={1}>
+          up
         </Text>
         <View
           style={[

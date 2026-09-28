@@ -686,6 +686,7 @@ function Shell() {
               // the honest answer for a queue that came from no collection.
               onPlay={(t, ctx) => play(t, ctx, collection.id)}
               onMenu={openSheet}
+              onOpenAlbum={openAlbumByName}
               onChanged={() => {
                 // Downloads stays OPEN and re-reads the folder. Closing it was
                 // right for a playlist that was just deleted — there is nothing

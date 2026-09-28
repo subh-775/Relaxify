@@ -54,8 +54,9 @@ test('the line fits its room with the longest word, pill and all', () => {
   // Rooms Home's header leaves on 432, 392 and 360 dp phones.
   for (const room of [300, 260, 224]) {
     const size = fitSize(room);
-    // "Listen up" (4.096 em), the gap, and the pill with 9 dp either side.
-    expect(size * (4.096 + longest) + 7 + 18).toBeLessThanOrEqual(room);
+    // "Listen" and "up" (2.747 + 1.203 em), a 7 dp gap after each, and the
+    // pill with 9 dp either side.
+    expect(size * (2.747 + 1.203 + longest) + 14 + 18).toBeLessThanOrEqual(room);
   }
   expect(fitSize(224)).toBeGreaterThanOrEqual(22); // not tiny on a 360 dp phone
   expect(fitSize(0)).toBe(32); // before layout: full size, not 0

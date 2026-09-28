@@ -32,16 +32,18 @@ import {
   Pause,
   Pencil,
   Play,
+  Search as SearchIcon,
   Shuffle,
   Square,
   SquareX,
   Trash2,
+  X,
+  ArrowUpDown,
 } from '../icons';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
 import {
-  collectionSubtitle,
   isSaved,
   toggleSaved,
   type Collection,
@@ -77,6 +79,21 @@ import {Sheet} from '../components/Sheet';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {EmptyState} from '../components/EmptyState';
+import {MoreByArtist} from '../components/MoreByArtist';
+
+/** The small word over the title: what kind of list this is. */
+function kindLabel(kind: Collection['kind']): string {
+  switch (kind) {
+    case 'album':
+      return 'Album';
+    case 'downloads':
+      return 'On this phone';
+    case 'liked':
+      return 'Your likes';
+    default:
+      return 'Playlist';
+  }
+}
 
 export function CollectionScreen({
   collection,
@@ -85,6 +102,7 @@ export function CollectionScreen({
   onPlay,
   onMenu,
   onChanged,
+  onOpenAlbum,
 }: {
   collection: Collection;
   /** A fuller tracklist is on its way — show a spinner, not "empty". */
@@ -97,6 +115,8 @@ export function CollectionScreen({
   ) => void;
   /** Downloads were deleted — the owner should rescan disk. */
   onChanged?: () => void;
+  /** Open another album by the same artist (the "More by" row). */
+  onOpenAlbum?: (album: string, artist: string) => void;
 }) {
   const [selected, setSelected] = useState<Set<string> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -157,6 +177,38 @@ export function CollectionScreen({
     }
   }, [collection, likes, playlists, localTracks]);
   const runtime = useMemo(() => formatTotalDuration(tracks), [tracks]);
+
+  // Sort and find, for this visit only. "Order" is the list's own: the
+  // record's running order, or the playlist's.
+  const [sortBy, setSortBy] = useState<'order' | 'title' | 'artist'>('order');
+  const [find, setFind] = useState<string | null>(null);
+  const nextSort = useCallback(
+    () =>
+      setSortBy(s => (s === 'order' ? 'title' : s === 'title' ? 'artist' : 'order')),
+    [],
+  );
+  const sortLabel =
+    sortBy === 'title'
+      ? 'Title'
+      : sortBy === 'artist'
+      ? 'Artist'
+      : collection.kind === 'album'
+      ? 'Track order'
+      : 'Custom order';
+  const shown = useMemo(() => {
+    const q = (find ?? '').trim().toLowerCase();
+    let list = q
+      ? tracks.filter(t =>
+          `${t.title || ''} ${t.artist || ''}`.toLowerCase().includes(q),
+        )
+      : tracks;
+    if (sortBy !== 'order') {
+      const key = (t: Track) =>
+        (sortBy === 'title' ? t.title : t.artist || '').toLowerCase();
+      list = [...list].sort((a, b) => key(a).localeCompare(key(b)));
+    }
+    return list;
+  }, [tracks, find, sortBy]);
 
   // A user playlist stays editable from inside, not only from its library row:
   // reflect the LIVE name and cover so a rename or new picture shows without
@@ -283,7 +335,9 @@ export function CollectionScreen({
     onChanged?.();
   }, [selected, tracks, onChanged]);
 
-  const play = useCallback((t: Track) => onPlay(t, tracks), [onPlay, tracks]);
+  // What you see is what plays: a sorted or filtered list queues in that
+  // order.
+  const play = useCallback((t: Track) => onPlay(t, shown), [onPlay, shown]);
 
   /** Queue every track for download. Sequential so the backend isn't handed
    *  fifty simultaneous fetches. */
@@ -371,9 +425,10 @@ export function CollectionScreen({
     if (playingHere) {
       togglePlay().catch(() => {});
     } else {
-      play(tracks[0]);
+      // The first song as you see it, sorted or found.
+      play(shown[0] ?? tracks[0]);
     }
-  }, [tracks, playingHere, play]);
+  }, [tracks, shown, playingHere, play]);
 
   return (
     <View style={styles.wrap}>
@@ -436,7 +491,7 @@ export function CollectionScreen({
       </View>
 
       <Animated.FlatList
-        data={tracks}
+        data={shown}
         keyExtractor={t => getTrackId(t)}
         {...listWindowing}
         contentContainerStyle={[styles.list, listEnd]}
@@ -448,17 +503,30 @@ export function CollectionScreen({
         scrollEventThrottle={16}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Animated.View
-              style={{transform: [{scale: artScale}], opacity: artOpacity}}>
-              <CollectionArt collection={shownCollection} size={168} />
-            </Animated.View>
-            <Text style={styles.name} numberOfLines={2}>
-              {displayName}
-            </Text>
-            <Text style={styles.sub}>
-              {collectionSubtitle(collection)}
-              {runtime ? ` · ${runtime}` : ''}
-            </Text>
+            {/* Cover beside the title, so the first songs show without a
+                scroll. The cover still eases back as the list moves up. */}
+            <View style={styles.top}>
+              <Animated.View
+                style={{transform: [{scale: artScale}], opacity: artOpacity}}>
+                <CollectionArt collection={shownCollection} size={128} />
+              </Animated.View>
+              <View style={styles.meta}>
+                <Text style={styles.kind}>{kindLabel(collection.kind)}</Text>
+                <Text style={styles.name} numberOfLines={3}>
+                  {displayName}
+                </Text>
+                {collection.kind === 'album' && !!collection.artist && (
+                  <Text style={styles.by} numberOfLines={1}>
+                    {collection.artist}
+                  </Text>
+                )}
+                <Text style={styles.sub}>
+                  {`${tracks.length} ${tracks.length === 1 ? 'song' : 'songs'}${
+                    runtime ? `, ${runtime}` : ''
+                  }`}
+                </Text>
+              </View>
+            </View>
 
             {collection.kind === 'downloads' && jobs.length > 0 && (
               <View style={styles.jobs}>
@@ -468,21 +536,59 @@ export function CollectionScreen({
               </View>
             )}
 
-            {/* Left group, play hard right — the two ends of the row, so
-                neither reads as the other's neighbour. An album gets save +
-                download-all instead of shuffle; shuffling a fixed running
-                order is not what you want from a record. */}
             {!selecting && (
-              <View style={styles.actions}>
-                <View style={styles.leftGroup}>
-                  {/* Anything that came from a SOURCE (album or playlist) can
-                      be saved to the library with the heart — that's how it
-                      shows up under Your Library, same as Spotify. */}
+              <>
+                {/* Two wide buttons with words. A record keeps its running
+                    order, so an album gets Play alone, full width. */}
+                <View style={styles.bigRow}>
+                  <TouchableOpacity
+                    style={[styles.bigBtn, styles.bigPlay]}
+                    activeOpacity={0.85}
+                    onPress={onBigPlay}
+                    disabled={!tracks.length}
+                    accessibilityRole="button">
+                    {playingHere && isPlaying ? (
+                      <Pause size={20} color={C.bg} fill={C.bg} />
+                    ) : (
+                      <Play size={20} color={C.bg} fill={C.bg} />
+                    )}
+                    <Text style={styles.bigPlayText}>
+                      {playingHere && isPlaying ? 'Pause' : 'Play'}
+                    </Text>
+                  </TouchableOpacity>
+                  {collection.kind !== 'album' && (
+                    <TouchableOpacity
+                      style={[styles.bigBtn, styles.bigShuffle]}
+                      activeOpacity={0.8}
+                      onPress={shuffle}
+                      disabled={!tracks.length}
+                      accessibilityRole="button"
+                      accessibilityState={{selected: shuffled}}>
+                      <Shuffle
+                        size={19}
+                        color={shuffled ? C.accent : C.text}
+                      />
+                      <Text
+                        style={[
+                          styles.bigShuffleText,
+                          shuffled && styles.bigShuffleOn,
+                        ]}>
+                        Shuffle
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Tools: keep it (save, download) on the left; arrange it
+                    (sort, find) on the right. */}
+                <View style={styles.tools}>
                   {(collection.kind === 'album' ||
                     collection.kind === 'sourcePlaylist') && (
                     <TouchableOpacity
                       activeOpacity={0.7}
                       hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={saved ? 'Remove from library' : 'Save to library'}
                       onPress={() => {
                         const now = toggleSaved(collection);
                         setSaved(now);
@@ -493,15 +599,12 @@ export function CollectionScreen({
                         );
                       }}>
                       <Heart
-                        size={24}
+                        size={23}
                         color={saved ? C.accent : C.text}
                         fill={saved ? C.accent : 'transparent'}
                       />
                     </TouchableOpacity>
                   )}
-                  {/* Download-all: every album and playlist can be taken
-                      offline in one tap. A record keeps its fixed order so it
-                      gets no shuffle; a playlist gets both. */}
                   {(collection.kind === 'album' ||
                     collection.kind === 'userPlaylist' ||
                     collection.kind === 'sourcePlaylist') && (
@@ -509,50 +612,81 @@ export function CollectionScreen({
                       activeOpacity={0.7}
                       hitSlop={10}
                       onPress={downloadAll}
-                      disabled={!tracks.length}>
+                      disabled={!tracks.length}
+                      accessibilityRole="button"
+                      accessibilityLabel="Download all">
                       <ArrowDownToLine
-                        size={24}
+                        size={23}
                         color={tracks.length ? C.text : C.faint}
                       />
                     </TouchableOpacity>
                   )}
-                  {collection.kind !== 'album' && (
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={shuffle}
-                      hitSlop={12}
-                      disabled={!tracks.length}>
-                      <Shuffle
-                        size={24}
-                        color={
-                          shuffled ? C.accent : tracks.length ? C.text : C.faint
-                        }
-                      />
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={styles.playBtn}
-                  activeOpacity={0.85}
-                  onPress={onBigPlay}
-                  disabled={!tracks.length}>
-                  {playingHere && isPlaying ? (
-                    <Pause size={26} color={C.bg} fill={C.bg} />
-                  ) : (
-                    <Play
-                      size={26}
-                      color={C.bg}
-                      fill={C.bg}
-                      style={styles.playNudge}
+                  <View style={styles.fill} />
+                  <TouchableOpacity
+                    style={styles.sortPill}
+                    activeOpacity={0.75}
+                    onPress={nextSort}
+                    disabled={tracks.length < 2}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Sort: ${sortLabel}`}>
+                    <ArrowUpDown size={15} color={C.text} />
+                    <Text style={styles.sortText}>{sortLabel}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    hitSlop={10}
+                    onPress={() => setFind(f => (f === null ? '' : null))}
+                    disabled={!tracks.length}
+                    accessibilityRole="button"
+                    accessibilityLabel="Find in this list">
+                    <SearchIcon
+                      size={21}
+                      color={find !== null ? C.accent : C.text}
                     />
-                  )}
-                </TouchableOpacity>
-              </View>
+                  </TouchableOpacity>
+                </View>
+
+                {find !== null && (
+                  <View style={styles.findRow}>
+                    <SearchIcon size={17} color={C.sub} />
+                    <TextInput
+                      value={find}
+                      onChangeText={setFind}
+                      placeholder="Find in this list"
+                      placeholderTextColor={C.faint}
+                      style={styles.findInput}
+                      autoFocus
+                      autoCorrect={false}
+                      returnKeyType="search"
+                    />
+                    <TouchableOpacity
+                      hitSlop={10}
+                      onPress={() => setFind(null)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close find">
+                      <X size={18} color={C.sub} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
             )}
           </View>
         }
+        ListFooterComponent={
+          collection.kind === 'album' &&
+          !!collection.artist &&
+          !!onOpenAlbum &&
+          !find ? (
+            <MoreByArtist
+              artist={collection.artist}
+              current={collection.name}
+              onOpen={onOpenAlbum}
+            />
+          ) : null
+        }
         ListEmptyComponent={
-          loading ? (
+          find && tracks.length ? (
+            <Text style={styles.empty}>{`No songs match "${find.trim()}".`}</Text>
+          ) : loading ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator size="large" color={C.accent} />
               <Text style={styles.empty}>Loading songs…</Text>
@@ -735,35 +869,70 @@ const styles = StyleSheet.create({
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   list: {paddingBottom: BOTTOM_INSET},
-  header: {alignItems: 'center', paddingTop: 10, paddingBottom: 6},
-  name: {
-    ...T.screenTitle,
-    color: C.text,
-    marginTop: 16,
-    textAlign: 'center',
+  header: {paddingTop: 10, paddingBottom: 6},
+  top: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 16,
     paddingHorizontal: S.gutter,
   },
-  sub: {...T.sub, color: C.sub, marginTop: 5},
-  actions: {
+  meta: {flex: 1, minWidth: 0, gap: 3},
+  kind: {color: C.sub, fontSize: 12, fontWeight: '700'},
+  by: {color: C.text, fontSize: 14, fontWeight: '700'},
+  bigRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    alignSelf: 'stretch',
+    gap: 10,
     paddingHorizontal: S.gutter,
     marginTop: 18,
-    marginBottom: 6,
   },
-  jobs: {alignSelf: 'stretch', paddingTop: 14},
-  leftGroup: {flexDirection: 'row', alignItems: 'center', gap: 22},
-  playNudge: {marginLeft: 3},
-  playBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: C.accent,
+  bigBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 999,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
+  bigPlay: {backgroundColor: C.text},
+  bigPlayText: {color: C.bg, fontSize: 15, fontWeight: '800'},
+  bigShuffle: {borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.28)'},
+  bigShuffleText: {color: C.text, fontSize: 15, fontWeight: '800'},
+  bigShuffleOn: {color: C.accent},
+  tools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 22,
+    paddingHorizontal: S.gutter,
+    marginTop: 16,
+  },
+  fill: {flex: 1},
+  sortPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: C.surfaceHi,
+    marginRight: -8,
+  },
+  sortText: {color: C.text, fontSize: 12.5, fontWeight: '700'},
+  findRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: S.gutter,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: C.surfaceHi,
+  },
+  findInput: {flex: 1, color: C.text, fontSize: 14, padding: 0},
+  name: {...T.screenTitle, color: C.text, fontSize: 22, lineHeight: 27},
+  sub: {...T.sub, color: C.sub, marginTop: 2},
+  jobs: {alignSelf: 'stretch', paddingTop: 14},
   rowWrap: {flexDirection: 'row', alignItems: 'center'},
   rowFill: {flex: 1, minWidth: 0},
   check: {paddingLeft: S.gutter, paddingVertical: 12},
