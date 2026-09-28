@@ -3,7 +3,7 @@
  * pieces (Banner, Row, Fold, Steps, GetApp, RecapFlip, ReleaseBadges) dropped
  * in where a paragraph would be duller than a card.
  */
-import {Art, Banner, Fold, GetApp, RecapFlip, ReleaseBadges, Row, Steps, href} from './brand.jsx';
+import {Art, Banner, Fold, GetApp, Group, RecapFlip, ReleaseBadges, Row, Steps, href} from './brand.jsx';
 import {External} from './icons.jsx';
 
 /** Links: in-site ones get the GitHub Pages base; outside ones open in a new
@@ -41,6 +41,7 @@ export const mdxComponents = {
   Banner,
   Row,
   Fold,
+  Group,
   Steps,
   GetApp,
   RecapFlip,

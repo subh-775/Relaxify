@@ -93,10 +93,19 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  font: inherit;
   font-weight: 800;
   font-size: 20px;
   letter-spacing: -0.03em;
   text-decoration: none;
+  color: var(--text);
+}
+.brand-menu {
+  display: none;
+  padding: 6px 8px 6px 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
 }
 
 .chips {
@@ -164,19 +173,113 @@ a {
 @media (max-width: 860px) {
   .top {
     grid-template-columns: 1fr auto;
-    gap: 0 12px;
-    padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
   }
+  .brand-link,
   .chips {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-content: flex-start;
-    margin: 0 -16px;
-    padding: 8px 16px 10px;
+    display: none;
+  }
+  .brand-menu {
+    display: inline-flex;
+    justify-self: start;
   }
   .gh span {
     display: none;
   }
+}
+
+/* The app's side drawer (Sidebar.tsx), for phones. */
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  visibility: hidden;
+  transition: visibility 0s 0.3s;
+}
+.drawer.open {
+  visibility: visible;
+  transition: none;
+}
+.scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.drawer.open .scrim {
+  opacity: 1;
+}
+.panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(84vw, 320px);
+  display: flex;
+  flex-direction: column;
+  padding: calc(env(safe-area-inset-top, 0px) + 40px) 0 calc(env(safe-area-inset-bottom, 0px) + 20px);
+  background: rgba(8, 8, 8, 0.97);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0 18px 18px 0;
+  overflow-y: auto;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+.drawer.open .panel {
+  transform: none;
+}
+.drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  margin-bottom: 24px;
+}
+.drawer-brand b {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.drawer-brand small {
+  display: block;
+  color: var(--sub);
+  font-size: 13px;
+}
+.drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.drawer-item i {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--c, #3a3a40);
+}
+.drawer-item.on {
+  background: #151518;
+}
+.drawer-foot {
+  margin-top: auto;
+  padding: 24px 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+}
+.drawer-foot .get,
+.drawer-foot .ghost {
+  justify-content: center;
+}
+.drawer-foot small {
+  color: #5c626e;
+  font-size: 12px;
+  text-align: center;
 }
 
 /* ── the card (the app's FeatureCard) ───────────────────────────────────── */
@@ -298,8 +401,8 @@ a {
   gap: 10px;
   padding: 14px 22px 14px 16px;
   border-radius: 999px;
-  background: var(--green);
-  color: var(--green-ink);
+  background: var(--text);
+  color: #000;
   font-size: 16.5px;
   font-weight: 800;
   text-decoration: none;
@@ -314,7 +417,7 @@ a {
 }
 .get:hover {
   transform: translateY(-2px) rotate(-1deg);
-  box-shadow: 0 10px 28px rgba(29, 185, 84, 0.35);
+  box-shadow: 0 10px 28px rgba(255, 255, 255, 0.16);
 }
 .ghost {
   display: inline-flex;
@@ -393,27 +496,22 @@ a {
 }
 
 .all {
-  margin-top: clamp(48px, 8vw, 96px);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--line);
-}
-@media (max-width: 900px) {
-  .all {
-    grid-template-columns: 1fr;
-  }
+  margin: clamp(48px, 8vw, 88px) auto 0;
+  max-width: 700px;
 }
 .all-item {
   display: grid;
   grid-template-columns: 14px 1fr auto;
   gap: 14px;
   align-items: baseline;
-  padding: 18px 16px 18px 4px;
-  border-bottom: 1px solid var(--line);
+  padding: 15px 18px;
   text-decoration: none;
   color: var(--sub);
-  font-size: 15px;
+  font-size: 14.5px;
   transition: background 0.2s;
+}
+.all-item + .all-item {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .all-item i {
   width: 12px;
@@ -425,15 +523,15 @@ a {
 .all-item b {
   display: block;
   color: var(--text);
-  font-size: 19px;
-  letter-spacing: -0.02em;
+  font-size: 16.5px;
+  letter-spacing: -0.01em;
 }
 .all-item small {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
 .all-item:hover {
-  background: #0d0d10;
+  background: var(--raised);
 }
 .all-item:hover b {
   color: var(--c);
@@ -451,61 +549,64 @@ a {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border-radius: 28px;
-  padding: clamp(28px, 5vw, 56px);
-  min-height: clamp(240px, 30vw, 340px);
+  max-width: 700px;
+  margin: 8px auto 0;
+  height: clamp(200px, 26vw, 232px);
+  padding: 20px 22px;
+  border-radius: 20px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: space-between;
   background: var(--bg);
   color: var(--ink);
-  animation: drop 0.65s cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
+  animation: drop 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
 }
 @keyframes drop {
   from {
-    transform: translateY(-26px) rotate(-1.5deg) scale(0.97);
+    transform: translateY(-18px) scale(0.98);
     opacity: 0;
   }
 }
+.page-kicker {
+  font-size: 15px;
+  font-weight: 800;
+  max-width: 70%;
+}
+.page-words {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .page-hero h1 {
   margin: 0;
-  font-size: clamp(52px, 9vw, 112px);
+  font-size: clamp(40px, 6vw, 52px);
   font-weight: 800;
-  letter-spacing: -0.058em;
-  line-height: 0.92;
-  max-width: 11ch;
-}
-.page-hero p {
-  margin: 12px 0 0;
-  font-size: clamp(19px, 2vw, 24px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  max-width: 26ch;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  max-width: 70%;
 }
 .page-read {
-  position: absolute;
-  top: clamp(20px, 3vw, 32px);
-  left: clamp(28px, 5vw, 56px);
-  padding: 5px 12px;
+  align-self: flex-start;
+  padding: 7px 14px;
   border-radius: 999px;
   background: var(--ink);
   color: var(--bg);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
 }
 .page-art {
   position: absolute;
-  right: -60px;
-  top: -60px;
+  right: -40px;
+  top: -44px;
   z-index: -1;
-  width: clamp(220px, 30vw, 320px);
-  height: clamp(220px, 30vw, 320px);
+  width: 210px;
+  height: 210px;
   display: grid;
   place-items: center;
 }
 .page-art svg {
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 /* ── reading column ─────────────────────────────────────────────────────── */
@@ -631,40 +732,56 @@ a {
   }
 }
 
-/* A real sequence, so numbered. */
+/* The app's grey surface, rows split by hairlines (Settings.tsx). */
+.surface {
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.group {
+  margin: 40px 0 0;
+}
+.group-title,
+.prose .group-title {
+  margin: 0 0 10px 4px;
+  font-size: 14.5px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: var(--sub);
+}
+
+/* A real sequence, so numbered; neutral, so colour stays with the cards. */
 .steps {
   list-style: none;
   counter-reset: step;
   margin: 18px 0 28px;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  background: var(--surface);
+  border-radius: 16px;
+  overflow: hidden;
 }
 .steps li {
   counter-increment: step;
   display: grid;
-  grid-template-columns: 52px 1fr;
-  gap: 16px;
+  grid-template-columns: 40px 1fr;
+  gap: 14px;
   align-items: start;
+  padding: 18px;
+}
+.steps li + li {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .steps li::before {
   content: counter(step);
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  font-size: 26px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 18px;
   font-weight: 800;
-  color: #111014;
-  background: #ff5a4e;
-}
-.steps li:nth-child(2)::before {
-  background: #b8f03c;
-}
-.steps li:nth-child(3)::before {
-  background: #3cb4ff;
+  color: var(--text);
+  background: #26262b;
 }
 .steps li p {
   margin: 0 0 10px;
@@ -674,8 +791,8 @@ a {
 }
 
 /* The small print, folded. */
-.fold {
-  border-bottom: 1px solid var(--line);
+.fold + .fold {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
 }
 .fold summary {
   list-style: none;
@@ -684,9 +801,9 @@ a {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 18px 2px;
+  padding: 16px 18px;
   color: var(--text);
-  font-size: 18px;
+  font-size: 16.5px;
   font-weight: 750;
   letter-spacing: -0.015em;
 }
@@ -699,17 +816,18 @@ a {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: #ff6fd8
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111014' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M12 6v12M6 12h12'/%3E%3C/svg%3E")
-    center / 16px no-repeat;
+  background: #26262b
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f4f5f7' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M12 6v12M6 12h12'/%3E%3C/svg%3E")
+    center / 15px no-repeat;
   transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1), background-color 0.2s;
 }
 .fold[open] summary::after {
   transform: rotate(135deg);
-  background-color: #b8f03c;
+  background-color: #3a3a40;
 }
 .fold-body {
-  padding: 0 2px 20px;
+  padding: 0 18px 18px;
+  font-size: 16px;
 }
 .fold-body p {
   margin: 0;
@@ -818,7 +936,7 @@ a {
   }
 }
 .prose .get {
-  color: var(--green-ink);
+  color: #000;
   text-decoration: none;
   margin: 4px 0 24px;
 }

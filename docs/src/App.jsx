@@ -5,7 +5,7 @@
  * A small path router rather than a library: the routes are a fixed list known
  * at build time (nav.js), and the build writes a real HTML file for each.
  */
-import {useCallback, useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {FLAT, MOVED, PAGES, PAL, SITE} from './nav.js';
 import {Art, GetApp, Note, PageCard, Stack, href, nextOf} from './brand.jsx';
 import {mdxComponents} from './mdx.jsx';
@@ -88,11 +88,28 @@ function useRouter() {
 /* ── the top bar ─────────────────────────────────────────────────────────── */
 
 function TopBar({path}) {
+  const [open, setOpen] = useState(false);
+  const menuBtn = useRef(null);
+  const close = useCallback(() => {
+    setOpen(false);
+    menuBtn.current?.focus();
+  }, []);
   return (
     <header className="top">
-      <a className="brand" href={href('/')} aria-label="Relaxify docs, home">
+      {/* On a phone the note opens the menu, exactly as it does in the app. */}
+      <button
+        ref={menuBtn}
+        type="button"
+        className="brand brand-menu"
+        onClick={() => setOpen(true)}
+        aria-label="Open the menu"
+        aria-expanded={open}>
         <Note size={30} />
-        <span>relaxify</span>
+        <span>Relaxify</span>
+      </button>
+      <a className="brand brand-link" href={href('/')} aria-label="Relaxify docs, home">
+        <Note size={30} />
+        <span>Relaxify</span>
       </a>
       <nav className="chips" aria-label="Pages">
         {FLAT.map(p => (
@@ -111,7 +128,73 @@ function TopBar({path}) {
         <Github size={18} />
         <span>GitHub</span>
       </a>
+      <Drawer open={open} onClose={close} path={path} />
     </header>
+  );
+}
+
+/** The app's side drawer, for phones: the note and name, the pages, then
+ *  the download and GitHub. Closes on a link, the dim area, or Escape. */
+function Drawer({open, onClose, path}) {
+  const panel = useRef(null);
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onKey = e => e.key === 'Escape' && onClose();
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    panel.current?.querySelector('a')?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [open, onClose]);
+  // Following a link inside it lands on a new page: close behind it.
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    onClose();
+  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className={open ? 'drawer open' : 'drawer'}>
+      <div className="scrim" onClick={onClose} aria-hidden="true" />
+      <nav ref={panel} className="panel" aria-label="Menu">
+        <div className="drawer-brand">
+          <Note size={56} />
+          <span>
+            <b>Relaxify</b>
+            <small>How to use the app</small>
+          </span>
+        </div>
+        <a className={path === '/' ? 'drawer-item on' : 'drawer-item'} href={href('/')}>
+          <i aria-hidden="true" />
+          Home
+        </a>
+        {FLAT.map(p => (
+          <a
+            key={p.link}
+            className={path === p.link ? 'drawer-item on' : 'drawer-item'}
+            href={href(p.link)}
+            style={{'--c': PAL[p.pal].bg}}
+            aria-current={path === p.link ? 'page' : undefined}>
+            <i aria-hidden="true" />
+            {p.title}
+          </a>
+        ))}
+        <div className="drawer-foot">
+          <GetApp />
+          <a className="ghost" href={SITE.repo} target="_blank" rel="noreferrer">
+            <Github size={17} />
+            GitHub
+          </a>
+          <small>Free and open source, GPL-3.0</small>
+        </div>
+      </nav>
+    </div>
   );
 }
 
@@ -143,17 +226,22 @@ function Home() {
         <Stack />
       </section>
 
-      <section className="all" aria-label="Every page">
-        {PAGES.map(p => (
-          <a key={p.link} className="all-item" href={href(p.link)} style={{'--c': PAL[p.pal].bg}}>
-            <i aria-hidden="true" />
-            <span>
-              <b>{p.title}</b>
-              {p.card}
-            </span>
-            <small>{p.read}</small>
-          </a>
-        ))}
+      <section className="all" aria-labelledby="all-title">
+        <h2 id="all-title" className="group-title">
+          Every page
+        </h2>
+        <div className="surface">
+          {PAGES.map(p => (
+            <a key={p.link} className="all-item" href={href(p.link)} style={{'--c': PAL[p.pal].bg}}>
+              <i aria-hidden="true" />
+              <span>
+                <b>{p.title}</b>
+                {p.card}
+              </span>
+              <small>{p.read}</small>
+            </a>
+          ))}
+        </div>
       </section>
     </main>
   );
@@ -169,12 +257,15 @@ function Page({route, page}) {
     <main className="page" id="main">
       {/* key: the card drops in again on every page change. */}
       <header key={route} className="page-hero" style={{'--bg': p.bg, '--ink': p.ink}}>
-        <span className="page-art spin">
+        {/* The note on Releases holds still; the other cards' art turns. */}
+        <span className={page.art === 'note' ? 'page-art' : 'page-art spin'}>
           <PageArt page={page} />
         </span>
-        <h1>{page.title}</h1>
-        <p>{page.card}</p>
-        {page.read && <span className="page-read">{page.read} read</span>}
+        <span className="page-words">
+          <span className="page-kicker">{page.card}</span>
+          <h1>{page.title}</h1>
+        </span>
+        <span className="page-read">{page.read ? `${page.read} read` : 'Live from GitHub'}</span>
       </header>
 
       <article className="prose">
@@ -201,7 +292,7 @@ function Page({route, page}) {
 
 function PageArt({page}) {
   // The page's card art, bigger; the Releases card wears the note itself.
-  return page.art === 'note' ? <Note size={200} /> : <Art kind={page.art} p={PAL[page.pal]} size={240} />;
+  return page.art === 'note' ? <Note size={150} /> : <Art kind={page.art} p={PAL[page.pal]} size={210} />;
 }
 
 function NotFound() {
@@ -238,7 +329,7 @@ export default function App() {
       <footer className="foot">
         <span className="foot-brand">
           <Note size={22} />
-          relaxify
+          Relaxify
         </span>
         <span>
           Free and open source under GPL-3.0. Music comes from JioSaavn, SoundCloud and YouTube; Relaxify doesn't host any.

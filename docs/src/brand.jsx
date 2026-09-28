@@ -242,6 +242,17 @@ export function Row({children}) {
   return <div className="row">{children}</div>;
 }
 
+/** A titled group on a grey surface, the way the app's Settings groups
+ *  its rows: here, a run of folded questions. */
+export function Group({title, children}) {
+  return (
+    <section className="group">
+      {title && <h2 className="group-title">{title}</h2>}
+      <div className="surface">{children}</div>
+    </section>
+  );
+}
+
 /** A question with its answer folded away, for the small print. */
 export function Fold({q, children}) {
   return (
