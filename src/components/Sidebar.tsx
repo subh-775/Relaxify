@@ -47,7 +47,7 @@ import {appVersion} from '../backend';
 import {useUpdateAvailable} from '../update';
 import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
-import {LogoTile} from './Logo';
+import {LogoMark} from './Logo';
 
 export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
 
@@ -217,7 +217,7 @@ export const Sidebar = React.memo(function Sidebar({
             stray label; the icon is what makes the drawer feel like part of
             the product. */}
           <View style={styles.brandRow}>
-            <LogoTile size={56} radius={14} />
+            <LogoMark size={56} />
             <View style={styles.brandText}>
               <Text style={styles.brand}>Relaxify</Text>
               <Text style={styles.brandSub}>Your library, your sound</Text>

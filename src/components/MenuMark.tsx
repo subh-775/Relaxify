@@ -10,7 +10,7 @@ import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import {C} from '../theme';
 import {useUpdateAvailable} from '../update';
 
-import {LogoTile} from './Logo';
+import {LogoMark} from './Logo';
 
 export const MenuMark = React.memo(function MenuMark({
   onPress,
@@ -24,7 +24,7 @@ export const MenuMark = React.memo(function MenuMark({
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel="Open menu">
-      <LogoTile size={38} radius={19} />
+      <LogoMark size={38} />
       {/* A waiting update has to stay findable after the popup is dismissed —
           this is the only thing that says so. */}
       {updateWaiting && (

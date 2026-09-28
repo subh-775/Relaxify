@@ -24,7 +24,15 @@
  * they are written; a slow poll backs it up, and every track change fetches
  * at once (a native event, so also with the screen off). Clocks
  * differ between phones, so positions are timed against the database's own
- * clock, measured once when joining.
+ * clock (bestOffset), re-measured with every heartbeat.
+ *
+ * Keeping in step: the Jam's `now` is a timeline (at server time `at`, the
+ * song was at `pos`). Every phone, the chooser too, checks itself against it
+ * every ALIGN_MS and corrects: a gap under a few hundredths of a second is
+ * left alone, a small one is closed by playing a few percent faster or
+ * slower for a moment (ExoPlayer keeps the pitch, so it is not heard), and a
+ * big one by a jump. What no app can see is the delay after the phone, such
+ * as Bluetooth headphones adding a fifth of a second.
  *
  * A code is six characters from 32 unambiguous ones: about a billion codes, so
  * a Jam cannot be found without being given its code. The database rules
@@ -41,6 +49,7 @@ import {
   holdAutoplay,
   peekAdjacentTrack,
   playTrack,
+  playbackRate,
   sourceTrackFor,
   topUpFromRadio,
   warmTrack,
@@ -56,8 +65,16 @@ const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LEN = 6;
 /** A slow backup: changes arrive through the live stream (listen). */
 const POLL_MS = 5000;
-/** Past this much disagreement, a following phone jumps to the Jam's spot. */
-const DRIFT_S = 1.5;
+/** How often each phone checks itself against the Jam's timeline. */
+const ALIGN_MS = 2000;
+/** Closer than this counts as together: about a video frame. */
+export const SYNC_OK_S = 0.03;
+/** Further than this, a speed nudge would take too long: jump instead. */
+export const SEEK_S = 0.4;
+/** A nudge plays this much faster or slower (4%), pitch kept. */
+export const NUDGE = 0.04;
+/** A jump lands this far ahead, since playback takes a moment to restart. */
+const SEEK_LEAD_S = 0.08;
 /** Local player events this soon after following the Jam are the echo of
  *  that, not a choice made on this phone. */
 const ECHO_MS = 2500;
@@ -210,16 +227,118 @@ function shareable(t: Track): Track {
   return rest;
 }
 
-/** The server clock's offset from ours, from one timed write. */
-async function measureOffset(code: string): Promise<void> {
+export type ClockSample = {offset: number; rtt: number};
+
+/**
+ * The server clock's offset from ours, NTP's way: each timed write gives an
+ * estimate that can be wrong by up to half its round trip, so the fastest
+ * round trip of the recent ones is the one to trust. One sample, as before,
+ * could be a quarter of a second out on a slow moment.
+ */
+export function bestOffset(samples: ClockSample[]): number {
+  return samples.reduce((b, x) => (x.rtt < b.rtt ? x : b)).offset;
+}
+
+let clock: ClockSample[] = [];
+
+/** One timed write (also the member heartbeat), kept as a clock sample. */
+async function sampleClock(code: string): Promise<void> {
   const t0 = Date.now();
   const seen = await call<number>(`jams/${code}/members/${myId}/seen`, 'PUT', SERVER_TIME);
   const t1 = Date.now();
   if (typeof seen === 'number') {
-    offset = seen - (t0 + t1) / 2;
+    clock = [...clock.slice(-7), {offset: seen - (t0 + t1) / 2, rtt: t1 - t0}];
+    offset = bestOffset(clock);
+  }
+}
+
+async function measureOffset(code: string): Promise<void> {
+  clock = [];
+  for (let i = 0; i < 4; i++) {
+    await sampleClock(code).catch(() => {});
   }
 }
 const serverNow = () => Date.now() + offset;
+
+// ── keeping in step ──────────────────────────────────────────────────────
+export type Correction =
+  | {kind: 'none'}
+  | {kind: 'seek'}
+  | {kind: 'nudge'; rate: number; forMs: number};
+
+/**
+ * What to do about being `drift` seconds off the Jam (positive: ahead),
+ * playing at `base` speed. A nudge runs just long enough to close the gap.
+ */
+export function correction(drift: number, base = 1): Correction {
+  const gap = Math.abs(drift);
+  if (gap <= SYNC_OK_S) {
+    return {kind: 'none'};
+  }
+  if (gap > SEEK_S) {
+    return {kind: 'seek'};
+  }
+  const rate = base * (drift > 0 ? 1 - NUDGE : 1 + NUDGE);
+  return {kind: 'nudge', rate, forMs: Math.round((gap / (base * NUDGE)) * 1000)};
+}
+
+/** Where the Jam's song is now, by the shared timeline. */
+function expectedAt(now: Now, serverMs: number): number {
+  return now.pos + (now.playing ? Math.max(0, serverMs - now.at) / 1000 : 0);
+}
+
+let nudging: ReturnType<typeof setTimeout> | null = null;
+
+function endNudge(): void {
+  if (nudging) {
+    clearTimeout(nudging);
+    nudging = null;
+    TrackPlayer.setRate(playbackRate()).catch(() => {});
+  }
+}
+
+/** Check this phone against the Jam's timeline and correct it. */
+async function align(): Promise<void> {
+  const now = view?.now;
+  if (!now || !now.playing || nudging) {
+    return;
+  }
+  const active = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
+  if (!same(active, now.track)) {
+    return;
+  }
+  const {state} = await TrackPlayer.getPlaybackState();
+  if (state !== State.Playing) {
+    return; // buffering or paused: the position is not moving yet
+  }
+  // The position is read over a native round trip; time it at the middle.
+  const t0 = Date.now();
+  const {position} = await TrackPlayer.getProgress();
+  const mid = (t0 + Date.now()) / 2;
+  const drift = position - expectedAt(now, mid + offset);
+  const fix = correction(drift, playbackRate());
+  if (fix.kind === 'seek') {
+    echoUntil = Date.now() + ECHO_MS;
+    await TrackPlayer.seekTo(expectedAt(now, serverNow()) + SEEK_LEAD_S);
+  } else if (fix.kind === 'nudge') {
+    await TrackPlayer.setRate(fix.rate);
+    // Back to normal speed once the gap is closed (clearing a timer that
+    // has already fired, as endNudge does then, is harmless).
+    nudging = setTimeout(endNudge, fix.forMs);
+  }
+}
+
+/** Wait (briefly) for a freshly loaded song to actually be playing. */
+async function untilPlaying(ms = 8000): Promise<void> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const {state} = await TrackPlayer.getPlaybackState();
+    if (state === State.Playing) {
+      return;
+    }
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
 
 // ── publishing a choice made on this phone ──────────────────────────────
 let seq = 0;
@@ -230,10 +349,14 @@ async function publish(code: string): Promise<void> {
     if (!track) {
       return;
     }
+    // Timed at the middle of the native round trip, so `at` is when the
+    // position was really read, not a little after.
+    const t0 = Date.now();
     const [{position}, {state}] = await Promise.all([
       TrackPlayer.getProgress(),
       TrackPlayer.getPlaybackState(),
     ]);
+    const readAt = (t0 + Date.now()) / 2 + offset;
     const nextRow = peekAdjacentTrack(1);
     const next = nextRow ? sourceTrackFor(nextRow) : null;
     seq = Math.max(seq, appliedSeq) + 1;
@@ -243,7 +366,7 @@ async function publish(code: string): Promise<void> {
       next: next ? shareable(next) : null,
       pos: position,
       playing: state === State.Playing || state === State.Buffering,
-      at: serverNow(),
+      at: readAt,
       by: myId,
       seq,
     };
@@ -273,9 +396,8 @@ async function follow(now: Now): Promise<void> {
   // Held only while someone else is choosing; with no chooser (they left),
   // this phone plays on by itself.
   holdAutoplay(!!now.by && now.by !== myId);
+  endNudge();
   const active = sourceTrackFor((await TrackPlayer.getActiveTrack()) ?? null);
-  const expected =
-    now.pos + (now.playing ? Math.max(0, serverNow() - now.at) / 1000 : 0);
   if (!same(active, now.track)) {
     const track = await playable(now.track);
     const next = now.next ? await playable(now.next) : null;
@@ -284,14 +406,19 @@ async function follow(now: Now): Promise<void> {
     // Start resolving the song after this one now, so when the Jam moves on
     // this phone is not the one everyone waits for.
     warmTrack(next);
-    if (expected > 2) {
-      await TrackPlayer.seekTo(expected);
+    if (now.playing) {
+      await TrackPlayer.play();
+      // Where the Jam is once this phone is actually playing, not where it
+      // was before the song loaded: that is what left a gap of the loading
+      // time (and none was made up at all under two seconds).
+      await untilPlaying();
+      echoUntil = Date.now() + ECHO_MS;
+      await TrackPlayer.seekTo(expectedAt(now, serverNow()) + SEEK_LEAD_S);
+    } else {
+      await TrackPlayer.seekTo(now.pos);
     }
-  } else {
-    const {position} = await TrackPlayer.getProgress();
-    if (Math.abs(position - expected) > DRIFT_S) {
-      await TrackPlayer.seekTo(expected);
-    }
+  } else if (!now.playing) {
+    await TrackPlayer.seekTo(now.pos);
   }
   const {state} = await TrackPlayer.getPlaybackState();
   const playingHere = state === State.Playing || state === State.Buffering;
@@ -339,7 +466,7 @@ async function sync(): Promise<void> {
   }
   if (t - lastBeat > 10_000) {
     lastBeat = t;
-    call(`jams/${v.code}/members/${myId}/seen`, 'PUT', SERVER_TIME).catch(() => {});
+    sampleClock(v.code).catch(() => {}); // the heartbeat, and a clock sample
   }
 }
 
@@ -418,10 +545,13 @@ function watchLocal(code: string): void {
       sync().catch(() => {});
     }
   });
+  const aligner = setInterval(() => align().catch(() => {}), ALIGN_MS);
   unsubs = [
     () => a.remove(),
     () => b.remove(),
     () => clearInterval(seekWatch),
+    () => clearInterval(aligner),
+    endNudge,
     () => q.remove(),
     () => c.remove(),
   ];

@@ -48,6 +48,6 @@
             android:pathData="M63,14 C70,17 76,22 80,28 C74,26 68,27 63,30 Z" />
         <path
             android:fillColor="#4D000000"
-            android:pathData="M63,34 C70,40 75,52 73,63 C71,54 67,46 63,42 Z" />
+            android:pathData="M63,34 C70,40 75,52 73,63 C77,52 74,42 66,36 Z" />
     </group>
 </vector>

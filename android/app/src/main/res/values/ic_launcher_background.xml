@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
   <!-- Espresso brown behind the gold note (drawable/ic_launcher_foreground).
-       The same colour as LOGO_BG in src/components/Logo.tsx. -->
+       The same colour as the tile in docs/public/logo.png. -->
   <color name="ic_launcher_background">#2B1B12</color>
 </resources>

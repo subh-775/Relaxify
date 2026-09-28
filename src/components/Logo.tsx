@@ -8,17 +8,13 @@
  * change one, change both.
  */
 import React, {useId} from 'react';
-import {StyleSheet, View} from 'react-native';
 import Svg, {Defs, LinearGradient, Path, Stop} from 'react-native-svg';
-
-/** The launcher tile's espresso brown. */
-export const LOGO_BG = '#2B1B12';
 
 const STEM =
   'M50 14 H58 V70 C58 83 49 90 38 90 C27 90 19 83 19 73 C19 63 28 56 38 56 C43 56 47 57 50 59 Z';
 const FLAG = 'M63 14 C76 20 86 30 84 46 C83 54 79 60 73 63 C75 52 70 40 63 34 Z';
 const SHINE = 'M63 14 C70 17 76 22 80 28 C74 26 68 27 63 30 Z';
-const FOLD = 'M63 34 C70 40 75 52 73 63 C71 54 67 46 63 42 Z';
+const FOLD = 'M63 34 C70 40 75 52 73 63 C77 52 74 42 66 36 Z';
 
 /** The note alone. `color` draws it flat in that colour; otherwise gold. */
 export function LogoMark({size, color}: {size: number; color?: string}) {
@@ -42,18 +38,3 @@ export function LogoMark({size, color}: {size: number; color?: string}) {
     </Svg>
   );
 }
-
-/** The note on its brown tile, as the launcher shows it. */
-export function LogoTile({size, radius}: {size: number; radius?: number}) {
-  return (
-    <View
-      style={[styles.tile, {width: size, height: size, borderRadius: radius ?? size * 0.22}]}
-      accessibilityIgnoresInvertColors>
-      <LogoMark size={size * 0.72} />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  tile: {backgroundColor: LOGO_BG, alignItems: 'center', justifyContent: 'center'},
-});

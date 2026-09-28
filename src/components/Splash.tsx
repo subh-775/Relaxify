@@ -37,7 +37,7 @@ export function Splash() {
             {scale: enter.interpolate({inputRange: [0, 1], outputRange: [0.88, 1]})},
           ],
         }}>
-        <LogoMark size={148} />
+        <LogoMark size={210} />
       </Animated.View>
     </View>
   );

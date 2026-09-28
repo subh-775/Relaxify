@@ -19,6 +19,8 @@ Anyone in the Jam can play, pause, skip, pick a song or jump within one, and eve
 
 Each phone streams the music itself. Only the Jam's state travels between phones: which song, where in it, playing or paused, the shared queue, and the names. It goes through a small database, and the Jam is deleted when it ends.
 
+Every phone checks itself against the Jam every two seconds. A phone a little ahead or behind plays a few percent slower or faster for a moment until it is back in step; the pitch does not change, so you do not hear it. A phone far out jumps to the right spot. The phones stay within a few hundredths of a second of each other. The one gap no app can see is the delay after the phone: Bluetooth headphones and speakers add their own, often a fifth of a second.
+
 The phones stay in step best with Relaxify open. With the screen off they carry on to the same next song together, and catch up on anything else (a skip, a pause) as soon as the app is open again.
 
 <Note>
