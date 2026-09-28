@@ -9,14 +9,14 @@
   </picture>
 </h1>
 
-A music player for Android. Search, stream and download from JioSaavn,
-SoundCloud and YouTube in one place.
+A free music player for Android. Search, stream and download from JioSaavn,
+SoundCloud and YouTube in one place, and listen together with friends.
 
-[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=102514&color=1DB954)](https://github.com/subh-775/Relaxify/releases/latest)
-[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=102514&color=1DB954)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
-[![App Docs](https://img.shields.io/badge/App%20Docs-Read-1DB954?labelColor=102514&color=1DB954)](https://subh-775.github.io/Relaxify/)
-[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=102514&color=1DB954)](https://github.com/subh-775/Relaxify/releases)
-[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=102514&color=1DB954)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
+[![App Docs](https://img.shields.io/badge/App%20Docs-Read-E3B878?labelColor=2B1B12&color=E3B878)](https://subh-775.github.io/Relaxify/)
+[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/releases)
+[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=2B1B12&color=E3B878)](LICENSE)
 
 </div>
 
@@ -49,10 +49,17 @@ use and much lighter on the phone's processor and battery.
 - **Your library:** liked songs, playlists, saved albums, followed artists and
   listening history.
 - **Import from Spotify.** A public playlist or album link becomes a playlist
-  you own.
-- **Sound:** an eight-band equalizer with presets, volume normalization and
-  crossfade.
-- **Lyrics**, synced where the source provides timing.
+  you own, saved by itself, with a way to stop part-way and keep what was found.
+- **Jam.** Listen to the same song at the same moment as friends, each on their
+  own phone, with a six-character code. Everyone can play, pause, skip and add
+  to a shared queue.
+- **Recap.** Your week or all-time listening told as a story of cards, with a
+  weekly notification on Sunday evening.
+- **Sound:** an eight-band equalizer with presets that each pair of headphones
+  remembers, volume normalization, crossfade, and playback speed.
+- **Lyrics**, synced where the source provides timing; tap a line to jump there.
+- **Home in your languages**, a home-screen widget, and a data saver for mobile
+  data.
 - **In-app updates** that install over the current version and keep your
   library.
 
@@ -65,8 +72,8 @@ it on your phone. Android 8.0 or newer is required.
 To update, use **Settings → Check for updates** in the app. Do not uninstall
 first: uninstalling deletes your playlists, likes and history.
 
-The [documentation](https://subh-775.github.io/Relaxify/) covers every feature
-and setting.
+The [documentation](https://subh-775.github.io/Relaxify/) walks through every
+feature in six short pages.
 
 ## How it works
 
@@ -76,6 +83,8 @@ and setting.
 | **Playback** | ExoPlayer through react-native-track-player, running in a foreground service so music keeps playing with the screen off. |
 | **Audio effects** | A Kotlin module (`AudioModule.kt`) for the equalizer, loudness and crossfade. |
 | **Engine** | A Python server embedded with Chaquopy that searches the sources, resolves streams and handles downloads. The interface talks to it over `127.0.0.1`, with a per-launch token. |
+| **Jam** | A Firebase Realtime Database record per Jam holds the song, position and shared queue (rules in `firebase/`). No audio passes through it; each phone streams for itself. |
+| **Usage statistics** | Firebase Analytics and Crashlytics, tied to an anonymous ID. The docs' Help page lists exactly what is sent. |
 
 ## Building from source
 
@@ -110,7 +119,8 @@ updating safely.
 | `android/` | The Android project, the Kotlin native modules, and the embedded Python engine in `android/app/src/main/python/`. |
 | `__tests__/` | Jest tests for logic where a mistake would otherwise go unnoticed. |
 | `patches/` | Changes to third-party libraries, applied by `npm install`. |
-| `docs/` | The documentation site (Vite and MDX), published to GitHub Pages from `main`. |
+| `docs/` | The documentation site (Vite, React and MDX), published to GitHub Pages from `main`. |
+| `firebase/` | The Jam database's security rules. |
 
 ## Credits
 
