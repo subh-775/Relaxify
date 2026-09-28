@@ -1714,6 +1714,7 @@ def _import_snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
             "total": job["total"], "done": job["done"], "matched": job["matched"],
             "tracks": job["tracks"], "missing": job["missing"],
             "finished": job["finished"], "error": job["error"],
+            "cancelled": job.get("cancelled", False),
             # Each song as it is checked, in the order the checks finish, so
             # the import screen can fill in live instead of all at the end.
             "checked": list(job.get("checked", [])),
@@ -1744,14 +1745,24 @@ def _run_import(kind: str, sid: str, job: Dict[str, Any]) -> None:
     with ThreadPoolExecutor(max_workers=6) as ex:
         fut_to_i = {ex.submit(_match_track, it): i for i, it in enumerate(items)}
         for fut in as_completed(fut_to_i):
+            if job.get("cancelled"):
+                # Songs not started yet are dropped; the six in flight finish
+                # on their own and are ignored.
+                for f in fut_to_i:
+                    f.cancel()
+                break
             i = fut_to_i[fut]
             try:
                 matched[i] = fut.result()
             except Exception:
                 matched[i] = None
             with _import_lock:
+                if job["finished"]:
+                    break  # cancelled while this one was being checked
                 job["done"] += 1
                 job["matched"] += 1 if matched[i] else 0
+                if matched[i]:
+                    job.setdefault("found_at", {})[i] = matched[i]
                 job.setdefault("checked", []).append({
                     "title": items[i]["title"],
                     "artist": items[i]["artist"],
@@ -1760,6 +1771,8 @@ def _run_import(kind: str, sid: str, job: Dict[str, Any]) -> None:
                 })
 
     with _import_lock:
+        if job.get("finished"):
+            return  # cancelled: the cancel call already settled the snapshot
         job["tracks"] = [t for t in matched if t]          # original order preserved
         job["missing"] = [f"{items[i]['title']} — {items[i]['artist']}"
                           for i, t in enumerate(matched) if not t]
@@ -1780,10 +1793,25 @@ def spotify_import():
     if not kind:
         return jsonify({"error": "Not a Spotify playlist or album link"}), 400
 
+    if _arg("cancel"):
+        # Stop where it is and keep what was found, so the app can offer to
+        # save those songs or throw them away.
+        with _import_lock:
+            job = _import_jobs.get(url)
+            if job and not job["finished"]:
+                job["cancelled"] = True
+                found = job.get("found_at", {})
+                job["tracks"] = [found[i] for i in sorted(found)]  # playlist order
+                job["matched"] = len(job["tracks"])
+                job["finished"] = True
+        return jsonify(_import_snapshot(job) if job else {"error": "No import running"})
+
     with _import_lock:
         job = _import_jobs.get(url)
-        # Start a fresh job if none exists, or if the last attempt failed (retry).
-        if job is None or (job["finished"] and job["error"]):
+        # Start a fresh job if none exists, or if the last one failed, found
+        # nothing or was cancelled: asking again means trying again.
+        if job is None or (job["finished"] and (
+                job["error"] or job["matched"] <= 0 or job.get("cancelled"))):
             job = {"name": "", "image": "", "total": 0, "done": 0, "matched": 0,
                    "tracks": [], "missing": [], "finished": False, "error": None,
                    "checked": []}

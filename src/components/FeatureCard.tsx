@@ -31,6 +31,7 @@ export function FeatureCard({
   spin = true,
   label,
   width,
+  corner,
   children,
 }: {
   pal: Pal;
@@ -48,6 +49,8 @@ export function FeatureCard({
   width?: number;
   /** Replaces the pill row (the Spotify card's inline link box). */
   children?: React.ReactNode;
+  /** A small control pinned top-right, over the artwork (the import's ✕). */
+  corner?: React.ReactNode;
 }) {
   const turn = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -97,6 +100,7 @@ export function FeatureCard({
           {art}
         </Animated.View>
       )}
+      {!!corner && <View style={styles.corner}>{corner}</View>}
       <View style={styles.words}>
         <Text style={[styles.kicker, ink]} numberOfLines={1}>
           {kicker}
@@ -133,6 +137,7 @@ const styles = StyleSheet.create({
     height: CARD_ART,
   },
   words: {gap: 2},
+  corner: {position: 'absolute', top: 12, right: 12, zIndex: 2},
   kicker: {fontSize: 13, fontWeight: '800'},
   big: {
     fontSize: 30,

@@ -20,7 +20,7 @@ import {Check, ChevronLeft, Play} from '../icons';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
 import {cleanText, getTrackId, normalizeTracks} from '../tracks';
-import {startImport, useSpotifyImport} from '../spotifyImport';
+import {cancelImport, startImport, useSpotifyImport} from '../spotifyImport';
 import {TrackRow} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
 
@@ -91,14 +91,27 @@ export function SpotifyImportScreen({
             />
           </View>
           <Text style={styles.progress}>
-            {active && active.total > 0
+            {active && active.done > 0
               ? `${active.done} of ${active.total} songs`
+              : active && active.total > 0
+              ? `Looking for ${active.total} songs…`
               : 'Reading the playlist…'}
           </Text>
           <Text style={styles.hint}>
-            Keep browsing: this carries on in the background, and the playlist
-            is saved to Your Library when it finishes.
+            {active?.stalled
+              ? 'This is taking longer than usual. You can keep waiting, or cancel and keep what was found so far.'
+              : 'Keep browsing: this carries on in the background, and the playlist is saved to Your Library when it finishes.'}
           </Text>
+          <TouchableOpacity
+            style={styles.cancel}
+            onPress={() => {
+              // What was found so far waits on Home's card: save or discard.
+              cancelImport().catch(() => {});
+              onClose();
+            }}
+            accessibilityRole="button">
+            <Text style={styles.cancelText}>Cancel import</Text>
+          </TouchableOpacity>
         </View>
       )}
       {loading && (
@@ -191,6 +204,16 @@ export function SpotifyImportScreen({
 }
 
 const styles = StyleSheet.create({
+  cancel: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  cancelText: {color: C.text, fontSize: 13.5, fontWeight: '800'},
   checked: {flex: 1, marginTop: 12},
   loadingTop: {alignItems: 'center', paddingHorizontal: 40, paddingTop: 12},
   checkRow: {

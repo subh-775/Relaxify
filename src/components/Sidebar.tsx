@@ -21,7 +21,6 @@
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
 import {
   BackHandler,
-  Image,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -48,7 +47,7 @@ import {appVersion} from '../backend';
 import {useUpdateAvailable} from '../update';
 import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
-const ICON = require('../assets/app-icon-bl.png');
+import {LogoTile} from './Logo';
 
 export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
 
@@ -218,7 +217,7 @@ export const Sidebar = React.memo(function Sidebar({
             stray label; the icon is what makes the drawer feel like part of
             the product. */}
           <View style={styles.brandRow}>
-            <Image source={ICON} style={styles.brandIcon} />
+            <LogoTile size={56} radius={14} />
             <View style={styles.brandText}>
               <Text style={styles.brand}>Relaxify</Text>
               <Text style={styles.brandSub}>Your library, your sound</Text>
@@ -298,7 +297,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     marginBottom: 28,
   },
-  brandIcon: {width: 56, height: 56, borderRadius: 14},
   brandText: {flex: 1, minWidth: 0},
   brand: {...T.screenTitle, color: C.text, fontSize: 24, letterSpacing: 0.1},
   brandSub: {color: C.sub, fontSize: 12.5, marginTop: 2},

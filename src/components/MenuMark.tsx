@@ -6,11 +6,11 @@
  * size and the update dot cannot drift apart between Home, Search and Library.
  */
 import React from 'react';
-import {Image, StyleSheet, TouchableOpacity, View} from 'react-native';
+import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import {C} from '../theme';
 import {useUpdateAvailable} from '../update';
 
-const MARK = require('../assets/app-icon-bl.png');
+import {LogoTile} from './Logo';
 
 export const MenuMark = React.memo(function MenuMark({
   onPress,
@@ -24,11 +24,7 @@ export const MenuMark = React.memo(function MenuMark({
       hitSlop={10}
       accessibilityRole="button"
       accessibilityLabel="Open menu">
-      <Image
-        source={MARK}
-        style={styles.mark}
-        accessibilityIgnoresInvertColors
-      />
+      <LogoTile size={38} radius={19} />
       {/* A waiting update has to stay findable after the popup is dismissed —
           this is the only thing that says so. */}
       {updateWaiting && (
@@ -43,7 +39,6 @@ export const MenuMark = React.memo(function MenuMark({
 });
 
 const styles = StyleSheet.create({
-  mark: {width: 38, height: 38, borderRadius: 19},
   dot: {
     position: 'absolute',
     top: 0,

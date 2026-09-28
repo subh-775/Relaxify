@@ -8,8 +8,9 @@
  * failed import jumps to the front, so coming back to Home after switching tabs
  * always shows where it got to.
  */
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
+  Animated,
   FlatList,
   Image,
   StyleSheet,
@@ -28,11 +29,15 @@ import {CARD_ART, FeatureCard} from './FeatureCard';
 import {RecapTeaser} from './RecapTeaser';
 import {useJam} from '../jam';
 import {
+  BAD_LINK,
+  cancelImport,
   dismissImport,
   importProblem,
   isSpotifyUrl,
+  keepWaiting,
   markImportOpened,
-  useImportedOnce,
+  retryImport,
+  saveCancelled,
   useLastImport,
   useSpotifyImport,
 } from '../spotifyImport';
@@ -40,6 +45,8 @@ import {useLastCollection} from '../lastCollection';
 import {usePlaylists} from '../playlists';
 import {playlistToCollection, type Collection} from '../collections';
 import {toast} from '../toast';
+import type {HomeItem} from '../backend';
+import {cleanText} from '../tracks';
 
 const JAM_PAL: Pal = CARD_PALS.jam; // lavender
 const IMPORT_PAL: Pal = CARD_PALS.import; // lime
@@ -114,18 +121,18 @@ const listArt = (p: Pal) => (
   </Svg>
 );
 
-/** Which state the import card is in, or null when it has nothing to say. */
-export function useImportPhase():
-  | 'running'
-  | 'failed'
-  | 'done'
-  | 'ask'
-  | null {
+type ImportPhase = 'running' | 'slow' | 'cancelled' | 'failed' | 'done' | 'ask';
+
+/** Which state the import card is in. There is always one: the card stays on
+ *  Home for good, asking for a link when nothing else is going on. */
+export function useImportPhase(): ImportPhase {
   const job = useSpotifyImport();
   const last = useLastImport();
-  const importedOnce = useImportedOnce();
+  if (job.url && job.cancelled) {
+    return 'cancelled';
+  }
   if (job.url && !job.finished && !job.error) {
-    return 'running';
+    return job.stalled ? 'slow' : 'running';
   }
   if (job.url && (job.error || (job.finished && job.matched <= 0))) {
     return 'failed';
@@ -133,7 +140,69 @@ export function useImportPhase():
   if (last && !last.opened) {
     return 'done';
   }
-  return importedOnce ? null : 'ask';
+  return 'ask';
+}
+
+/** The filled pill and the outlined one, inside a card of palette `p`. */
+function Pill({p, label, onPress}: {p: Pal; label: string; onPress: () => void}) {
+  return (
+    <TouchableOpacity
+      style={[styles.go, {backgroundColor: p.ink}]}
+      onPress={onPress}
+      accessibilityRole="button">
+      <Text style={[styles.goText, {color: p.bg}]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Ghost({p, label, onPress}: {p: Pal; label: string; onPress: () => void}) {
+  return (
+    <TouchableOpacity
+      style={[styles.ghost, {borderColor: p.ink}]}
+      onPress={onPress}
+      accessibilityRole="button">
+      <Text style={[styles.goText, {color: p.ink}]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Close({
+  p,
+  onPress,
+  label = 'Close',
+}: {
+  p: Pal;
+  onPress: () => void;
+  label?: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.x, {borderColor: p.ink}]}
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={label}>
+      <Text style={[styles.xText, {color: p.ink}]}>✕</Text>
+    </TouchableOpacity>
+  );
+}
+
+/** A bar that sweeps while there is nothing to count yet. */
+function WarmBar() {
+  const x = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(x, {toValue: 1, duration: 1600, useNativeDriver: true}),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [x]);
+  const translateX = x.interpolate({inputRange: [0, 1], outputRange: [-110, 330]});
+  return (
+    <View style={styles.bar}>
+      <Animated.View style={[styles.warmFill, {transform: [{translateX}]}]} />
+    </View>
+  );
 }
 
 export function ImportCard({
@@ -152,9 +221,6 @@ export function ImportCard({
   const playlists = usePlaylists();
   const [open, setOpen] = useState(false);
   const [link, setLink] = useState('');
-  if (!phase) {
-    return null;
-  }
   const submit = () => {
     const url = link.trim();
     if (!isSpotifyUrl(url)) {
@@ -169,9 +235,17 @@ export function ImportCard({
     setOpen(false);
     setLink('');
   };
+  const cancel = () => {
+    cancelImport().catch(() => {});
+  };
+  const another = () => {
+    dismissImport();
+    setOpen(true);
+  };
 
   if (phase === 'running') {
-    const pct = job.total > 0 ? Math.max(4, (job.done / job.total) * 100) : 6;
+    const counting = job.total > 0 && job.done > 0;
+    const pct = counting ? Math.max(4, (job.done / job.total) * 100) : 0;
     return (
       <FeatureCard
         pal={IMPORT_PAL}
@@ -180,54 +254,96 @@ export function ImportCard({
         title={job.name || 'Reading the playlist'}
         action="See progress"
         onPress={() => job.url && onOpenImport(job.url)}
-        spin={false}>
+        spin={false}
+        corner={<Close p={IMPORT_PAL} onPress={cancel} label="Cancel import" />}>
         <View>
           <View style={styles.counts}>
-            <Text style={styles.count}>
-              {job.total ? `${job.done} of ${job.total} checked` : 'Starting'}
-            </Text>
-            <Text style={styles.count}>{`${job.matched} found`}</Text>
+            {counting ? (
+              <>
+                <Text style={styles.count}>{`${job.done} of ${job.total} checked`}</Text>
+                <Text style={styles.count}>{`${job.matched} found`}</Text>
+              </>
+            ) : (
+              <Text style={styles.count}>
+                {job.total ? `Looking for ${job.total} songs` : 'Getting the song list'}
+              </Text>
+            )}
           </View>
-          <View style={styles.bar}>
-            <View style={[styles.barFill, {width: `${pct}%`}]} />
-          </View>
+          {counting ? (
+            <View style={styles.bar}>
+              <View style={[styles.barFill, {width: `${pct}%`}]} />
+            </View>
+          ) : (
+            <WarmBar />
+          )}
+        </View>
+      </FeatureCard>
+    );
+  }
+
+  if (phase === 'slow') {
+    return (
+      <FeatureCard
+        pal={PROBLEM_PAL}
+        width={width}
+        kicker={
+          job.total
+            ? `Still importing, ${job.done} of ${job.total} checked`
+            : 'Still importing'
+        }
+        title="Taking longer than usual"
+        action="Keep waiting"
+        onPress={keepWaiting}
+        spin={false}>
+        <View style={styles.row}>
+          <Pill p={PROBLEM_PAL} label="Keep waiting" onPress={keepWaiting} />
+          <Ghost p={PROBLEM_PAL} label="Cancel" onPress={cancel} />
+        </View>
+      </FeatureCard>
+    );
+  }
+
+  if (phase === 'cancelled') {
+    const n = job.tracks.length;
+    const save = `Save ${n} ${n === 1 ? 'song' : 'songs'}`;
+    return (
+      <FeatureCard
+        pal={IMPORT_PAL}
+        width={width}
+        kicker={`Import cancelled, ${n} of ${job.total} found`}
+        title={job.name || 'Spotify playlist'}
+        action={save}
+        onPress={saveCancelled}
+        spin={false}>
+        <View style={styles.row}>
+          <Pill p={IMPORT_PAL} label={save} onPress={saveCancelled} />
+          <Ghost p={IMPORT_PAL} label="Discard" onPress={dismissImport} />
         </View>
       </FeatureCard>
     );
   }
 
   if (phase === 'failed') {
+    const none = !job.error && job.matched <= 0;
+    // A wrong link fails the same way every time; only "another link" helps.
+    const canRetry = job.error !== BAD_LINK;
     return (
       <FeatureCard
         pal={PROBLEM_PAL}
         width={width}
-        kicker="Could not import"
+        kicker={
+          none && job.total
+            ? `Could not import, 0 of ${job.total} found`
+            : 'Could not import'
+        }
         title={importProblem(job.error, job.matched) || 'Something went wrong'}
-        action="Try another link"
-        onPress={() => {
-          dismissImport();
-          setOpen(true);
-        }}
+        action={canRetry ? 'Try again' : 'Another link'}
+        onPress={canRetry ? retryImport : another}
         spin={false}>
         <View style={styles.row}>
-          <TouchableOpacity
-            style={[styles.go, {backgroundColor: PROBLEM_PAL.ink}]}
-            onPress={() => {
-              dismissImport();
-              setOpen(true);
-            }}
-            accessibilityRole="button">
-            <Text style={[styles.goText, {color: PROBLEM_PAL.bg}]}>
-              Try another link
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.x, {borderColor: PROBLEM_PAL.ink}]}
-            onPress={dismissImport}
-            accessibilityRole="button"
-            accessibilityLabel="Close">
-            <Text style={[styles.xText, {color: PROBLEM_PAL.ink}]}>✕</Text>
-          </TouchableOpacity>
+          {canRetry && <Pill p={PROBLEM_PAL} label="Try again" onPress={retryImport} />}
+          <Ghost p={PROBLEM_PAL} label="Another link" onPress={another} />
+          <Close p={PROBLEM_PAL} onPress={dismissImport} />
         </View>
       </FeatureCard>
     );
@@ -251,27 +367,22 @@ export function ImportCard({
         onPress={openIt}
         spin={false}>
         <View style={styles.row}>
-          <View style={[styles.go, {backgroundColor: IMPORT_PAL.ink}]}>
-            <Text style={[styles.goText, {color: IMPORT_PAL.bg}]}>
-              Open playlist
-            </Text>
-          </View>
-          <Text style={styles.count}>
-            {`${last.found} of ${last.total} songs`}
-          </Text>
+          <Pill p={IMPORT_PAL} label="Open playlist" onPress={openIt} />
+          <Text style={styles.count}>{`${last.found} of ${last.total} songs`}</Text>
         </View>
       </FeatureCard>
     );
   }
 
-  // Ask: before the first import, a link box on demand, with a way out.
+  // Ask: a link box on demand, with a way out. After an import it says what
+  // came in last and asks for another.
   const p = IMPORT_PAL;
   return (
     <FeatureCard
       pal={p}
       width={width}
-      kicker="Moving from Spotify?"
-      title="Bring your playlists"
+      kicker={last ? `Last import: ${last.name}, ${last.found} songs` : 'Moving from Spotify?'}
+      title={last ? 'Bring another playlist' : 'Bring your playlists'}
       action="Paste a link"
       onPress={() => setOpen(true)}
       art={listArt(p)}
@@ -290,19 +401,8 @@ export function ImportCard({
             onSubmitEditing={submit}
             style={[styles.paste, {borderColor: p.ink, color: p.ink}]}
           />
-          <TouchableOpacity
-            style={[styles.go, {backgroundColor: p.ink}]}
-            onPress={submit}
-            accessibilityRole="button">
-            <Text style={[styles.goText, {color: p.bg}]}>Import</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.x, {borderColor: p.ink}]}
-            onPress={close}
-            accessibilityRole="button"
-            accessibilityLabel="Close">
-            <Text style={[styles.xText, {color: p.ink}]}>✕</Text>
-          </TouchableOpacity>
+          <Pill p={p} label="Import" onPress={submit} />
+          <Close p={p} onPress={close} />
         </View>
       ) : undefined}
     </FeatureCard>
@@ -311,13 +411,39 @@ export function ImportCard({
 
 export function ContinueCard({
   onOpen,
+  starter,
+  onOpenStarter,
   width,
-}: {onOpen: (c: Collection) => void} & W) {
+}: {
+  onOpen: (c: Collection) => void;
+  /** Offered before anything has been played: a chart from Home. */
+  starter?: HomeItem;
+  onOpenStarter: (item: HomeItem) => void;
+} & W) {
   const last = useLastCollection();
-  if (!last) {
-    return null;
-  }
   const p = CONTINUE_PAL;
+  if (!last) {
+    return (
+      <FeatureCard
+        pal={p}
+        width={width}
+        kicker="Start here, the top chart"
+        title={cleanText(starter?.name || starter?.title) || 'Loading the charts'}
+        action="Open playlist"
+        onPress={() => starter && onOpenStarter(starter)}
+        spin={false}
+        art={
+          starter?.image ? (
+            <View style={styles.stack}>
+              <View style={[styles.cover, styles.coverOne]}>
+                <Image source={{uri: starter.image}} style={styles.coverImg} />
+              </View>
+            </View>
+          ) : undefined
+        }
+      />
+    );
+  }
   const what =
     last.kind === 'album'
       ? `Album${last.artist ? `, ${last.artist}` : ''}`
@@ -370,7 +496,11 @@ export function HomeCardCarousel({
   onImport,
   onOpenImport,
   onOpenCollection,
+  starter,
+  onOpenStarter,
 }: {
+  starter?: HomeItem;
+  onOpenStarter: (item: HomeItem) => void;
   onOpenRecap: () => void;
   onOpenJam: () => void;
   onImport: (url: string) => void;
@@ -381,24 +511,17 @@ export function HomeCardCarousel({
   const cardW = screen - 2 * S.gutter;
   const step = cardW + CARD_GAP;
   const importPhase = useImportPhase();
-  const last = useLastCollection();
   const [page, setPage] = useState(0);
 
-  const keys = useMemo(() => {
-    const ks: string[] = ['recap', 'jam'];
-    if (importPhase) {
-      // Anything but the plain invitation is news: it goes first.
-      if (importPhase === 'ask') {
-        ks.push('import');
-      } else {
-        ks.unshift('import');
-      }
-    }
-    if (last) {
-      ks.push('continue');
-    }
-    return ks;
-  }, [importPhase, last]);
+  // All four, always, in this order; an import with news (running, slow,
+  // failed, cancelled, just done) moves to the front while it needs you.
+  const keys = useMemo(
+    () =>
+      importPhase === 'ask'
+        ? ['recap', 'jam', 'import', 'continue']
+        : ['import', 'recap', 'jam', 'continue'],
+    [importPhase],
+  );
 
   const render = (k: string) => {
     switch (k) {
@@ -416,7 +539,14 @@ export function HomeCardCarousel({
           />
         );
       default:
-        return <ContinueCard onOpen={onOpenCollection} width={cardW} />;
+        return (
+          <ContinueCard
+            onOpen={onOpenCollection}
+            starter={starter}
+            onOpenStarter={onOpenStarter}
+            width={cardW}
+          />
+        );
     }
   };
 
@@ -484,6 +614,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   xText: {fontSize: 15, fontWeight: '800'},
+  ghost: {
+    borderRadius: 999,
+    borderWidth: 1.5,
+    paddingHorizontal: 13,
+    paddingVertical: 6.5,
+  },
+  warmFill: {width: 110, height: '100%', borderRadius: 3, backgroundColor: '#111014'},
   counts: {flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6},
   count: {color: '#111014', fontSize: 12.5, fontWeight: '800'},
   bar: {
@@ -507,4 +644,5 @@ const styles = StyleSheet.create({
     shadowOffset: {width: 0, height: 4},
   },
   coverImg: {width: 70, height: 70, borderRadius: 8},
+  coverOne: {right: 34, transform: [{rotate: '6deg'}]},
 });

@@ -147,6 +147,13 @@ export const HomeScreen = React.memo(function HomeScreen({
   // Empty rows used to render as null inside the ScrollView. As list DATA they
   // would each cost a cell for nothing, and they throw the windowing counts off.
   const rows = useMemo(() => allRows.filter(r => !!r.items?.length), [allRows]);
+  // Before anything has been played, the Continue card offers the top chart
+  // in the chosen languages instead of disappearing.
+  const starter = useMemo(() => {
+    const charts = rows.find(r => r.title === 'Charts')?.items ?? [];
+    const all = [...charts, ...rows.flatMap(r => r.items)];
+    return all.find(i => i.type === 'playlist' && !!i.perma_url);
+  }, [rows]);
   const phase: 'boot' | 'ready' | 'error' = allRows.length
     ? 'ready'
     : error
@@ -307,6 +314,8 @@ export const HomeScreen = React.memo(function HomeScreen({
           onImport={onImportSpotify}
           onOpenImport={onImportSpotify}
           onOpenCollection={onOpenCollection}
+          starter={starter}
+          onOpenStarter={onPickTrack}
         />
       )}
       {/* Recents: the last nine songs, as the YouTube Music speed dial. */}

@@ -882,7 +882,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
     setDownloading(true);
     try {
       await enqueueDownload(track);
-      toast(`Downloading "${cleanText(track.title)}"`);
+      toast(`Downloading "${cleanText(track.title)}"`, 'info', {
+        art: getBestArtworkUrl(track),
+      });
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not start that download');
     } finally {

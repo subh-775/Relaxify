@@ -1563,7 +1563,15 @@ function skipPastError(): void {
     return;
   }
   errorSkips.push(now);
-  toast("Couldn't play this song, skipping it", 'warn');
+  // Named, and in its own colour, so it is clear which song went.
+  TrackPlayer.getActiveTrack()
+    .catch(() => undefined)
+    .then(t => {
+      const name = t?.title ? cleanText(String(t.title)) : '';
+      toast(name ? `Couldn't play ${name}, skipped` : "Couldn't play this song, skipped", 'info', {
+        art: typeof t?.artwork === 'string' ? t.artwork : null,
+      });
+    });
   skipNext().catch(() => {});
 }
 

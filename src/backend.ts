@@ -485,14 +485,18 @@ export type ImportSnapshot = {
   missing: string[];
   finished: boolean;
   error: string | null;
+  /** Stopped part-way by the person; `tracks` holds what was found by then. */
+  cancelled?: boolean;
   /** Each song as it was checked, in the order the checks finished. */
   checked?: {title: string; artist: string; found: boolean; artwork_url?: string}[];
 };
 
 /** Poll (and on the first call, start) the background import job for `url`.
  *  The job lives in the server process, so it survives the screen closing. */
-export const importSpotify = (url: string) =>
-  apiGet<ImportSnapshot>(`/spotify/import?url=${encodeURIComponent(url)}`);
+export const importSpotify = (url: string, cancel = false) =>
+  apiGet<ImportSnapshot>(
+    `/spotify/import?url=${encodeURIComponent(url)}${cancel ? '&cancel=1' : ''}`,
+  );
 
 // ─── Artists ────────────────────────────────────────────────────────────────
 

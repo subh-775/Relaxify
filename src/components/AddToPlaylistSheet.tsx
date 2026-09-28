@@ -25,7 +25,7 @@ import {
 import {Check, Heart, Plus, Search} from '../icons';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
-import {cleanText} from '../tracks';
+import {cleanText, getBestArtworkUrl} from '../tracks';
 import {
   addTrackToPlaylist,
   createPlaylist,
@@ -36,7 +36,7 @@ import {
 import {rowId, sortPinned, usePins} from '../pins';
 import {SavedGlyph} from './AddButton';
 import {PinGlyph} from './PinGlyph';
-import {useLike} from '../store';
+import {toggleLike, useLike} from '../store';
 import {CollectionArt} from './CollectionArt';
 import {playlistToCollection} from '../collections';
 import {toast} from '../toast';
@@ -132,7 +132,10 @@ function AddToPlaylistSheetView({
         removeTrackFromPlaylist(id, track);
       } else {
         addTrackToPlaylist(id, track);
-        toast(`Added to ${playlistName}`);
+        toast(`Added to ${playlistName}`, 'info', {
+          art: getBestArtworkUrl(track),
+          action: {label: 'Undo', onPress: () => removeTrackFromPlaylist(id, track)},
+        });
       }
     },
     [track, memberOf],
@@ -144,16 +147,19 @@ function AddToPlaylistSheetView({
     setName('');
     if (pl && track) {
       addTrackToPlaylist(pl.id, track);
-      toast(`Added to ${pl.name}`);
+      toast(`Added to ${pl.name}`, 'info', {art: getBestArtworkUrl(track)});
     }
   }, [name, track]);
 
   const onLikedRow = useCallback(() => {
     toggleLiked();
-    if (!liked) {
-      toast('Added to Liked Songs');
+    if (!liked && track) {
+      toast('Added to Liked Songs', 'info', {
+        art: getBestArtworkUrl(track),
+        action: {label: 'Undo', onPress: () => toggleLike(track)},
+      });
     }
-  }, [liked, toggleLiked]);
+  }, [liked, toggleLiked, track]);
 
   // 0 means the list is at its top, which is when a downward pull stops
   // belonging to the list and starts belonging to the sheet.

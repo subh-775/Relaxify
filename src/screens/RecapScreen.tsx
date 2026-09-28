@@ -73,7 +73,7 @@ import {
   type Pal,
 } from '../brandArt';
 
-const MARK = require('../assets/mark-white.png');
+import {LogoMark} from '../components/Logo';
 
 /** How long a card stays before the next one. */
 const CARD_MS = 5000;
@@ -1412,10 +1412,7 @@ function buildCards(r: Recap, faces: Record<string, string>): Card[] {
             </Rise>
             <View style={styles.fill} />
             <Rise i={3} style={styles.sign}>
-              <Image
-                source={MARK}
-                style={[styles.signMark, {tintColor: p.ink}]}
-              />
+              <LogoMark size={20} color={p.ink} />
               <Text style={[styles.signText, ink]}>relaxify recap</Text>
             </Rise>
           </View>
@@ -1668,10 +1665,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
         <View style={styles.row}>
           {/* The watermark: the same corner on every card. */}
           <View style={styles.mark} pointerEvents="none">
-            <Image
-              source={MARK}
-              style={[styles.markIcon, {tintColor: pal.ink}]}
-            />
+            <LogoMark size={24} color={pal.ink} />
             <Text style={[styles.markText, ink]}>Relaxify</Text>
           </View>
           <View style={styles.modes}>
@@ -1747,7 +1741,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   mark: {flexDirection: 'row', alignItems: 'center', gap: 7},
-  markIcon: {width: 24, height: 24},
   markText: {fontSize: 15.5, fontWeight: '800', letterSpacing: -0.2},
   modes: {flexDirection: 'row', gap: 4},
   mode: {
@@ -1806,6 +1799,5 @@ const styles = StyleSheet.create({
   cell: {width: '50%', paddingRight: 12},
   cellValue: {fontSize: 19, lineHeight: 23, fontWeight: '800'},
   sign: {flexDirection: 'row', alignItems: 'center', gap: 8},
-  signMark: {width: 20, height: 20},
   signText: {fontSize: 14, fontWeight: '800'},
 });

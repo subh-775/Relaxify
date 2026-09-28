@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <!-- The mark's own green, sampled from the master rather than picked by eye,
-       so the adaptive tile and every flat PNG of the icon are the same colour.
-       A saturated ground is deliberate: it makes the tile itself the
-       recognisable part, so the app is findable in the drawer at a glance
-       rather than reading as one more white glyph on a dark disc. -->
-  <color name="ic_launcher_background">#1DA34D</color>
+  <!-- Espresso brown behind the gold note (drawable/ic_launcher_foreground).
+       The same colour as LOGO_BG in src/components/Logo.tsx. -->
+  <color name="ic_launcher_background">#2B1B12</color>
 </resources>

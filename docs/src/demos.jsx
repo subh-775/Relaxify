@@ -15,8 +15,8 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 /* ── The product mark ────────────────────────────────────────────────────── */
 
 /**
- * The app's mark, large. White line-art on its own black square, placed on a
- * page that is the same black, so the figure stands on the page with no edge.
+ * The app's mark, large: the gold note on its brown tile, as the launcher
+ * icon shows it.
  */
 export function AppMark() {
   return (
