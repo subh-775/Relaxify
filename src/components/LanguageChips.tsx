@@ -13,16 +13,14 @@ import {Check} from '../icons';
 import {C} from '../theme';
 import {MAX_LANGUAGES, useSettings, writeSetting} from '../store';
 
-/** JioSaavn's catalogue languages: the ones most people pick, then the rest. */
-const TOP: [string, string][] = [
+/** JioSaavn's catalogue languages, the ones most people pick first. */
+const LANGUAGES: [string, string][] = [
   ['hindi', 'हिन्दी'],
   ['english', 'English'],
   ['punjabi', 'ਪੰਜਾਬੀ'],
   ['tamil', 'தமிழ்'],
   ['telugu', 'తెలుగు'],
   ['marathi', 'मराठी'],
-];
-const MORE: [string, string][] = [
   ['gujarati', 'ગુજરાતી'],
   ['bengali', 'বাংলা'],
   ['kannada', 'ಕನ್ನಡ'],
@@ -72,36 +70,6 @@ export function LanguageChips() {
     setHint('');
   };
 
-  const grid = (list: [string, string][]) => (
-    <View style={styles.grid}>
-      {list.map(([l, native]) => {
-        const sel = on.includes(l);
-        return (
-          <TouchableOpacity
-            key={l}
-            onPress={() => toggle(l)}
-            activeOpacity={0.8}
-            style={[styles.tile, sel && styles.tileOn, full && !sel && styles.tileFull]}
-            accessibilityRole="checkbox"
-            accessibilityLabel={languageName(l)}
-            accessibilityState={{checked: sel}}>
-            <Text style={[styles.native, sel && styles.inkOn]} numberOfLines={1}>
-              {native}
-            </Text>
-            <Text style={[styles.english, sel && styles.subOn]} numberOfLines={1}>
-              {l === 'english' ? 'Worldwide' : languageName(l)}
-            </Text>
-            {sel && (
-              <View style={styles.tick}>
-                <Check size={10} color={C.text} strokeWidth={4} />
-              </View>
-            )}
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-
   return (
     <View>
       <Animated.View style={[styles.count, {transform: [{translateX: shake}]}]}>
@@ -112,10 +80,33 @@ export function LanguageChips() {
         </View>
         <Text style={styles.countText}>{`${on.length} of ${MAX_LANGUAGES} picked`}</Text>
       </Animated.View>
-      <Text style={styles.group}>Most picked</Text>
-      {grid(TOP)}
-      <Text style={styles.group}>More languages</Text>
-      {grid(MORE)}
+      <View style={styles.grid}>
+        {LANGUAGES.map(([l, native]) => {
+          const sel = on.includes(l);
+          return (
+            <TouchableOpacity
+              key={l}
+              onPress={() => toggle(l)}
+              activeOpacity={0.8}
+              style={[styles.tile, sel && styles.tileOn, full && !sel && styles.tileFull]}
+              accessibilityRole="checkbox"
+              accessibilityLabel={languageName(l)}
+              accessibilityState={{checked: sel}}>
+              <Text style={[styles.native, sel && styles.inkOn]} numberOfLines={1}>
+                {native}
+              </Text>
+              <Text style={[styles.english, sel && styles.subOn]} numberOfLines={1}>
+                {l === 'english' ? 'Worldwide' : languageName(l)}
+              </Text>
+              {sel && (
+                <View style={styles.tick}>
+                  <Check size={10} color={C.text} strokeWidth={4} />
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       <Text style={styles.hint} accessibilityLiveRegion="polite">
         {hint}
       </Text>
@@ -138,10 +129,9 @@ const styles = StyleSheet.create({
   dot: {width: 7, height: 7, borderRadius: 4, backgroundColor: '#3a3a40'},
   dotOn: {backgroundColor: C.text},
   countText: {color: C.text, fontSize: 12.5, fontWeight: '800'},
-  group: {color: C.sub, fontSize: 12.5, fontWeight: '800', marginTop: 16, marginBottom: 8},
   // Three to a row: all sixteen fit on the welcome page and in the sheet
   // without scrolling.
-  grid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  grid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14},
   tile: {
     width: '31.6%',
     paddingHorizontal: 10,

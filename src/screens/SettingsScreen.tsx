@@ -64,6 +64,8 @@ import {StorageBreakdown} from '../components/StorageBreakdown';
 import {forgetDownloads} from '../downloads';
 import {DOCS_URL, LICENCE_URL, reportUrl} from '../links';
 import {LICENCES} from '../licences';
+import {CREDITS, PRIVACY, TERMS} from '../legal';
+import {LegalView} from '../components/LegalView';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
@@ -584,7 +586,7 @@ export function SettingsScreen({
   focus?: 'update' | null;
 }) {
   const [panel, setPanel] = useState<
-    'equalizer' | 'playback' | 'about' | null
+    'equalizer' | 'playback' | 'about' | 'terms' | 'privacy' | null
   >(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -614,7 +616,8 @@ export function SettingsScreen({
   useEffect(() => {
     const onBack = () => {
       if (panel) {
-        setPanel(null);
+        // Terms and Privacy open from About, so back returns there.
+        setPanel(p => (p === 'terms' || p === 'privacy' ? 'about' : null));
         return true;
       }
       return false;
@@ -909,6 +912,15 @@ export function SettingsScreen({
       ? 'You are up to date'
       : 'See whether a newer version is out';
 
+  if (panel === 'terms' || panel === 'privacy') {
+    return (
+      <LegalView
+        doc={panel === 'terms' ? TERMS : PRIVACY}
+        onBack={() => setPanel('about')}
+      />
+    );
+  }
+
   if (panel === 'about') {
     // Android's own fields; React Native's shared type does not list them.
     const phone = Platform.constants as {
@@ -1034,6 +1046,8 @@ export function SettingsScreen({
 
 
           <Section title="Legal">
+            <Row label="Terms of Use" onPress={() => setPanel('terms')} />
+            <Row label="Privacy" onPress={() => setPanel('privacy')} />
             <Row
               label="Licence"
               value="GPL-3.0"
@@ -1044,6 +1058,7 @@ export function SettingsScreen({
               onPress={() => setLicencesOpen(true)}
             />
           </Section>
+          <Text style={styles.credit}>{CREDITS}</Text>
           <View style={styles.tail} />
         </ScrollView>
 
@@ -1427,6 +1442,13 @@ const styles = StyleSheet.create({
   scroll: {paddingBottom: BOTTOM_INSET},
   section: {paddingTop: 22},
   licences: {maxHeight: 420},
+  credit: {
+    color: C.faint,
+    fontSize: 12.5,
+    lineHeight: 19,
+    paddingHorizontal: S.gutter + 4,
+    marginTop: -4,
+  },
   licenceGroup: {paddingHorizontal: S.gutter, paddingTop: 14, gap: 8},
   licenceRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
   licenceName: {flex: 1, color: C.text, fontSize: 14},
