@@ -41,6 +41,7 @@ import {
   endCrossfade,
   fadeInPlayer,
   fadeOutPlayer,
+  guardTask,
   restorePlayerVolume,
   setCrossfade,
 } from './audioEffects';
@@ -353,11 +354,13 @@ export async function setupPlayer(): Promise<boolean> {
       } catch {}
     });
 
-    // The home-screen widget follows play and pause. Only the two settled
+    // The home-screen widget follows play and pause, and every Playing
+    // re-arms the swipe-away guard (TaskGuard.kt says why it is needed). Only the two settled
     // states: the buffering flicker around a seek would blink its button.
     TrackPlayer.addEventListener(Event.PlaybackState, e => {
       if (e.state === State.Playing) {
         pushWidgetPlaying(true);
+        guardTask();
       } else if (e.state === State.Paused || e.state === State.Stopped) {
         pushWidgetPlaying(false);
       }

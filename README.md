@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/public/logo.png" alt="" width="300" height="300">
+<img src="docs/public/logo.svg" alt="" width="300" height="300">
 
 <h1>
   <picture>
@@ -12,11 +12,11 @@
 A free music player for Android. Search, stream and download from JioSaavn,
 SoundCloud and YouTube in one place, and listen together with friends.
 
-[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/releases/latest)
-[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
-[![App Docs](https://img.shields.io/badge/App%20Docs-Read-E3B878?labelColor=2B1B12&color=E3B878)](https://subh-775.github.io/Relaxify/)
-[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/releases)
-[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=2B1B12&color=E3B878)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
+[![App Docs](https://img.shields.io/badge/App%20Docs-Read-FF5A6E?labelColor=111111&color=FF5A6E)](https://subh-775.github.io/Relaxify/)
+[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases)
+[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=111111&color=FF5A6E)](LICENSE)
 
 </div>
 

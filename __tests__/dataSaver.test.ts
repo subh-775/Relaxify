@@ -14,6 +14,7 @@ import {
   DATA_SAVER_KBPS,
   currentQuality,
   homeLanguageParam,
+  nearestCacheStep,
   setOnCellular,
   writeSetting,
 } from '../src/store';
@@ -36,4 +37,13 @@ test('home languages reach the engine comma-joined, never empty', () => {
   expect(homeLanguageParam()).toBe('tamil,english');
   writeSetting('homeLanguages', []);
   expect(homeLanguageParam()).toBe('hindi,english');
+});
+
+test('an old slider cache limit lands on the nearest step', () => {
+  expect(nearestCacheStep(0)).toBe(0);
+  expect(nearestCacheStep(30)).toBe(20);
+  expect(nearestCacheStep(70)).toBe(50);
+  expect(nearestCacheStep(80)).toBe(100);
+  expect(nearestCacheStep(100)).toBe(100);
+  expect(nearestCacheStep(900)).toBe(500);
 });

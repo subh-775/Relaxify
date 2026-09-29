@@ -89,11 +89,30 @@ export const DEFAULT_SETTINGS: Settings = {
   recapReminder: true,
 };
 
+/** At most this many Home languages: more and Home turns into a blur. */
+export const MAX_LANGUAGES = 3;
+/** The sizes "Clear cache automatically" steps through, in MB; 0 = off. */
+export const CACHE_STEPS = [0, 10, 20, 50, 100, 200, 500];
+
+/** A stored cache limit (the old slider allowed any multiple of 10), on the
+ *  nearest step. */
+export const nearestCacheStep = (mb: number) =>
+  CACHE_STEPS.reduce((a, b) => (Math.abs(b - mb) < Math.abs(a - mb) ? b : a));
+
 const likesStore = createStore<Track[]>('mp.likes.v1', [], asArray);
 const settingsStore = createStore<Settings>(
   'mp.settings.v1',
   DEFAULT_SETTINGS,
-  raw => ({...DEFAULT_SETTINGS, ...(raw as Partial<Settings>)}),
+  raw => {
+    const s = {...DEFAULT_SETTINGS, ...(raw as Partial<Settings>)};
+    return {
+      ...s,
+      homeLanguages: Array.isArray(s.homeLanguages)
+        ? s.homeLanguages.slice(0, MAX_LANGUAGES)
+        : DEFAULT_SETTINGS.homeLanguages,
+      cacheLimitMb: nearestCacheStep(Number(s.cacheLimitMb) || 0),
+    };
+  },
 );
 
 // ─── Likes ──────────────────────────────────────────────────────────────────

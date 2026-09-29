@@ -9,6 +9,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {
   BackHandler,
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -160,15 +161,19 @@ export function WelcomeScreen() {
               <Text style={[styles.body, {color: PAGES[i].pal.ink}]}>{PAGES[i].body}</Text>
             </View>
           ) : (
-            <View style={[styles.page, styles.langPage, {width}]}>
+            // Scrolls only on a phone too short for the sixteen tiles.
+            <ScrollView
+              style={{width}}
+              contentContainerStyle={styles.langPage}
+              showsVerticalScrollIndicator={false}>
               <Text style={[styles.kicker, styles.onDark]}>One last thing</Text>
               <Text style={[styles.title, styles.onDark]}>What do you listen to?</Text>
               <Text style={[styles.body, styles.sub]}>
-                Home and Browse are drawn from these. Search always covers everything, and
-                you can change them in Settings.
+                Pick up to three. Home and Browse are drawn from these; Search always
+                covers everything, and you can change them in Settings.
               </Text>
               <LanguageChips />
-            </View>
+            </ScrollView>
           )
         }
       />
@@ -213,7 +218,13 @@ export function WelcomeScreen() {
 const styles = StyleSheet.create({
   wrap: {...StyleSheet.absoluteFillObject, zIndex: 10000},
   page: {flex: 1, paddingHorizontal: S.gutter + 6, justifyContent: 'center'},
-  langPage: {justifyContent: 'center', gap: 4},
+  langPage: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: S.gutter + 6,
+    paddingVertical: 56,
+  },
   art: {alignSelf: 'center', marginBottom: 36},
   kicker: {fontSize: 15, fontWeight: '800', marginBottom: 6},
   title: {fontSize: 40, lineHeight: 43, fontWeight: '800', letterSpacing: -1.6},

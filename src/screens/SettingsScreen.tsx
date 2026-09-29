@@ -52,7 +52,13 @@ import {
   type DownloadsInfo,
   type StorageInfo,
 } from '../backend';
-import {DATA_SAVER_KBPS, resetSettings, useStore, writeSetting} from '../store';
+import {
+  CACHE_STEPS,
+  DATA_SAVER_KBPS,
+  resetSettings,
+  useStore,
+  writeSetting,
+} from '../store';
 import {createStore, storedBytes, useStoreValue} from '../storage';
 import {StorageBreakdown} from '../components/StorageBreakdown';
 import {forgetDownloads} from '../downloads';
@@ -484,6 +490,60 @@ function StepSlider({
       <View style={styles.sliderEnds}>
         <Text style={styles.sliderEnd}>Off</Text>
         <Text style={styles.sliderEnd}>{format(max)}</Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * A size picked from a short list, with arrows either side of it and a dot
+ * per step underneath: for the cache limit, where only a few sizes make sense
+ * and a slider made you hunt for them.
+ */
+function SizeStepper({
+  label,
+  hint,
+  value,
+  steps,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  /** In MB, ascending; 0 reads as Off. */
+  steps: number[];
+  onChange: (v: number) => void;
+}) {
+  const at = Math.max(0, steps.indexOf(value));
+  const go = (i: number) => onChange(steps[i]);
+  const arrow = (i: number, Icon: typeof ChevronLeft, name: string) => (
+    <TouchableOpacity
+      onPress={() => go(i)}
+      disabled={i < 0 || i >= steps.length}
+      hitSlop={8}
+      style={[styles.stepBtn, (i < 0 || i >= steps.length) && styles.stepOff]}
+      accessibilityRole="button"
+      accessibilityLabel={name}>
+      <Icon size={20} color={C.text} />
+    </TouchableOpacity>
+  );
+  return (
+    <View style={styles.slider}>
+      <View style={styles.rowText}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowHint}>{hint}</Text>
+      </View>
+      <View style={styles.stepper}>
+        {arrow(at - 1, ChevronLeft, 'Smaller')}
+        <Text style={[styles.stepValue, !value && styles.sliderOff]}>
+          {value ? `${value} MB` : 'Off'}
+        </Text>
+        {arrow(at + 1, ChevronRight, 'Bigger')}
+      </View>
+      <View style={styles.stepDots}>
+        {steps.map((s, i) => (
+          <View key={s} style={[styles.stepDot, i === at && styles.stepDotOn]} />
+        ))}
       </View>
     </View>
   );
@@ -1263,13 +1323,11 @@ export function SettingsScreen({
             <ChevronRight size={17} color={C.faint} />
           </TouchableOpacity>
 
-          <StepSlider
+          <SizeStepper
             label="Clear cache automatically"
             hint="When cached data passes this size, it is cleared the next time you open the app. Downloaded songs and search history are kept."
             value={settings.cacheLimitMb}
-            max={100}
-            step={10}
-            format={mb => `${mb} MB`}
+            steps={CACHE_STEPS}
             onChange={mb => {
               writeSetting('cacheLimitMb', mb);
               enforceCacheLimit(true).then(() =>
@@ -1504,6 +1562,34 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   sliderOff: {color: C.faint},
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    padding: 4,
+    borderRadius: 999,
+    backgroundColor: C.surfaceHi,
+  },
+  stepBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a2a30',
+  },
+  stepOff: {opacity: 0.3},
+  stepValue: {
+    flex: 1,
+    textAlign: 'center',
+    color: C.text,
+    fontSize: 16,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  stepDots: {flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 10},
+  stepDot: {width: 5, height: 5, borderRadius: 3, backgroundColor: '#3a3a40'},
+  stepDotOn: {backgroundColor: C.text},
   sliderTouch: {justifyContent: 'center', height: 44, marginTop: 4},
   sliderTrack: {
     height: 4,

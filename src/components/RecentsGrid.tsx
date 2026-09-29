@@ -9,8 +9,12 @@
  *
  * Each tile's title sits on a soft fade rather than a solid bar, so a cover
  * keeps its whole picture and the name stays readable over a light one.
+ *
+ * The grid sits in a thin frame so it reads as one block on Home. Once there
+ * are more songs than fit, the ninth tile is three dots on a diagonal in the
+ * mark's colours, and opens the last 20 (all recentlyPlayed keeps) in a sheet.
  */
-import React, {useMemo} from 'react';
+import React, {useMemo, useState} from 'react';
 import {
   Image,
   StyleSheet,
@@ -19,17 +23,26 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
+import Svg, {Circle, Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
+import Animated, {
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
 import {C, S, T} from '../theme';
 import {cleanText, getBestArtworkUrl, getTrackId} from '../tracks';
 import {useIsActiveTrack, useIsPlaying} from '../player';
 import {useAccent} from '../accent';
 import {EqBars} from './EqBars';
+import {Sheet} from './Sheet';
+import {TrackRow} from './TrackRow';
 import type {Track} from '../backend';
 
 const COLUMNS = 3;
 const MAX_TILES = 9;
 const GAP = 8;
+/** The frame: its hairline and the room inside it. */
+const FRAME = 1;
+const PAD = 8;
 
 export function RecentsGrid({
   recent,
@@ -39,18 +52,24 @@ export function RecentsGrid({
   onPlay: (track: Track, context: Track[]) => void;
 }) {
   const {width} = useWindowDimensions();
-  const tiles = useMemo(() => recent.slice(0, MAX_TILES), [recent]);
+  const [open, setOpen] = useState(false);
+  // More than fit: eight covers and the way to the rest.
+  const more = recent.length > MAX_TILES;
+  const tiles = useMemo(
+    () => recent.slice(0, more ? MAX_TILES - 1 : MAX_TILES),
+    [recent, more],
+  );
   if (!tiles.length) {
     return null;
   }
-  // Three per row across the page's own margins, whatever the screen width.
+  // Three per row inside the frame, whatever the screen width.
   const size = Math.floor(
-    (width - 2 * S.gutter - (COLUMNS - 1) * GAP) / COLUMNS,
+    (width - 2 * (S.gutter + FRAME + PAD) - (COLUMNS - 1) * GAP) / COLUMNS,
   );
   return (
     <View style={styles.section}>
       <Text style={styles.title}>Recents</Text>
-      <View style={styles.grid}>
+      <View style={styles.frame}>
         {tiles.map(t => (
           <Tile
             key={getTrackId(t)}
@@ -59,8 +78,82 @@ export function RecentsGrid({
             onPress={() => onPlay(t, recent)}
           />
         ))}
+        {more && <MoreTile size={size} onPress={() => setOpen(true)} />}
       </View>
+      {more && (
+        <LastSongs
+          open={open}
+          recent={recent}
+          onClose={() => setOpen(false)}
+          onPlay={(t: Track) => {
+            setOpen(false);
+            onPlay(t, recent);
+          }}
+        />
+      )}
     </View>
+  );
+}
+
+/** Three dots on a diagonal, coral to berry: the rest of your recents. */
+function MoreTile({size, onPress}: {size: number; onPress: () => void}) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onPress}
+      style={[styles.tile, styles.more, {width: size, height: size}]}
+      accessibilityRole="button"
+      accessibilityLabel="Show the last 20 songs">
+      <Svg width={size * 0.44} height={size * 0.44} viewBox="0 0 40 40">
+        <Circle cx={9} cy={9} r={5.5} fill="#FFB38A" />
+        <Circle cx={20} cy={20} r={5.5} fill="#FF5A6E" />
+        <Circle cx={31} cy={31} r={5.5} fill="#C2185B" />
+      </Svg>
+    </TouchableOpacity>
+  );
+}
+
+function LastSongs({
+  open,
+  recent,
+  onClose,
+  onPlay,
+}: {
+  open: boolean;
+  recent: Track[];
+  onClose: () => void;
+  onPlay: (t: Track) => void;
+}) {
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler(e => {
+    scrollY.value = e.contentOffset.y;
+  });
+  return (
+    <Sheet open={open} onClose={onClose} scrollY={scrollY}>
+      <View style={styles.sheetHead}>
+        <Text style={styles.sheetTitle}>{`Last ${recent.length} songs`}</Text>
+        <TouchableOpacity
+          style={styles.playAll}
+          activeOpacity={0.8}
+          onPress={() => onPlay(recent[0])}
+          accessibilityRole="button">
+          <Text style={styles.playAllText}>Play all</Text>
+        </TouchableOpacity>
+      </View>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        showsVerticalScrollIndicator={false}>
+        {recent.map(t => (
+          <TrackRow
+            key={getTrackId(t)}
+            track={t}
+            onPress={() => onPlay(t)}
+            showActions={false}
+          />
+        ))}
+      </Animated.ScrollView>
+    </Sheet>
   );
 }
 
@@ -130,12 +223,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     marginBottom: 10,
   },
-  grid: {
+  frame: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: GAP,
-    paddingHorizontal: S.gutter,
+    marginHorizontal: S.gutter,
+    padding: PAD,
+    borderWidth: FRAME,
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 16,
   },
+  more: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.surfaceHi,
+  },
+  sheetHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: S.gutter,
+    paddingTop: 6,
+    paddingBottom: 8,
+  },
+  sheetTitle: {...T.rowTitle, color: C.text},
+  playAll: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: C.text,
+  },
+  playAllText: {color: C.bg, fontSize: 13, fontWeight: '800'},
   tile: {
     borderRadius: 8,
     overflow: 'hidden',
