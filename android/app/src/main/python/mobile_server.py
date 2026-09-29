@@ -53,7 +53,7 @@ import android_env
 
 import requests as http_requests
 from requests.adapters import HTTPAdapter
-from flask import Flask, Response, jsonify, request, send_file, send_from_directory
+from flask import Flask, Response, jsonify, redirect, request, send_file, send_from_directory
 from werkzeug.serving import make_server
 
 # On Android, Gradle's `syncPythonSources` task copies components/ next to this
@@ -860,14 +860,15 @@ def stream_info():
     source = _arg("source")
     url = _arg("url")
     bitrate = _int_arg("bitrate", 320)
-    with _ladder_lock:
-        bitrate = _LADDER_PIN.get((source, url)) or bitrate
     try:
-        # Cached: proxy_stream is about to resolve the very same URL a beat later.
-        stream_url = _resolve_stream_url_cached(url, source, bitrate)
+        # Verified and pinned here, ahead of the skip: the next track's warm-up
+        # comes through this, so proxy_stream only has to answer from cache.
+        stream_url, _ = _verified_stream(url, source, bitrate)
         if not stream_url:
             return jsonify({"bitrate_kbps": None, "codec": None,
                             "error": "Could not resolve stream"})
+        with _ladder_lock:
+            bitrate = _LADDER_PIN.get((source, url)) or bitrate
         with _stream_cache_lock:
             kbps = _SERVED_KBPS.get((source, url, bitrate))
         return jsonify({"bitrate_kbps": kbps})
@@ -875,116 +876,128 @@ def stream_info():
         return jsonify({"bitrate_kbps": None, "codec": None, "error": str(e)})
 
 
-@app.get("/api/proxy_stream")
-def proxy_stream():
-    """Stream audio through the local server so <audio> can play and SEEK it.
+# One User-Agent for every request that touches a stream, ours and the
+# player's (player.ts STREAM_UA): the CDN sees a single client either way.
+_STREAM_UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"
 
-    Forwards the browser's Range header upstream and mirrors the 206 +
-    Content-Range back, which is what makes the seek bar work.
+# Upstream answers that mean "this URL is dead", not "try again".
+_DEAD_STREAM = (403, 404, 410, 500, 502, 503)
+
+# Auto quality's ceiling in kbps, set by the app after repeated stalls on a
+# weak connection (see /api/quality_cap); 0 = none. Applies to tracks that
+# start from now on: a track already pinned keeps its rung, or a seek would
+# land on byte offsets of a different file.
+_quality_cap = 0
+
+
+def _stream_headers(source: str, range_header: Optional[str] = None) -> dict:
+    headers = {"User-Agent": _STREAM_UA, "Accept": "*/*"}
+    if range_header:
+        headers["Range"] = range_header
+    if source == "jiosaavn":
+        headers["Referer"] = "https://www.jiosaavn.com/"
+    return headers
+
+
+def _verified_stream(url: str, source: str, bitrate: int):
+    """The CDN URL for this track, known to answer. Returns (url, last_status).
+
+    JioSaavn doesn't hold every track at every bitrate: a 320 file may 404
+    while 160/96 exist. The ladder is walked ONCE per track: the rung that
+    answers is pinned (_LADDER_PIN), and every later request for the track,
+    every seek, goes straight to it without asking the CDN again.
     """
-    url, source = _arg("url"), _arg("source")
-    bitrate = _int_arg("bitrate", 320)
-
-    # JioSaavn doesn't hold every track at every bitrate — a 320 file may 404
-    # while 160/96 exist. Walk down from what was asked for, but only ONCE per
-    # track: after a rung works it is pinned (see _LADDER_PIN) and every later
-    # request for the same track — every seek — starts there instead of
-    # re-walking the failures.
     with _ladder_lock:
         pinned = _LADDER_PIN.get((source, url))
     if pinned:
-        ladder = [pinned]
-    elif source == "jiosaavn":
-        ladder, seen = [], set()
-        for b in (bitrate, 320, 160, 96):
-            if b <= bitrate and b not in seen:
-                seen.add(b)
-                ladder.append(b)
-        ladder = ladder or [bitrate]
+        s_url = _resolve_stream_url_cached(url, source, pinned)
+        if s_url:
+            return s_url, None
+        _unpin_ladder(url, source)
+
+    if _quality_cap:
+        bitrate = min(bitrate, _quality_cap)
+    if source == "jiosaavn":
+        ladder = [b for b in dict.fromkeys((bitrate, 320, 160, 96)) if b <= bitrate]
     else:
         ladder = [bitrate]
 
-    range_header = request.headers.get("Range", "bytes=0-")
-    # Whether the CLIENT asked to start part-way in. "bytes=0-" is the default
-    # above and is not a real seek, so it doesn't count.
-    wants_range = "Range" in request.headers
-
-    def resolve_and_fetch(br):
+    last_status = None
+    for br in ladder or [bitrate]:
         s_url = _resolve_stream_url_cached(url, source, br)
         if not s_url:
-            # Distinct from an upstream rejection: here the source had no full,
-            # progressive stream to hand us (SoundCloud HLS/preview-only, or a
-            # dead page). Logged so a 502 in the field is self-explaining.
+            # The source had no full, progressive stream to hand us
+            # (SoundCloud HLS/preview-only, or a dead page).
             print(f"[proxy] {source} could not resolve a stream for {url} (br={br})")
-            return None, None
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36",
-            "Accept": "*/*",
-            "Range": range_header,
-        }
-        if source == "jiosaavn":
-            headers["Referer"] = "https://www.jiosaavn.com/"
-        # Split timeout: 6s to CONNECT, 30s to read. A dead/blocked host used to
-        # hang the whole 30s on connect, freezing the player on a track that was
-        # never going to play; now it fails in ~6s and the caller can move on.
-        # The 30s read budget is untouched, so a slow-but-valid stream is fine.
-        # _stream_session, NOT the bare module: reuses the CDN connection across
-        # plays and seeks instead of a fresh TLS handshake every time.
-        r = _stream_session.get(s_url, headers=headers, stream=True, timeout=(6, 30))
-        if r.status_code in (403, 404, 410, 500, 502, 503):
-            code = r.status_code
-            r.close()
-            # A cached URL that upstream now rejects is stale — drop it so the
-            # next attempt (next ladder step, or a replay) re-resolves fresh
-            # instead of serving the same dead URL from cache. This also drops
-            # the ladder pin, so a rung that has died gets re-walked.
+            continue
+        # Two bytes, to learn whether the CDN serves this URL at all, before
+        # the player is sent to it. 6s to connect: a dead host fails fast.
+        r = _stream_session.get(s_url, headers=_stream_headers(source, "bytes=0-1"),
+                                stream=True, timeout=(6, 10))
+        code = r.status_code
+        r.close()
+        if code in _DEAD_STREAM:
+            # A cached URL upstream now rejects is stale: drop it (and the
+            # pin) so the next attempt re-resolves instead of reusing it.
             _evict_stream_url(url, source, br)
             print(f"[proxy] {source} upstream {code} for {url} (br={br})")
-            return None, code
-        # This rung works — every later seek on this track starts here.
+            last_status = code
+            continue
         _pin_ladder(url, source, br)
-        return r, None
+        return s_url, None
+    return None, last_status
 
-    upstream, last_status = None, None
+
+@app.get("/api/proxy_stream")
+def proxy_stream():
+    """Send the player to the song's own CDN URL.
+
+    This used to copy the whole stream through this server, 64 KB at a time.
+    On a fast connection a new song or a seek pulls at line speed, and CPython
+    under Chaquopy, holding the GIL for every chunk, was then too busy to answer
+    anything else: search, lyrics and Home all stalled exactly when the data was
+    flowing fastest. Now it finds and checks the URL and answers with a
+    redirect; ExoPlayer (KotlinAudio allows cross-protocol redirects, and sends
+    the track's own headers) streams from the CDN itself, with its own ranges
+    and retries. Every seek still comes here first, and is answered from cache.
+
+    `fresh=1` forgets the cached URL first (the app's retry after an error);
+    `pipe=1` copies the stream through here as before (its last resort).
+    """
+    url, source = _arg("url"), _arg("source")
+    bitrate = _int_arg("bitrate", 320)
+    if _arg("fresh"):
+        for br in {bitrate, 320, 160, 96}:
+            _evict_stream_url(url, source, br)
+
     try:
-        for br in ladder:
-            upstream, last_status = resolve_and_fetch(br)
-            if upstream is not None:
-                break
+        s_url, last_status = _verified_stream(url, source, bitrate)
     except Exception as e:
         return jsonify({"detail": str(e)}), 500
-
-    if upstream is None:
+    if not s_url:
         detail = (f"Stream unavailable (upstream status {last_status})"
                   if last_status else "Could not resolve streaming URL")
         return jsonify({"detail": detail}), 502
 
-    # The client asked to jump to an offset and upstream ignored it, sending the
-    # whole file from byte 0. Forwarding that as a 200 tells the player "no range
-    # support" AFTER it already committed to a seek, so it either restarts the
-    # track or buffers everything before it can move. Say so in the log — this
-    # is the one shape of slow seek the fixes above cannot help with.
-    if wants_range and upstream.status_code == 200:
-        print(f"[proxy] {source} upstream ignored Range for {url} "
-              f"— seeking will be slow on this track")
+    if _arg("pipe") != "1":
+        resp = redirect(s_url, code=302)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
+    try:
+        upstream = _stream_session.get(
+            s_url, headers=_stream_headers(source, request.headers.get("Range", "bytes=0-")),
+            stream=True, timeout=(6, 30))
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 502
     resp_headers = {"Accept-Ranges": "bytes", "Cache-Control": "no-cache"}
-    if upstream.status_code == 206:
-        cr = upstream.headers.get("content-range")
-        if cr:
-            resp_headers["Content-Range"] = cr
-    cl = upstream.headers.get("content-length")
-    if cl:
-        resp_headers["Content-Length"] = cl
+    if upstream.status_code == 206 and upstream.headers.get("content-range"):
+        resp_headers["Content-Range"] = upstream.headers["content-range"]
+    if upstream.headers.get("content-length"):
+        resp_headers["Content-Length"] = upstream.headers["content-length"]
 
     def stream_chunks():
         try:
-            # 64KB, not 8KB. A player prebuffering after a seek pulls at line
-            # speed, not at 320kbps — at 5MB/s, 8KB chunks meant ~640 iterations
-            # a second, each one crossing the GIL, going through Werkzeug's
-            # chunked writer and hitting the loopback socket. CPython under
-            # Chaquopy is not fast at that. The YouTube download path already
-            # used 64KB; this is the same number on the hotter path.
             for chunk in upstream.iter_content(chunk_size=65536):
                 if chunk:
                     yield chunk
@@ -998,6 +1011,14 @@ def proxy_stream():
         headers=resp_headers,
         direct_passthrough=True,
     )
+
+
+@app.get("/api/quality_cap")
+def quality_cap():
+    """Auto quality's ceiling: the app lowers it after stalls, 0 lifts it."""
+    global _quality_cap
+    _quality_cap = max(0, _int_arg("kbps", 0))
+    return jsonify({"kbps": _quality_cap})
 
 
 # ─── Downloads ────────────────────────────────────────────────────────────────

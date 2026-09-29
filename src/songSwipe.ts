@@ -97,6 +97,15 @@ export function useSongSwipe({
   const [sides, setSides] = useState<Sides>(NONE);
   const sidesRef = useRef(sides);
   sidesRef.current = sides;
+  // Mirrored for the gesture, so the glide can start on the UI thread the
+  // instant the finger lifts, without asking JS whether there is a cover
+  // to glide to.
+  const hasPrev = useSharedValue(false);
+  const hasNext = useSharedValue(false);
+  useEffect(() => {
+    hasPrev.value = !!sides.prev;
+    hasNext.value = !!sides.next;
+  }, [sides, hasPrev, hasNext]);
 
   const landing = useRef<{
     key: string;
@@ -174,30 +183,28 @@ export function useSongSwipe({
     tryLand();
   }, [settle, tryLand]);
 
+  /**
+   * The JS half of a committed swipe. The glide itself was already started on
+   * the UI thread by the gesture: it used to start HERE, so it waited for the
+   * JS thread, which at that moment is busy starting the next song. The cover
+   * froze where the finger left it, then jumped.
+   */
   const commit = useCallback(
-    (d: 1 | -1, velocity: number) => {
+    (d: 1 | -1) => {
       // Skip NOW, so the engine and the title move while the cover glides.
       (d === 1 ? skipNext() : skipPrevious(true)).catch(() => {});
       const n = d === 1 ? sidesRef.current.next : sidesRef.current.prev;
       if (!n) {
-        // Nothing drawn to glide to (the end of the queue): back to rest,
-        // and the new song replaces this one in place.
+        // Nothing drawn to glide to (the end of the queue, or the queue
+        // changed under the finger): back to rest, and the new song replaces
+        // this one in place.
         busy.value = false;
         slide.value = withSpring(0, {damping: 20, stiffness: 220});
         return;
       }
       landing.current = {key: trackKey(n.track), art: n.art, glided: false};
-      slide.value = withSpring(
-        -d * span.value,
-        {damping: 26, stiffness: 260, overshootClamping: true, velocity},
-        finished => {
-          if (finished) {
-            runOnJS(onGlided)();
-          }
-        },
-      );
     },
-    [slide, span, busy, onGlided],
+    [slide, busy],
   );
 
   const gesture = useMemo(
@@ -224,8 +231,22 @@ export function useSongSwipe({
           const next = success && x < 0 && (x <= -COMMIT_PX || vx < -FLICK);
           const prev = success && x > 0 && (x >= COMMIT_PX || vx > FLICK);
           if (next || prev) {
+            const d = next ? 1 : -1;
             busy.value = true;
-            runOnJS(commit)(next ? 1 : -1, vx);
+            if (next ? hasNext.value : hasPrev.value) {
+              slide.value = withSpring(
+                -d * span.value,
+                {damping: 26, stiffness: 260, overshootClamping: true, velocity: vx},
+                finished => {
+                  if (finished) {
+                    runOnJS(onGlided)();
+                  }
+                },
+              );
+            }
+            // Queued before the glide's end on the same JS queue, so the
+            // landing is always set up before onGlided arrives.
+            runOnJS(commit)(d);
             return;
           }
           slide.value = withSpring(0, {
@@ -235,7 +256,7 @@ export function useSongSwipe({
             velocity: vx,
           });
         }),
-    [failY, slide, busy, refresh, commit],
+    [failY, slide, busy, refresh, commit, onGlided, span, hasPrev, hasNext],
   );
 
   return {gesture, sides, span, onCoverLoad};

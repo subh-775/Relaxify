@@ -230,6 +230,11 @@ export type StreamInfo = {
  * player makes a beat before audio starts, so a success here means the whole
  * chain (source lookup -> signed CDN URL) is working for this track.
  */
+/** Auto quality's ceiling in the engine, in kbps; 0 lifts it. */
+export async function setQualityCap(kbps: number): Promise<void> {
+  await apiGet(`/quality_cap?kbps=${kbps}`);
+}
+
 export async function getStreamInfo(
   track: Track,
   bitrate = 320,
