@@ -111,6 +111,16 @@ export function markManualTrackChange(): void {
 /** The last time the person moved playback themselves: a seek or a skip.
  *  Anything else that moves it is reported as playback_jump. */
 let userMoveAt = 0;
+
+/**
+ * A seek the app makes on the person's behalf: a Jam lining this phone up
+ * with the others. Its buffer is not a weak signal (Auto quality) and its
+ * move is not a jump (playback_jump). A plain assignment, so it is in place
+ * before the seek reaches the engine and before its Buffering event can.
+ */
+export function markEngineSeek(): void {
+  userMoveAt = Date.now();
+}
 /** When the person last skipped, until the next song is heard (noteSkipToSound). */
 let skipAt = 0;
 
