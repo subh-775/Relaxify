@@ -856,7 +856,23 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build(),
                 )
-                setDataSource(url)
+                // The engine answers with a redirect to the song's CDN, so this
+                // player makes the real request and must send what ExoPlayer
+                // sends (player.ts toQueueItem). JioSaavn's CDN answers 403
+                // without its Referer: bare setDataSource(url) went out as
+                // "stagefright" with none, every overlap failed, and crossfade
+                // became a plain cut.
+                val uri = android.net.Uri.parse(url)
+                val headers = if (uri.scheme == "http" || uri.scheme == "https") {
+                    val h = mutableMapOf("User-Agent" to STREAM_UA)
+                    if (uri.getQueryParameter("source") == "jiosaavn") {
+                        h["Referer"] = "https://www.jiosaavn.com/"
+                    }
+                    h
+                } else {
+                    null
+                }
+                setDataSource(ctx, uri, headers)
                 setVolume(0f, 0f)
                 setOnPreparedListener { mp ->
                     // Applied on the PREPARED player: setting playback params on
@@ -1264,6 +1280,9 @@ class AudioModule(private val ctx: ReactApplicationContext) :
 
     companion object {
         private const val TAG = "AudioModule"
+        /** The one User-Agent every stream request uses: player.ts STREAM_UA
+         *  and mobile_server.py _STREAM_UA say the same. */
+        private const val STREAM_UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"
         /** Never ramp fully to 0 — ExoPlayer at exactly 0 on some devices drops
          *  the output path, which clicks audibly when it comes back. */
         private const val FADE_FLOOR = 0.04f
