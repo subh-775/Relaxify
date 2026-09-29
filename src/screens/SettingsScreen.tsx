@@ -535,7 +535,7 @@ function SizeStepper({
       </View>
       <View style={styles.stepper}>
         {arrow(at - 1, ChevronLeft, 'Smaller')}
-        <Text style={[styles.stepValue, !value && styles.sliderOff]}>
+        <Text style={[styles.sizeValue, !value && styles.sliderOff]}>
           {value ? `${value} MB` : 'Off'}
         </Text>
         {arrow(at + 1, ChevronRight, 'Bigger')}
@@ -1579,7 +1579,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2a2a30',
   },
   stepOff: {opacity: 0.3},
-  stepValue: {
+  sizeValue: {
     flex: 1,
     textAlign: 'center',
     color: C.text,
