@@ -473,11 +473,44 @@ export function CollectionScreen({
               />
             </TouchableOpacity>
           </>
+        ) : find !== null ? (
+          // Find takes the title's place, so the list filters right under
+          // the field you are typing in.
+          <View style={styles.findRow}>
+            <SearchIcon size={17} color={C.sub} />
+            <TextInput
+              value={find}
+              onChangeText={setFind}
+              placeholder="Find in this list"
+              placeholderTextColor={C.faint}
+              style={styles.findInput}
+              autoFocus
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            <TouchableOpacity
+              hitSlop={10}
+              onPress={() => setFind(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Close find">
+              <X size={18} color={C.sub} />
+            </TouchableOpacity>
+          </View>
         ) : (
           <>
             <Text style={styles.barTitle} numberOfLines={1}>
               {displayName}
             </Text>
+            {tracks.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setFind('')}
+                hitSlop={12}
+                style={styles.barBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Find in this list">
+                <SearchIcon size={21} color={C.text} />
+              </TouchableOpacity>
+            )}
             {isOwnPlaylist && (
               <TouchableOpacity
                 onPress={() => setMenuOpen(true)}
@@ -579,8 +612,8 @@ export function CollectionScreen({
                   )}
                 </View>
 
-                {/* Tools: keep it (save, download) on the left; arrange it
-                    (sort, find) on the right. */}
+                {/* Tools: keep it (save, download) on the left; sort on the
+                    right. Find lives in the header. */}
                 <View style={styles.tools}>
                   {(collection.kind === 'album' ||
                     collection.kind === 'sourcePlaylist') && (
@@ -632,41 +665,7 @@ export function CollectionScreen({
                     <ArrowUpDown size={15} color={C.text} />
                     <Text style={styles.sortText}>{sortLabel}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    hitSlop={10}
-                    onPress={() => setFind(f => (f === null ? '' : null))}
-                    disabled={!tracks.length}
-                    accessibilityRole="button"
-                    accessibilityLabel="Find in this list">
-                    <SearchIcon
-                      size={21}
-                      color={find !== null ? C.accent : C.text}
-                    />
-                  </TouchableOpacity>
                 </View>
-
-                {find !== null && (
-                  <View style={styles.findRow}>
-                    <SearchIcon size={17} color={C.sub} />
-                    <TextInput
-                      value={find}
-                      onChangeText={setFind}
-                      placeholder="Find in this list"
-                      placeholderTextColor={C.faint}
-                      style={styles.findInput}
-                      autoFocus
-                      autoCorrect={false}
-                      returnKeyType="search"
-                    />
-                    <TouchableOpacity
-                      hitSlop={10}
-                      onPress={() => setFind(null)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close find">
-                      <X size={18} color={C.sub} />
-                    </TouchableOpacity>
-                  </View>
-                )}
               </>
             )}
           </View>
@@ -919,14 +918,15 @@ const styles = StyleSheet.create({
   },
   sortText: {color: C.text, fontSize: 12.5, fontWeight: '700'},
   findRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginHorizontal: S.gutter,
-    marginTop: 12,
+    marginLeft: 4,
+    marginRight: 6,
     paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 8,
+    height: 38,
+    borderRadius: 999,
     backgroundColor: C.surfaceHi,
   },
   findInput: {flex: 1, color: C.text, fontSize: 14, padding: 0},

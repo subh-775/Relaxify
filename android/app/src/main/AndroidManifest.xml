@@ -70,6 +70,10 @@
         </intent-filter>
       </activity>
 
+      <!-- Hears the app being swiped away and makes sure the music stops
+           (TaskGuard.kt). -->
+      <service android:name=".TaskGuard" android:exported="false" android:stopWithTask="false" />
+
       <!-- Posts the weekly Recap notification (RecapReminder). -->
       <receiver android:name=".RecapReminderReceiver" android:exported="false" />
 

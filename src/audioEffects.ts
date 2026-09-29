@@ -15,6 +15,7 @@ type AudioNative = {
   getCapabilities?: () => Promise<EqCapabilities>;
   setEqualizer?: (enabled: boolean, gainsDb: number[]) => Promise<boolean>;
   setNormalize?: (enabled: boolean) => Promise<boolean>;
+  guardTask?: () => void;
   setCrossfade?: (spanMs: number) => Promise<boolean>;
   setPauseAtEndOfTrack?: (on: boolean) => Promise<boolean>;
   stopCrossfade?: () => Promise<boolean>;
@@ -132,6 +133,15 @@ export async function restorePlayerVolume(): Promise<void> {
     await native.restorePlayerVolume?.();
   } catch {
     /* nothing to restore */
+  }
+}
+
+/** Music is playing: make sure swiping the app away stops it (TaskGuard.kt). */
+export function guardTask(): void {
+  try {
+    native.guardTask?.();
+  } catch {
+    /* an older APK without it */
   }
 }
 

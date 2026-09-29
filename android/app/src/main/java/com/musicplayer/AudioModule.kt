@@ -1190,6 +1190,12 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         }
     }
 
+    /** Music is playing: make sure a swipe-away will stop it (TaskGuard). */
+    @ReactMethod
+    fun guardTask() {
+        TaskGuard.start(ctx)
+    }
+
     /** Cancel any ramp and put the player back to full volume, immediately. */
     @ReactMethod
     fun restorePlayerVolume(promise: Promise) {

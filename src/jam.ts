@@ -47,6 +47,7 @@ import {
   TrackPlayer,
   addToQueue,
   holdAutoplay,
+  markEngineSeek,
   peekAdjacentTrack,
   playTrack,
   onUserSeek,
@@ -370,6 +371,7 @@ async function align(code: string): Promise<void> {
     const to = seekTarget(expectedAt(now, serverNow()), duration);
     if (to !== null) {
       selfSeekAt = Date.now();
+      markEngineSeek();
       await TrackPlayer.seekTo(to);
     }
   } else if (fix.kind === 'nudge') {
@@ -477,12 +479,15 @@ async function follow(now: Now): Promise<void> {
       const to = seekTarget(expectedAt(now, serverNow()), duration);
       if (to !== null) {
         selfSeekAt = Date.now();
+        markEngineSeek();
         await TrackPlayer.seekTo(to);
       }
     } else {
+      markEngineSeek();
       await TrackPlayer.seekTo(now.pos);
     }
   } else if (!now.playing) {
+    markEngineSeek();
     await TrackPlayer.seekTo(now.pos);
   }
   const {state} = await TrackPlayer.getPlaybackState();

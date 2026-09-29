@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/public/logo.png" alt="" width="300" height="300">
+<img src="docs/public/logo.svg" alt="" width="300" height="300">
 
 <h1>
   <picture>
@@ -12,11 +12,11 @@
 A free music player for Android. Search, stream and download from JioSaavn,
 SoundCloud and YouTube in one place, and listen together with friends.
 
-[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/releases/latest)
-[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
-[![App Docs](https://img.shields.io/badge/App%20Docs-Read-E3B878?labelColor=2B1B12&color=E3B878)](https://subh-775.github.io/Relaxify/)
-[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=2B1B12&color=E3B878)](https://github.com/subh-775/Relaxify/releases)
-[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=2B1B12&color=E3B878)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
+[![App Docs](https://img.shields.io/badge/App%20Docs-Read-FF5A6E?labelColor=111111&color=FF5A6E)](https://subh-775.github.io/Relaxify/)
+[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases)
+[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=111111&color=FF5A6E)](LICENSE)
 
 </div>
 
@@ -58,8 +58,8 @@ use and much lighter on the phone's processor and battery.
 - **Sound:** an eight-band equalizer with presets that each pair of headphones
   remembers, volume normalization, crossfade, and playback speed.
 - **Lyrics**, synced where the source provides timing; tap a line to jump there.
-- **Home in your languages**, a home-screen widget, and a data saver for mobile
-  data.
+- **Home in your languages**, a home-screen widget, a data saver for mobile
+  data, and Auto quality that steps down on a weak signal instead of stopping.
 - **In-app updates** that install over the current version and keep your
   library.
 
@@ -80,9 +80,9 @@ feature in six short pages.
 | Part | What it does |
 | --- | --- |
 | **Interface** | React Native (TypeScript), in `App.tsx` and `src/`. |
-| **Playback** | ExoPlayer through react-native-track-player, running in a foreground service so music keeps playing with the screen off. |
+| **Playback** | ExoPlayer through react-native-track-player, running in a foreground service so music keeps playing with the screen off. It streams each song straight from the source's servers; downloads play from their files. |
 | **Audio effects** | A Kotlin module (`AudioModule.kt`) for the equalizer, loudness and crossfade. |
-| **Engine** | A Python server embedded with Chaquopy that searches the sources, resolves streams and handles downloads. The interface talks to it over `127.0.0.1`, with a per-launch token. |
+| **Engine** | A Python server embedded with Chaquopy that searches the sources, finds and checks each song's stream link (the player is redirected to it, so no audio passes through the engine) and handles downloads. The interface talks to it over `127.0.0.1`, with a per-launch token. |
 | **Jam** | A Firebase Realtime Database record per Jam holds the song, position and shared queue (rules in `firebase/`). No audio passes through it; each phone streams for itself. |
 | **Usage statistics** | Firebase Analytics and Crashlytics, tied to an anonymous ID. The docs' Help page lists exactly what is sent. |
 

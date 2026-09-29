@@ -1,0 +1,29 @@
+diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
+index 0000000..0000000 100644
+--- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
++++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/service/MusicService.kt
+@@ -94,8 +94,23 @@ class MusicService : HeadlessJsTaskService() {
+     private var compactCapabilities: List<Capability> = emptyList()
+ 
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
++        // Relaxify: a null intent is Android recreating this service after the
++        // process was killed (START_STICKY). There is no player and no app to
++        // serve, and startForeground() from the background is refused on
++        // Android 12+ (ForegroundServiceStartNotAllowedException, a crash seen
++        // in Crashlytics). Stop instead of starting.
++        if (intent == null) {
++            stopSelf(startId)
++            return START_NOT_STICKY
++        }
+         startTask(getTaskConfig(intent))
+-        startAndStopEmptyNotificationToAvoidANR()
++        try {
++            startAndStopEmptyNotificationToAvoidANR()
++        } catch (e: Exception) {
++            // Same refusal on any other background start: skip the placeholder
++            // notification rather than crash; the real one follows on play.
++            android.util.Log.w("MusicService", "startForeground refused: ${e.message}")
++        }
+         return START_STICKY
+     }
+ 

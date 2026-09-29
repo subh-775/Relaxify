@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The launcher mark, "Satin": the note as two gold ribbons. The same paths as
-  src/components/Logo.tsx (a 100-unit box), scaled into the adaptive icon's
-  66dp safe circle so no launcher mask crops it.
+  The launcher mark, "Ember": the note as one ribbon that folds back over
+  itself, coral into berry. The same paths as src/components/Logo.tsx (a
+  100-unit box), scaled into the adaptive icon's 66dp safe circle so no
+  launcher mask crops it. The tile behind it is ic_launcher_background.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -13,41 +14,27 @@
     <group
         android:scaleX="0.62"
         android:scaleY="0.62"
-        android:translateX="21.45"
-        android:translateY="22.4">
-        <path android:pathData="M50,14 H58 V70 C58,83 49,90 38,90 C27,90 19,83 19,73 C19,63 28,56 38,56 C43,56 47,57 50,59 Z">
+        android:translateX="22.07"
+        android:translateY="22.38">
+        <path android:pathData="M52,16 C52,13 55,12 57,13 C72,20 84,32 82,50 C81,58 77,63 72,66 C75,55 72,42 60,36 L60,70 C60,82 50,90 38,90 C27,90 19,83 19,74 C19,64 28,57 39,57 C44,57 48,58 52,61 Z">
             <aapt:attr name="android:fillColor">
                 <gradient
                     android:type="linear"
-                    android:startX="27"
+                    android:startX="25.5"
                     android:startY="12"
-                    android:endX="79"
+                    android:endX="77.5"
                     android:endY="90">
-                    <item android:offset="0" android:color="#FFFFF1D6" />
-                    <item android:offset="0.5" android:color="#FFE3B878" />
-                    <item android:offset="1" android:color="#FF8A5A2B" />
-                </gradient>
-            </aapt:attr>
-        </path>
-        <path android:pathData="M63,14 C76,20 86,30 84,46 C83,54 79,60 73,63 C75,52 70,40 63,34 Z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:type="linear"
-                    android:startX="27"
-                    android:startY="12"
-                    android:endX="79"
-                    android:endY="90">
-                    <item android:offset="0" android:color="#FFFFF1D6" />
-                    <item android:offset="0.5" android:color="#FFE3B878" />
-                    <item android:offset="1" android:color="#FF8A5A2B" />
+                    <item android:offset="0" android:color="#FFFFB38A" />
+                    <item android:offset="0.5" android:color="#FFFF5A6E" />
+                    <item android:offset="1" android:color="#FFC2185B" />
                 </gradient>
             </aapt:attr>
         </path>
         <path
-            android:fillColor="#66FFFFFF"
-            android:pathData="M63,14 C70,17 76,22 80,28 C74,26 68,27 63,30 Z" />
+            android:fillColor="#61000000"
+            android:pathData="M60,36 C72,42 75,55 72,66 C69,57 64,48 60,45 Z" />
         <path
-            android:fillColor="#4D000000"
-            android:pathData="M63,34 C70,40 75,52 73,63 C77,52 74,42 66,36 Z" />
+            android:fillColor="#47FFFFFF"
+            android:pathData="M52,16 C52,13 55,12 57,13 C66,17 73,23 77,30 C70,26 62,24 56,26 L52,28 Z" />
     </group>
 </vector>

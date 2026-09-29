@@ -41,6 +41,7 @@ import {
   endCrossfade,
   fadeInPlayer,
   fadeOutPlayer,
+  guardTask,
   restorePlayerVolume,
   setCrossfade,
 } from './audioEffects';
@@ -54,6 +55,7 @@ import {remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
+import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
 
 let ready = false;
@@ -109,6 +111,18 @@ export function markManualTrackChange(): void {
 /** The last time the person moved playback themselves: a seek or a skip.
  *  Anything else that moves it is reported as playback_jump. */
 let userMoveAt = 0;
+
+/**
+ * A seek the app makes on the person's behalf: a Jam lining this phone up
+ * with the others. Its buffer is not a weak signal (Auto quality) and its
+ * move is not a jump (playback_jump). A plain assignment, so it is in place
+ * before the seek reaches the engine and before its Buffering event can.
+ */
+export function markEngineSeek(): void {
+  userMoveAt = Date.now();
+}
+/** When the person last skipped, until the next song is heard (noteSkipToSound). */
+let skipAt = 0;
 
 /**
  * The one place playback resumes from silence.
@@ -237,8 +251,15 @@ export function sourceTrackFor(
   );
 }
 
-/** Build the streaming URL. proxy_stream handles range requests + the bitrate
- *  ladder, and apiUrl attaches the API token the backend requires. */
+/**
+ * The User-Agent the engine uses when it checks a stream (mobile_server.py
+ * _STREAM_UA). proxy_stream redirects the player to the CDN, so the player
+ * makes the real request and must look like the same client.
+ */
+const STREAM_UA = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36';
+
+/** Build the streaming URL. proxy_stream picks the bitrate rung and answers
+ *  with a redirect to the CDN; apiUrl attaches the API token it requires. */
 export function streamUrlFor(
   track: Track,
   bitrate = currentQuality(),
@@ -247,8 +268,15 @@ export function streamUrlFor(
   // it is served straight from the file. Without this branch, playing anything
   // from the Downloads folder failed with "no playable source", which is
   // exactly backwards: it is the one track guaranteed to be available.
+  //
+  // Read by the player itself, not served by the engine: a file prebuffers at
+  // disk speed, and copying that through Python stalled the engine for
+  // everything else (the same reason streams now redirect).
   if (track.file_path) {
-    return apiUrl(`/local?path=${encodeURIComponent(track.file_path)}`);
+    return `file://${track.file_path
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}`;
   }
   const source = track.playable_source || track.primary_source || '';
   const url = source ? track.sources?.[source]?.url : undefined;
@@ -353,25 +381,33 @@ export async function setupPlayer(): Promise<boolean> {
       } catch {}
     });
 
-    // The home-screen widget follows play and pause. Only the two settled
+    // The home-screen widget follows play and pause, and every Playing
+    // re-arms the swipe-away guard (TaskGuard.kt says why it is needed). Only the two settled
     // states: the buffering flicker around a seek would blink its button.
     TrackPlayer.addEventListener(Event.PlaybackState, e => {
       if (e.state === State.Playing) {
         pushWidgetPlaying(true);
+        guardTask();
+        noteSkipToSound();
       } else if (e.state === State.Paused || e.state === State.Stopped) {
         pushWidgetPlaying(false);
       }
+      // Stalls feed Auto quality (adaptiveQuality.ts).
+      noteState(e.state, Date.now() - Math.max(userMoveAt, manualStepAt));
     });
 
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
       logEvent('playback_error', {message: e.message, code: e.code});
-      skipPastError();
+      retryAfterError()
+        .then(retried => retried || skipPastError())
+        .catch(() => skipPastError());
     });
 
     TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async e => {
       // The "play this soon" window is relative to the current song — a new song
       // starts a fresh one, so anything queued now goes right after it again.
       queuedAhead = 0;
+      noteTrackChange();
       // The engine is authoritative — reconcile the optimistic mirror with what
       // actually started, and keep the queue snapshot warm for the next gesture.
       publishTrack(e.track ?? null);
@@ -473,6 +509,8 @@ export async function setupPlayer(): Promise<boolean> {
 
     ready = true;
     available = true;
+    // The engine can outlive the app's JS; start with no Auto ceiling.
+    resetQualityCap();
     // If the engine came back with a queue already loaded (the service outlived
     // the JS context), adopt it now rather than showing nothing until the next
     // track change.
@@ -637,11 +675,16 @@ function toQueueItem(track: Track, bitrate: number) {
   if (!url) {
     return null;
   }
+  const source = track.playable_source || track.primary_source || '';
   return {
     id: `${track.title}-${track.artist}`,
     /** Identity of this ROW, as opposed to `id`, the identity of the song. */
     _qid: `q${++queueSeq}`,
     url,
+    // Sent on the redirect to the CDN too (see STREAM_UA).
+    userAgent: STREAM_UA,
+    headers:
+      source === 'jiosaavn' ? {Referer: 'https://www.jiosaavn.com/'} : undefined,
     title: track.title,
     artist: track.artist,
     artwork: track.artwork_url,
@@ -1045,6 +1088,7 @@ export function useActiveTrack(): RNTPTrack | null {
 export async function skipNext(): Promise<void> {
   cancelCrossfade(); // a manual skip isn't a crossfade — kill any overlap
   markManualTrackChange();
+  skipAt = Date.now();
   // Nothing after this song: find some before skipping, or Next was a dead
   // button at the end of the queue.
   if (activeIndex >= engineQueue.length - 1) {
@@ -1081,6 +1125,7 @@ export async function skipPrevious(always = false): Promise<void> {
     }
     // Only publish once we know this is a real track change, not a restart.
     publishStep(-1);
+    skipAt = Date.now();
     warmStream(sourceTrackFor(trackSnapshot), currentQuality());
     await TrackPlayer.skipToPrevious();
     await playWithFade(SKIP_FADE_MS);
@@ -1573,6 +1618,60 @@ function countListened(
   counted = true;
   const src = sourceTrackFor(row);
   src && recordPlay(src, Date.now() - position * 1000);
+}
+
+/**
+ * How long from pressing skip to hearing the next song, sent as
+ * `skip_to_sound`: the number that says whether switching songs got smoother.
+ * Anything over 15 s is a stall or a background skip, not a skip gap.
+ */
+function noteSkipToSound(): void {
+  if (!skipAt) {
+    return;
+  }
+  const ms = Date.now() - skipAt;
+  skipAt = 0;
+  if (ms < 15000) {
+    logEvent('skip_to_sound', {ms});
+  }
+}
+
+/**
+ * A stream that errors gets two more tries before it is skipped.
+ *
+ * proxy_stream now sends the player to the CDN with a redirect, so the player
+ * talks to the CDN itself, and a link the engine had cached can have died
+ * since. First try: the same song with `fresh=1`, which makes the engine
+ * forget its cached link and find a new one. Second: `pipe=1`, which copies
+ * the stream through the engine as it used to. Downloads are files and have
+ * nothing to retry. Resumes where it failed.
+ */
+let retried = {qid: '', step: 0};
+async function retryAfterError(): Promise<boolean> {
+  const t = await TrackPlayer.getActiveTrack().catch(() => undefined);
+  const url = typeof t?.url === 'string' ? t.url : '';
+  if (!t || !url.includes('/proxy_stream')) {
+    return false;
+  }
+  const qid = String(t._qid ?? url);
+  const step = retried.qid === qid ? retried.step + 1 : 1;
+  if (step > 2) {
+    return false;
+  }
+  retried = {qid, step};
+  const base = url.replace(/&(fresh|pipe)=1/g, '');
+  const position = await TrackPlayer.getPosition().catch(() => 0);
+  logEvent('stream_retry', {step});
+  diag('stream', `retry ${step}: ${String(t.title ?? '')}`);
+  await TrackPlayer.load({
+    ...t,
+    url: `${base}&fresh=1${step === 2 ? '&pipe=1' : ''}`,
+  });
+  if (position > 1) {
+    await TrackPlayer.seekTo(position);
+  }
+  await playWithFade();
+  return true;
 }
 
 /**

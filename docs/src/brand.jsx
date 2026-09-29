@@ -1,5 +1,5 @@
 /**
- * Relaxify's look, for the docs: the gold note, the card art, and the cards
+ * Relaxify's look, for the docs: the Ember note, the card art, and the cards
  * themselves, all taken from the app (Logo.tsx, brandArt.ts, FeatureCard.tsx)
  * so the site reads as the same product.
  */
@@ -10,7 +10,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 /** An in-site link, with the GitHub Pages base in front. */
 export const href = path => `${BASE}${path}`;
 
-/* ── the gold note (Logo.tsx) ─────────────────────────────────────────────── */
+/* ── the Ember note (Logo.tsx) ────────────────────────────────────────────── */
 
 export function Note({size = 28, color}) {
   const id = `note${useId().replace(/:/g, '')}`;
@@ -20,19 +20,20 @@ export function Note({size = 28, color}) {
       {!color && (
         <defs>
           <linearGradient id={id} x1="0.1" y1="0" x2="0.9" y2="1">
-            <stop offset="0" stopColor="#FFF1D6" />
-            <stop offset="0.5" stopColor="#E3B878" />
-            <stop offset="1" stopColor="#8A5A2B" />
+            <stop offset="0" stopColor="#FFB38A" />
+            <stop offset="0.5" stopColor="#FF5A6E" />
+            <stop offset="1" stopColor="#C2185B" />
           </linearGradient>
         </defs>
       )}
       <path
-        d="M50 14 H58 V70 C58 83 49 90 38 90 C27 90 19 83 19 73 C19 63 28 56 38 56 C43 56 47 57 50 59 Z"
+        d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z"
         fill={fill}
       />
-      <path d="M63 14 C76 20 86 30 84 46 C83 54 79 60 73 63 C75 52 70 40 63 34 Z" fill={fill} />
-      {!color && <path d="M63 14 C70 17 76 22 80 28 C74 26 68 27 63 30 Z" fill="#fff" opacity=".4" />}
-      {!color && <path d="M63 34 C70 40 75 52 73 63 C77 52 74 42 66 36 Z" fill="#000" opacity=".3" />}
+      {!color && <path d="M60 36 C72 42 75 55 72 66 C69 57 64 48 60 45 Z" fill="#000" opacity=".38" />}
+      {!color && (
+        <path d="M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z" fill="#fff" opacity=".28" />
+      )}
     </svg>
   );
 }

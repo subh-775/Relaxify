@@ -9,12 +9,20 @@
  * loading state: something still moving means something is still happening, so
  * a mark that keeps pulsing makes a fast start look slow. One arrival, then a
  * finished screen.
+ *
+ * Big, and dimmed to DIM of full brightness: on black, a full-strength note
+ * this size glows; a darker one sits quietly until Home arrives. Opacity over
+ * the black page is the same thing as lowering its brightness.
  */
 import React, {useEffect, useRef} from 'react';
 import {Animated, Easing, StyleSheet, View} from 'react-native';
 import {C} from '../theme';
 
 import {LogoMark} from './Logo';
+
+const SIZE = 280;
+/** 45% darker than the mark itself. */
+const DIM = 0.55;
 
 export function Splash() {
   const enter = useRef(new Animated.Value(0)).current;
@@ -32,12 +40,12 @@ export function Splash() {
     <View style={styles.wrap}>
       <Animated.View
         style={{
-          opacity: enter,
+          opacity: enter.interpolate({inputRange: [0, 1], outputRange: [0, DIM]}),
           transform: [
             {scale: enter.interpolate({inputRange: [0, 1], outputRange: [0.88, 1]})},
           ],
         }}>
-        <LogoMark size={210} />
+        <LogoMark size={SIZE} />
       </Animated.View>
     </View>
   );

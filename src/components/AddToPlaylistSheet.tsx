@@ -34,10 +34,9 @@ import {
   usePlaylists,
 } from '../playlists';
 import {rowId, sortPinned, usePins} from '../pins';
-import {SavedGlyph} from './AddButton';
 import {PinGlyph} from './PinGlyph';
 import {toggleLike, useLike} from '../store';
-import {CollectionArt} from './CollectionArt';
+import {CollectionArt, LIKED_TINT} from './CollectionArt';
 import {playlistToCollection} from '../collections';
 import {toast} from '../toast';
 import Animated, {
@@ -69,7 +68,19 @@ export function useAddToPlaylistHost(open: (t: Track) => void): void {
 }
 
 /** Above this many, finding one by eye is a scroll rather than a glance. */
-const FILTER_FROM = 6;
+const FILTER_FROM = 3;
+
+/** The mark's red: a filled tick means the song is in that list. */
+const TICKED = '#FF5A6E';
+
+/** A round tick: an empty ring, or filled red with a check. */
+function Tick({on}: {on: boolean}) {
+  return (
+    <View style={[styles.tick, on && styles.tickOn]}>
+      {on && <Check size={14} color="#fff" strokeWidth={3.6} />}
+    </View>
+  );
+}
 
 function AddToPlaylistSheetView({
   track,
@@ -176,26 +187,10 @@ function AddToPlaylistSheetView({
       style={styles.sheet}>
       <Text style={styles.title}>Saved in</Text>
       <Text style={styles.subtitle} numberOfLines={1}>
-        {cleanText(shown?.title)}
+        {[cleanText(shown?.title), cleanText(shown?.artist)]
+          .filter(Boolean)
+          .join(' · ')}
       </Text>
-
-      {/* Liked Songs, above everything including the filter: it is the one
-          destination that is always there, and it is the toggle the + itself
-          drives. */}
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={0.7}
-        onPress={onLikedRow}>
-        <View style={styles.likedTile}>
-          <Heart size={22} color={C.accent} fill={C.accent} />
-        </View>
-        <View style={styles.rowText}>
-          <Text style={styles.rowTitle} numberOfLines={1}>
-            Liked Songs
-          </Text>
-        </View>
-        <SavedGlyph on={liked} size={26} />
-      </TouchableOpacity>
 
       {playlists.length > FILTER_FROM && !creating && (
         <View style={styles.findRow}>
@@ -236,11 +231,30 @@ function AddToPlaylistSheetView({
           activeOpacity={0.7}
           onPress={() => setCreating(true)}>
           <View style={styles.plusTile}>
-            <Plus size={22} color={C.text} />
+            <Plus size={22} color={C.sub} />
           </View>
           <Text style={styles.rowTitle}>New playlist</Text>
         </TouchableOpacity>
       )}
+
+      {/* Liked Songs, first of the lists: it is the one destination that is
+          always there, and it is the toggle the + itself drives. */}
+      <TouchableOpacity
+        style={styles.row}
+        activeOpacity={0.7}
+        onPress={onLikedRow}
+        accessibilityRole="checkbox"
+        accessibilityState={{checked: liked}}>
+        <View style={styles.likedTile}>
+          <Heart size={20} color="#fff" fill="#fff" />
+        </View>
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            Liked Songs
+          </Text>
+        </View>
+        <Tick on={liked} />
+      </TouchableOpacity>
 
       {/* Animated, so the offset reaches the sheet's gesture on the UI thread.
           A JS onScroll would be a frame or two stale exactly when it matters —
@@ -268,7 +282,9 @@ function AddToPlaylistSheetView({
             <TouchableOpacity
               style={styles.row}
               activeOpacity={0.7}
-              onPress={() => toggleIn(item.id, item.name)}>
+              onPress={() => toggleIn(item.id, item.name)}
+              accessibilityRole="checkbox"
+              accessibilityState={{checked: inPlaylist}}>
               <CollectionArt
                 collection={playlistToCollection(item)}
                 size={46}
@@ -285,7 +301,7 @@ function AddToPlaylistSheetView({
                   </Text>
                 </View>
               </View>
-              <SavedGlyph on={inPlaylist} size={26} />
+              <Tick on={inPlaylist} />
             </TouchableOpacity>
           );
         }}
@@ -300,16 +316,17 @@ const styles = StyleSheet.create({
   title: {
     ...T.rowTitle,
     color: C.text,
-    fontSize: 16,
+    fontSize: 19,
+    fontWeight: '800',
     paddingHorizontal: S.gutter,
-    paddingTop: 14,
+    paddingTop: 12,
   },
   subtitle: {
     ...T.sub,
     color: C.sub,
     paddingHorizontal: S.gutter,
     paddingTop: 2,
-    paddingBottom: 8,
+    paddingBottom: 12,
   },
   list: {flexGrow: 0},
   row: {
@@ -317,24 +334,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 13,
     paddingHorizontal: S.gutter,
-    paddingVertical: 9,
+    paddingVertical: 8,
   },
+  // Liked Songs' own cover, as the library draws it.
   likedTile: {
     width: 46,
     height: 46,
-    borderRadius: 4,
-    backgroundColor: C.surface,
+    borderRadius: 7,
+    backgroundColor: LIKED_TINT,
     alignItems: 'center',
     justifyContent: 'center',
   },
   plusTile: {
     width: 46,
     height: 46,
-    borderRadius: 4,
-    backgroundColor: C.surface,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#3a3a40',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  tick: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#3a3a40',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tickOn: {backgroundColor: TICKED, borderColor: TICKED},
   rowText: {flex: 1, minWidth: 0},
   rowTitle: {...T.body, color: C.text, flex: 1},
   subRow: {flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2},
@@ -344,9 +374,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginHorizontal: S.gutter,
-    marginBottom: 4,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    marginBottom: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     backgroundColor: C.surface,
   },
   find: {flex: 1, color: C.text, fontSize: 14.5, paddingVertical: 8},

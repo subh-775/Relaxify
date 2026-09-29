@@ -1,6 +1,6 @@
 /**
- * The Relaxify mark, "Satin": a note drawn as two gold ribbons, the stem with
- * its head and the flag, with a gap of light between them.
+ * The Relaxify mark, "Ember": a note drawn as one ribbon whose flag folds back
+ * over itself, coral into berry.
  *
  * Drawn here rather than shipped as images, so it is sharp at every size and
  * can take one flat colour where a screen needs it (the Recap's cards). The
@@ -10,31 +10,30 @@
 import React, {useId} from 'react';
 import Svg, {Defs, LinearGradient, Path, Stop} from 'react-native-svg';
 
-const STEM =
-  'M50 14 H58 V70 C58 83 49 90 38 90 C27 90 19 83 19 73 C19 63 28 56 38 56 C43 56 47 57 50 59 Z';
-const FLAG = 'M63 14 C76 20 86 30 84 46 C83 54 79 60 73 63 C75 52 70 40 63 34 Z';
-const SHINE = 'M63 14 C70 17 76 22 80 28 C74 26 68 27 63 30 Z';
-const FOLD = 'M63 34 C70 40 75 52 73 63 C77 52 74 42 66 36 Z';
+const NOTE =
+  'M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z';
+const FOLD = 'M60 36 C72 42 75 55 72 66 C69 57 64 48 60 45 Z';
+const SHINE =
+  'M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z';
 
-/** The note alone. `color` draws it flat in that colour; otherwise gold. */
+/** The note alone. `color` draws it flat in that colour; otherwise Ember. */
 export function LogoMark({size, color}: {size: number; color?: string}) {
-  const id = `satin${useId().replace(/:/g, '')}`;
+  const id = `ember${useId().replace(/:/g, '')}`;
   const fill = color ?? `url(#${id})`;
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100">
       {!color && (
         <Defs>
           <LinearGradient id={id} x1="0.1" y1="0" x2="0.9" y2="1">
-            <Stop offset="0" stopColor="#FFF1D6" />
-            <Stop offset="0.5" stopColor="#E3B878" />
-            <Stop offset="1" stopColor="#8A5A2B" />
+            <Stop offset="0" stopColor="#FFB38A" />
+            <Stop offset="0.5" stopColor="#FF5A6E" />
+            <Stop offset="1" stopColor="#C2185B" />
           </LinearGradient>
         </Defs>
       )}
-      <Path d={STEM} fill={fill} />
-      <Path d={FLAG} fill={fill} />
-      {!color && <Path d={SHINE} fill="#fff" opacity={0.4} />}
-      {!color && <Path d={FOLD} fill="#000" opacity={0.3} />}
+      <Path d={NOTE} fill={fill} />
+      {!color && <Path d={FOLD} fill="#000" opacity={0.38} />}
+      {!color && <Path d={SHINE} fill="#fff" opacity={0.28} />}
     </Svg>
   );
 }
