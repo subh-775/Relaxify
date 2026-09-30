@@ -8,6 +8,7 @@
  */
 export {default as AlertTriangle} from 'lucide-react-native/dist/esm/icons/triangle-alert';
 export {default as ArrowDownToLine} from 'lucide-react-native/dist/esm/icons/arrow-down-to-line';
+export {default as ArrowLeftRight} from 'lucide-react-native/dist/esm/icons/arrow-left-right';
 export {default as ArrowRight} from 'lucide-react-native/dist/esm/icons/arrow-right';
 export {default as ArrowUpDown} from 'lucide-react-native/dist/esm/icons/arrow-up-down';
 export {default as ArrowUpRight} from 'lucide-react-native/dist/esm/icons/arrow-up-right';
@@ -59,6 +60,7 @@ export {default as RefreshCw} from 'lucide-react-native/dist/esm/icons/refresh-c
 export {default as Repeat2} from 'lucide-react-native/dist/esm/icons/repeat-2';
 export {default as Search} from 'lucide-react-native/dist/esm/icons/search';
 export {default as Settings} from 'lucide-react-native/dist/esm/icons/settings';
+export {default as Share2} from 'lucide-react-native/dist/esm/icons/share-2';
 export {default as Shuffle} from 'lucide-react-native/dist/esm/icons/shuffle';
 export {default as SkipBack} from 'lucide-react-native/dist/esm/icons/skip-back';
 export {default as SkipForward} from 'lucide-react-native/dist/esm/icons/skip-forward';
@@ -67,6 +69,7 @@ export {default as Sparkles} from 'lucide-react-native/dist/esm/icons/sparkles';
 export {default as Speaker} from 'lucide-react-native/dist/esm/icons/speaker';
 export {default as Square} from 'lucide-react-native/dist/esm/icons/square';
 export {default as SquareX} from 'lucide-react-native/dist/esm/icons/square-x';
+export {default as Ticket} from 'lucide-react-native/dist/esm/icons/ticket';
 export {default as Timer} from 'lucide-react-native/dist/esm/icons/timer';
 export {default as Trash2} from 'lucide-react-native/dist/esm/icons/trash-2';
 export {default as User} from 'lucide-react-native/dist/esm/icons/user';

@@ -20,7 +20,12 @@ import {Check, ChevronLeft, Play} from '../icons';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
 import {cleanText, getTrackId, normalizeTracks} from '../tracks';
-import {cancelImport, startImport, useSpotifyImport} from '../spotifyImport';
+import {
+  cancelImport,
+  importSourceName,
+  startImport,
+  useSpotifyImport,
+} from '../spotifyImport';
 import {TrackRow} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
 
@@ -70,8 +75,8 @@ export function SpotifyImportScreen({
         )}
         <Text style={styles.name} numberOfLines={2}>
           {loading
-            ? cleanText(active?.name) || 'Importing from Spotify…'
-            : cleanText(active?.name) || 'Spotify playlist'}
+            ? cleanText(active?.name) || `Importing from ${importSourceName(url)}…`
+            : cleanText(active?.name) || `${importSourceName(url)} playlist`}
         </Text>
         {!loading && !active?.error && (
           <Text style={styles.sub}>

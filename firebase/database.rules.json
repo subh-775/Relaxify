@@ -39,6 +39,32 @@
         },
         "$other": {".validate": false}
       }
+    },
+    "shared": {
+      "$code": {
+        ".validate": "$code.matches(/^[A-HJ-NP-Z2-9]{6}$/)",
+        "key": {
+          ".write": "!data.exists()",
+          ".validate": "newData.isString() && newData.val().length >= 32 && newData.val().length <= 64"
+        },
+        "proof": {
+          ".write": "newData.isString() && newData.val().beginsWith((data.parent().child('key').exists() ? data.parent().child('key').val() : newData.parent().child('key').val()) + ':') && newData.val() !== data.val()",
+          ".validate": "newData.isString()"
+        },
+        "data": {
+          ".read": true,
+          ".write": "newData.parent().child('proof').val() !== data.parent().child('proof').val() && newData.parent().child('proof').val().beginsWith((data.parent().child('key').exists() ? data.parent().child('key').val() : newData.parent().child('key').val()) + ':')",
+          ".validate": "newData.hasChildren(['name', 'by', 'v'])",
+          "name": {".validate": "newData.isString() && newData.val().length <= 100"},
+          "by": {".validate": "newData.isString() && newData.val().length <= 24"},
+          "v": {".validate": "newData.isNumber()"},
+          "tracks": {
+            "$i": {".validate": "$i.matches(/^[0-9]{1,3}$/) && newData.child('title').isString()"}
+          },
+          "$other": {".validate": false}
+        },
+        "$other": {".validate": false}
+      }
     }
   }
 }

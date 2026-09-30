@@ -50,8 +50,8 @@ const PAGES: Page[] = [
   {
     pal: CARD_PALS.import,
     kicker: 'Bring your playlists',
-    title: 'Your Spotify, moved in',
-    body: 'Paste a Spotify playlist link on Home. Relaxify finds each song and saves the playlist to your Library.',
+    title: 'Your playlists, moved in',
+    body: 'Paste a Spotify or YouTube playlist link on Home. Relaxify finds each song and saves the playlist to your Library.',
     art: 'blob',
   },
   {

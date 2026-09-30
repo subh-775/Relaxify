@@ -1675,10 +1675,63 @@ from components.spotify_import import (
     fetch_tracklist as _spotify_tracklist,
     is_good_match as _title_artist_ok,   # title + artist + duration gate
 )
+# YouTube / YouTube Music playlists go through the same job: NewPipe reads the
+# list, each song is matched on JioSaavn/SoundCloud first, and a song with no
+# match keeps its YouTube original (see _youtube_original).
+from components.youtube_playlist import (
+    parse_url as parse_youtube_list,
+    clean_item as _clean_youtube_item,
+    PRIVATE_LISTS as _PRIVATE_YT_LISTS,
+)
+
+# Songs read from one playlist, whichever service it came from: each costs a
+# real search.
+_IMPORT_MAX = 100
 
 
-def _match_track(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
-    """Find a PLAYABLE version of one Spotify track on our own sources."""
+def _youtube_tracklist(url: str) -> Optional[Dict[str, Any]]:
+    """{name, image, tracks:[{title, artist, duration_ms, url, artwork}]} with
+    each title cleaned into song + artist, or {error}."""
+    import newpipe_yt
+
+    if not url.lower().startswith("http"):
+        url = "https://" + url  # the extractor rejects a link without a scheme
+    meta = newpipe_yt.playlist(url, _IMPORT_MAX)
+    if not meta or meta.get("error"):
+        return meta
+    tracks = []
+    for t in meta.get("tracks") or []:
+        song, artist = _clean_youtube_item(t.get("title", ""), t.get("artist", ""))
+        if song and t.get("url"):
+            tracks.append({**t, "title": song, "artist": artist})
+    return {"name": meta.get("name") or "YouTube playlist",
+            "image": meta.get("image") or "", "tracks": tracks}
+
+
+def _youtube_original(item: Dict[str, Any]) -> Dict[str, Any]:
+    """The YouTube video itself as a playable track, for a song with no match
+    elsewhere. It streams through NewPipe whether or not YouTube search is
+    switched on (that switch only decides what search asks)."""
+    return {
+        "title": item["title"],
+        "artist": item["artist"],
+        "album": None,
+        "duration_ms": item.get("duration_ms") or None,
+        "isrc": None,
+        "sources": {"youtube": {"source": "youtube", "url": item["url"]}},
+        "primary_source": "youtube",
+        "playable_source": "youtube",
+        "artwork_url": item.get("artwork") or None,
+        "artwork_urls": {"source:youtube": item["artwork"]} if item.get("artwork") else {},
+        "is_playable": True,
+    }
+
+
+def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Dict[str, Any]]:
+    """Find a PLAYABLE version of one imported song on our own sources.
+
+    `weak_artist`: the item's artist is a YouTube channel name, which may be
+    a label rather than the singer (see is_good_match)."""
     if _search_service is None:
         return None
     query = f"{item['title']} {item['artist']}".strip()
@@ -1694,7 +1747,7 @@ def _match_track(item: Dict[str, str]) -> Optional[Dict[str, Any]]:
             source = _playable_source_name(track)
             if not source:
                 continue
-            if not _title_artist_ok(item, track):
+            if not _title_artist_ok(item, track, weak_artist):
                 continue               # nearest hit but not the right song — skip
             return {
                 "title": _clean_text(track.title) or item["title"],
@@ -1736,35 +1789,53 @@ def _import_snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
             "tracks": job["tracks"], "missing": job["missing"],
             "finished": job["finished"], "error": job["error"],
             "cancelled": job.get("cancelled", False),
+            # Where the list came from ("spotify" / "youtube"), and how many
+            # songs are YouTube originals because nothing else matched.
+            "source": job.get("source", ""),
+            "kept": job.get("kept", 0),
             # Each song as it is checked, in the order the checks finish, so
             # the import screen can fill in live instead of all at the end.
             "checked": list(job.get("checked", [])),
         }
 
 
-def _run_import(kind: str, sid: str, job: Dict[str, Any]) -> None:
+def _find(item: Dict[str, Any], youtube: bool) -> Optional[Dict[str, Any]]:
+    """One imported song -> a playable track. A YouTube song with no match on
+    our own sources keeps its YouTube original rather than being dropped."""
+    found = _match_track(item, weak_artist=youtube)
+    if found or not youtube:
+        return found
+    kept = _youtube_original(item)
+    kept["kept_from_youtube"] = True
+    return kept
+
+
+def _run_import(kind: str, ref: str, job: Dict[str, Any]) -> None:
+    """`kind` is "youtube" (ref = the link) or a Spotify kind (ref = its id)."""
+    youtube = kind == "youtube"
     try:
-        meta = _spotify_tracklist(kind, sid)
+        meta = _youtube_tracklist(ref) if youtube else _spotify_tracklist(kind, ref)
     except Exception as e:
         with _import_lock:
             job["error"] = f"Could not read that playlist: {e}"
             job["finished"] = True
         return
-    if not meta:
+    if not meta or meta.get("error"):
         with _import_lock:
             job["error"] = "Could not read that playlist — is it public?"
             job["finished"] = True
         return
 
-    items = meta["tracks"][:100]   # cap the work: a real search per track
+    items = meta["tracks"][:_IMPORT_MAX]   # cap the work: a real search per track
     with _import_lock:
         job["name"] = meta["name"]
         job["image"] = meta.get("image", "")
         job["total"] = len(items)
+        job["source"] = kind if youtube else "spotify"
 
     matched: List[Optional[Dict[str, Any]]] = [None] * len(items)
     with ThreadPoolExecutor(max_workers=6) as ex:
-        fut_to_i = {ex.submit(_match_track, it): i for i, it in enumerate(items)}
+        fut_to_i = {ex.submit(_find, it, youtube): i for i, it in enumerate(items)}
         for fut in as_completed(fut_to_i):
             if job.get("cancelled"):
                 # Songs not started yet are dropped; the six in flight finish
@@ -1782,6 +1853,9 @@ def _run_import(kind: str, sid: str, job: Dict[str, Any]) -> None:
                     break  # cancelled while this one was being checked
                 job["done"] += 1
                 job["matched"] += 1 if matched[i] else 0
+                # Counted, then dropped: the marker is not part of a track.
+                if matched[i] and matched[i].pop("kept_from_youtube", False):
+                    job["kept"] = job.get("kept", 0) + 1
                 if matched[i]:
                     job.setdefault("found_at", {})[i] = matched[i]
                 job.setdefault("checked", []).append({
@@ -1810,9 +1884,15 @@ def spotify_import():
     finished result (desktop's original one-shot behaviour).
     """
     url = _arg("url")
-    kind, sid = parse_spotify_url(url)
+    kind, ref = parse_spotify_url(url)
     if not kind:
-        return jsonify({"error": "Not a Spotify playlist or album link"}), 400
+        # Not Spotify: a YouTube / YouTube Music playlist runs the same job.
+        yt_list = parse_youtube_list(url)
+        if not yt_list:
+            return jsonify({"error": "Not a playlist link"}), 400
+        if yt_list in _PRIVATE_YT_LISTS:
+            return jsonify({"error": "Private playlist: your own likes and Watch later need a Google login"}), 400
+        kind, ref = "youtube", url
 
     if _arg("cancel"):
         # Stop where it is and keep what was found, so the app can offer to
@@ -1842,7 +1922,7 @@ def spotify_import():
                 for k in [k for k, v in list(_import_jobs.items())
                           if v["finished"] and k != url][: len(_import_jobs) - _IMPORT_JOBS_MAX]:
                     _import_jobs.pop(k, None)
-            threading.Thread(target=_run_import, args=(kind, sid, job), daemon=True).start()
+            threading.Thread(target=_run_import, args=(kind, ref, job), daemon=True).start()
 
     if _arg("wait"):
         deadline = time.monotonic() + 120

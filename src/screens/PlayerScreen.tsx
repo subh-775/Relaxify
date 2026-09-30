@@ -42,6 +42,7 @@ import {
   Gauge,
   Disc3,
   Headphones,
+  MoreVertical,
   Pause,
   Play,
   Quote,
@@ -104,6 +105,8 @@ import {
 } from '../playerSheet';
 import {surfaceTint, useArtworkColor} from '../artworkColor';
 import {QualityBadge, SourceBadge} from '../components/Badges';
+import {openWrongSong} from '../components/WrongSongSheet';
+import type {SheetContext} from '../components/TrackActionSheet';
 import {Seekbar} from '../components/Seekbar';
 import {SeekPeek} from '../components/SeekPeek';
 import {QueuePane} from './QueueScreen';
@@ -207,11 +210,14 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   onClose,
   onAddToPlaylist,
   onOpenArtist,
+  onOpenMenu,
 }: {
   visible: boolean;
   onClose: () => void;
   onAddToPlaylist: (track: Track) => void;
   onOpenArtist: (credit: string) => void;
+  /** The song's ⋮ menu, opened for the song playing now. */
+  onOpenMenu: (track: Track, from: SheetContext) => void;
 }) {
   const active = useActiveTrack();
   // The page behind may only stop drawing while this panel is really there —
@@ -432,6 +438,8 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   const finishClose = useCallback(() => closeRef.current(), []);
+  /** A drag-down reached onEnd; see the dismiss gesture's onFinalize. */
+  const dismissEnded = useSharedValue(true);
 
   /**
    * Publish where the cover actually is, in window coordinates.
@@ -559,6 +567,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
       Gesture.Pan()
         .activeOffsetY([-1000, 10])
         .failOffsetX([-18, 18])
+        .onStart(() => {
+          dismissEnded.value = false;
+        })
         .onUpdate(e => {
           // Across the SPAN, so the proportion means the same thing whether it
           // is a finger or an animation driving it.
@@ -566,6 +577,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
           sheetP.value = Math.min(1, Math.max(0, e.translationY / span));
         })
         .onEnd((e, success) => {
+          dismissEnded.value = true;
           if (success && (e.translationY > 120 || e.velocityY > 800)) {
             // Travel the FULL remaining distance. Releasing at 35% used to call
             // onClose() outright from the artwork path, which unmounted the
@@ -581,8 +593,20 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               overshootClamping: true,
             });
           }
+        })
+        .onFinalize(() => {
+          // Cancelled from outside before onEnd: nothing would ever move the
+          // panel again, and it stayed wherever the finger had left it.
+          if (!dismissEnded.value) {
+            dismissEnded.value = true;
+            sheetP.value = withSpring(0, {
+              damping: 22,
+              stiffness: 190,
+              overshootClamping: true,
+            });
+          }
         }),
-    [close],
+    [close, dismissEnded],
   );
 
   const headerDismiss = useMemo(() => makeDismiss(), [makeDismiss]);
@@ -971,8 +995,17 @@ export const PlayerScreen = React.memo(function PlayerScreen({
             <Text style={styles.context} numberOfLines={1}>
               {album || 'Now playing'}
             </Text>
-            {/* Balances the close button so the label stays centred. */}
-            <View style={styles.iconBtn} />
+            {/* The song's menu, as a row's ⋮ opens it, plus "Wrong song?"
+                because this is the song playing now. Also balances the
+                close button so the label stays centred. */}
+            <TouchableOpacity
+              onPress={() => track && onOpenMenu(track, {playing: true})}
+              disabled={!track}
+              hitSlop={14}
+              style={styles.iconBtn}
+              accessibilityLabel="More for this song">
+              <MoreVertical size={22} color={C.text} />
+            </TouchableOpacity>
           </Animated.View>
         </GestureDetector>
 
@@ -1094,10 +1127,15 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                 {/* Third line. Both badges render nothing when their setting is
                     off or the source has none, so the row collapses to nothing
                     rather than leaving a gap. */}
-                <View style={styles.badgeRow}>
+                <TouchableOpacity
+                  style={styles.badgeRow}
+                  activeOpacity={0.6}
+                  disabled={!track}
+                  onPress={() => track && openWrongSong(track)}
+                  accessibilityLabel="Wrong song? Pick another copy">
                   <SourceBadge track={track} />
                   <QualityBadge track={track} />
-                </View>
+                </TouchableOpacity>
               </Animated.View>
 
               {/* The neighbouring titles, one span to either side — the

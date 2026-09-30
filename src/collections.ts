@@ -37,6 +37,8 @@ export type Collection = {
   /** When this collection last changed — see Playlist.updatedAt. Undefined on
    *  the two fixtures (Liked, Downloads), which never sort by it. */
   updatedAt?: number;
+  /** A friend's playlist you follow (see Playlist.follow). */
+  follow?: {by: string; fresh?: boolean; stopped?: boolean};
 };
 
 /** What the row under the title says, matching the library's own vocabulary. */
@@ -51,6 +53,11 @@ export function collectionSubtitle(c: Collection): string {
     case 'artist':
       return 'Artist';
     default:
+      if (c.follow) {
+        return c.follow.stopped
+          ? `Playlist · ${count} · no longer shared`
+          : `Shared by ${c.follow.by} · ${count}`;
+      }
       return `Playlist · ${count}`;
   }
 }
@@ -119,6 +126,7 @@ export function playlistToCollection(p: Playlist): Collection {
     // so an upgraded library keeps its old order instead of collapsing to one
     // undefined heap at the bottom.
     updatedAt: p.updatedAt ?? p.createdAt,
+    follow: p.follow,
   };
 }
 

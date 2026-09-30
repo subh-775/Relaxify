@@ -12,15 +12,10 @@
  * `undefined` as "now" would float all of them above the ones the user has
  * actually been using.
  */
-import {expect, jest, test} from '@jest/globals';
+import {expect, test} from '@jest/globals';
 
-// pins.ts reaches storage.ts, which reaches AsyncStorage's native module. The
-// sort itself touches none of it — this is only here so the import resolves.
-jest.mock('@react-native-async-storage/async-storage', () =>
-  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
-);
-
-// NB: this import must stay below the mock above — jest hoists jest.mock().
+// pins.ts reaches storage.ts and AsyncStorage, mocked for every test in
+// jest.config.js; the sort itself touches none of it.
 import {sortPinned} from '../src/pins';
 
 type Row = {id: string; updatedAt?: number};

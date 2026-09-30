@@ -67,6 +67,27 @@ const homeCache = createStore<HomeRow[]>('mp.homeRows.v1', [], raw =>
   trimForCache(asArray<HomeRow>(raw)),
 );
 
+/** How many covers of the top rows count as "the first screenful". */
+const FIRST_ROWS = 2;
+const FIRST_ITEMS = 4;
+/** The most the splash waits on them; slow pictures then fill in as before. */
+const FIRST_COVERS_MS = 1500;
+
+/** Pull the top rows' covers into the image cache, the same URLs the rows
+ *  draw, so they are on screen the moment the splash lifts. */
+function prefetchFirstCovers(rows: HomeRow[]): Promise<unknown> {
+  const urls = rows
+    .filter(r => r.items?.length)
+    .slice(0, FIRST_ROWS)
+    .flatMap(r => r.items.slice(0, FIRST_ITEMS))
+    .map(i => (i.image ? upgradeArtwork(i.image) : ''))
+    .filter(Boolean);
+  return Promise.race([
+    Promise.all(urls.map(u => Image.prefetch(u).catch(() => false))),
+    new Promise(r => setTimeout(r, FIRST_COVERS_MS)),
+  ]);
+}
+
 type Props = {
   onPickTrack: (item: HomeItem) => void;
   onPlayTrack: (track: Track, context: Track[]) => void;
@@ -241,6 +262,9 @@ export const HomeScreen = React.memo(function HomeScreen({
     [begin, end],
   );
 
+  /** The first load has finished, fresh rows or not. */
+  const [settled, setSettled] = useState(false);
+
   const load = useCallback(async () => {
     setError('');
     try {
@@ -249,6 +273,9 @@ export const HomeScreen = React.memo(function HomeScreen({
       }
       const data = await getHome(homeLanguageParam());
       if (data.length) {
+        // The first screenful's covers, before the rows are shown, so the
+        // page arrives drawn rather than filling in picture by picture.
+        await prefetchFirstCovers(data);
         setFresh(data);
         homeCache.set(trimForCache(data)); // seed the next launch
       }
@@ -258,6 +285,8 @@ export const HomeScreen = React.memo(function HomeScreen({
       if (!homeCache.get().length) {
         setError(e instanceof Error ? e.message : String(e));
       }
+    } finally {
+      setSettled(true);
     }
   }, []);
 
@@ -274,13 +303,16 @@ export const HomeScreen = React.memo(function HomeScreen({
   // the strip and ate the swipe. The view outlives every re-layout; the
   // MEASUREMENT taken from it does not.
 
-  // Tell the app the moment there is real content (or a definite failure) —
-  // the splash stays up until then, so Home is never seen mid-load.
+  // Tell the app once the FRESH rows are in (or have definitely failed), not
+  // as soon as last launch's cached rows are: the fresh ones used to land
+  // seconds after the splash lifted and redraw the whole page, pictures and
+  // all, under a hand that was already scrolling and swiping. The splash
+  // stays up until then (App caps the wait), so Home is never seen mid-load.
   useEffect(() => {
-    if (phase !== 'boot') {
+    if (settled || phase === 'error') {
       onReady?.();
     }
-  }, [phase, onReady]);
+  }, [settled, phase, onReady]);
 
   if (phase === 'error') {
     return (

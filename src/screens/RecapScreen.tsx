@@ -1413,7 +1413,7 @@ function buildCards(r: Recap, faces: Record<string, string>): Card[] {
             <View style={styles.fill} />
             <Rise i={3} style={styles.sign}>
               <LogoMark size={20} color={p.ink} />
-              <Text style={[styles.signText, ink]}>relaxify recap</Text>
+              <Text style={[styles.signText, ink]}>Relaxify Recap</Text>
             </Rise>
           </View>
         </>

@@ -13,8 +13,8 @@ import type {Track} from './backend';
 
 // The disclosure's words live with the Privacy statement (legal.ts), so the
 // notice, Settings and the statement cannot drift apart.
-import {COLLECTED_ITEMS, COLLECTED_PROMISE, JAM_NOTE} from './legal';
-export {COLLECTED_ITEMS, COLLECTED_PROMISE, JAM_NOTE};
+import {COLLECTED_ITEMS, COLLECTED_PROMISE, JAM_NOTE, SHARE_NOTE} from './legal';
+export {COLLECTED_ITEMS, COLLECTED_PROMISE, JAM_NOTE, SHARE_NOTE};
 export const ANALYTICS_NOTE = `Relaxify sends usage statistics to help improve the app: ${COLLECTED_ITEMS}. ${COLLECTED_PROMISE}`;
 
 type AnalyticsNative = {

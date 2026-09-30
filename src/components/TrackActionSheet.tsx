@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import {
+  ArrowLeftRight,
   CircleCheck,
   CirclePlus,
   Disc3,
@@ -39,10 +40,13 @@ import {addToQueue} from '../player';
 import {addToJam, inJam} from '../jam';
 import {toast} from '../toast';
 import {Sheet} from './Sheet';
+import {openWrongSong} from './WrongSongSheet';
 
 export type SheetContext = {
   playlistId?: string;
   playlistName?: string;
+  /** Opened from the player, for the song playing now: offers "Wrong song?". */
+  playing?: boolean;
 } | null;
 
 function TrackActionSheetView({
@@ -135,6 +139,18 @@ function TrackActionSheetView({
     /** Keep the sheet open — used by Like, so you can see it take. */
     stay?: boolean;
   }> = [
+    // First when it applies: a wrong song is the thing to fix before
+    // liking, queueing or downloading it.
+    ...(from?.playing
+      ? [
+          {
+            key: 'wrong',
+            Icon: ArrowLeftRight,
+            label: 'Wrong song? Pick another copy',
+            onPress: run(() => openWrongSong(t)),
+          },
+        ]
+      : []),
     {
       key: 'like',
       Icon: liked ? CircleCheck : CirclePlus,

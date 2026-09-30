@@ -40,6 +40,11 @@ import {
   useAddToPlaylistHost,
 } from './src/components/AddToPlaylistSheet';
 import {ArtistPickerSheet} from './src/components/ArtistPickerSheet';
+import {startSharing} from './src/sharedPlaylists';
+import {
+  WrongSongSheet,
+  useWrongSongHost,
+} from './src/components/WrongSongSheet';
 import {UpdateModal} from './src/components/UpdateModal';
 import {
   checkUpdateOnLaunch,
@@ -120,6 +125,9 @@ function Shell() {
   const [addTo, setAddTo] = useState<Track | null>(null);
   // Lets a list row's + open this sheet without a prop through every screen.
   useAddToPlaylistHost(setAddTo);
+  // "Wrong song?", opened from the player's label or its ⋮ menu.
+  const [wrongFor, setWrongFor] = useState<Track | null>(null);
+  useWrongSongHost(setWrongFor);
   const [artistChoices, setArtistChoices] = useState<string[]>([]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -201,28 +209,25 @@ function Shell() {
       liftSplash();
     });
     // Never let a hung backend strand anyone on the splash. Whatever is ready
-    // at this point is what they get.
+    // at this point is what they get. Ten seconds, not six: the splash now
+    // also waits for Home's fresh rows and the whole restored queue, so the
+    // app is still when it appears, and a slow engine start needs the room.
     const bootCap = setTimeout(() => {
       engineDone.current = true;
       homeDone.current = true;
       setBooted(true);
-    }, 6000);
+    }, 10000);
     // Reads the setting each tick rather than closing over it, so changing
     // crossfade takes effect without restarting the watcher.
     startCrossfadeWatcher(() => readSettings().crossfadeDuration);
-    // Silent update check on launch — the popup only appears if a newer release
-    // is actually out. Delayed a little so it never competes with cold start.
-    const u = setTimeout(checkUpdateOnLaunch, 3500);
-    // …and again on every return to the foreground, because a process kept
-    // alive by the playback service may not launch again for days.
+    // Again on every return to the foreground, because a process kept alive
+    // by the playback service may not launch again for days.
     watchForegroundUpdates();
     // Each headphone and speaker keeps its own equalizer; also resumes on
     // connect when that is switched on.
     startDeviceMemory();
     // Data saver on mobile data, and the weekly Recap notification.
     startDevice();
-    // Clear the cache once it passes the size set in Settings.
-    const stopCacheLimit = watchCacheLimit();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
     // the last moment we are reliably given before Android may reclaim the
     // process, so anything still pending goes out now.
@@ -232,12 +237,29 @@ function Shell() {
       }
     });
     return () => {
-      clearTimeout(u);
       clearTimeout(bootCap);
       bg.remove();
-      stopCacheLimit();
     };
   }, [liftSplash]);
+
+  // Chores that can wait: counted from when the app is on screen, not from
+  // launch, so none of them lands in the first seconds of use.
+  useEffect(() => {
+    if (!booted) {
+      return;
+    }
+    // Silent update check; the popup only appears if a newer release is out.
+    const u = setTimeout(checkUpdateOnLaunch, 3500);
+    // Clear the cache once it passes the size set in Settings.
+    const stopCacheLimit = watchCacheLimit();
+    // Shared playlists: friends' ones you follow refresh, yours push changes.
+    const stopSharingSync = startSharing();
+    return () => {
+      clearTimeout(u);
+      stopCacheLimit();
+      stopSharingSync();
+    };
+  }, [booted]);
 
   const play = useCallback(
     async (track: Track, context?: Track[], originId?: string) => {
@@ -638,6 +660,7 @@ function Shell() {
     [openArtistCredit],
   );
   const closeAddTo = useCallback(() => setAddTo(null), []);
+  const closeWrongSong = useCallback(() => setWrongFor(null), []);
   const closeArtistChoices = useCallback(() => setArtistChoices([]), []);
   const pickArtistChoice = useCallback(
     (name: string) => {
@@ -707,6 +730,7 @@ function Shell() {
             onOpenArtist={openArtist}
             onOpenBrowse={pickHomeItem}
             onOpenMenu={openDrawer}
+            onOpenCollection={openFromLibrary}
           />
         </View>
         <View style={tab === 'library' ? styles.tabShown : styles.tabHidden}>
@@ -880,6 +904,8 @@ function Shell() {
 
       <AddToPlaylistSheet track={addTo} onClose={closeAddTo} />
 
+      <WrongSongSheet track={wrongFor} onClose={closeWrongSong} />
+
       <ArtistPickerSheet
         names={artistChoices}
         onClose={closeArtistChoices}
@@ -892,6 +918,7 @@ function Shell() {
           onClose={closePlayer}
           onAddToPlaylist={setAddTo}
           onOpenArtist={openArtistCredit}
+          onOpenMenu={openSheet}
         />
       )}
 

@@ -57,6 +57,7 @@ import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
+import {chosenCopy} from './songChoice';
 
 let ready = false;
 let available: boolean | null = null;
@@ -545,7 +546,11 @@ export async function restoreSession(): Promise<boolean> {
     return false;
   }
   const items = s.queue
-    .map((t, from) => ({t, from, q: toQueueItem(t, currentQuality())}))
+    // Your pick for each song ("Wrong song?"), as everywhere a queue is built.
+    .map((saved, from) => {
+      const t = chosenCopy(saved);
+      return {t, from, q: toQueueItem(t, currentQuality())};
+    })
     .filter(x => x.q !== null);
   if (!items.length) {
     return false;
@@ -575,52 +580,44 @@ export async function restoreSession(): Promise<boolean> {
     // already out is exactly what the step change on resume sounds like.
     await applyAudioEffects();
     await applyPlaybackRate();
-    // Seed the now-playing mirror. A restored session is left PAUSED, so no
-    // track-change event fires — without this the mini player would sit blank
-    // until the user pressed play (RNTP's own hook self-seeded on mount; ours
-    // has to be told).
-    await refreshEngineMirror();
-    // The cover and the bar's colour BEFORE the track is published, so the
-    // mini player arrives finished under the splash instead of filling in
-    // after it lifts. Capped: a slow network costs at most 1.2s, then the bar
-    // shows what it has, exactly as before.
-    const art = getBestArtworkUrl(items[idx].t);
-    if (art) {
-      await Promise.race([
-        Promise.all([
-          Image.prefetch(art).catch(() => false),
-          getArtworkColor(art).catch(() => null),
-        ]),
-        new Promise(r => setTimeout(r, 1200)),
-      ]);
-    }
-    publishTrack(engineQueue[activeIndex] ?? null);
-    // The earlier tracks come back AFTER the player is on screen, prepended so
-    // Previous still works; this shifts the active index to idx without ever
-    // showing track 0.
+    // The earlier tracks go back in front, so Previous works; inserting at 0
+    // shifts the active index to idx without ever surfacing track 0.
     //
-    // Deferred rather than awaited above, because its cost is proportional to
-    // how far into the queue you were: a 200-track playlist left at index 180
-    // serialises 180 items across the bridge before the first frame can render.
-    // Previous is not reachable in the time this takes — the player has to be
-    // drawn before it can be pressed.
+    // Awaited, under the splash. It used to be deferred until after the
+    // player was on screen, to save the splash the cost of a long queue. But
+    // then the queue shifted, the track-change handler ran and the swipe
+    // re-read its neighbours in the first seconds after the splash lifted,
+    // which is exactly when a hand first reaches for the covers: the start
+    // felt busy, and a swipe begun in the middle of it could stall. A second
+    // more of splash is the better trade.
     if (idx > 0) {
-      setTimeout(() => {
-        (async () => {
-          await TrackPlayer.add(
-            items.slice(0, idx).map(x => x.q!),
-            0,
-          );
-          // And re-sync, because the mirror above was taken from the queue as
-          // it was BEFORE the prepend: it holds n-idx tracks with the active
-          // one at 0, while the engine now holds all n with the active one at
-          // idx. Left stale, Previous has nothing behind it and the queue sheet
-          // renders the tail of the queue as the whole of it.
-          await refreshEngineMirror();
-          publishTrack(engineQueue[activeIndex] ?? null);
-        })().catch(() => {});
-      }, 0);
+      await TrackPlayer.add(
+        items.slice(0, idx).map(x => x.q!),
+        0,
+      );
     }
+    // Seed the now-playing mirror, from the whole queue. A restored session
+    // is left PAUSED, so no track-change event fires: without this the mini
+    // player would sit blank until play was pressed.
+    await refreshEngineMirror();
+    // The cover, both neighbours' covers (the swipe draws them) and the bar's
+    // colour BEFORE the track is published, so the mini player arrives
+    // finished and the first swipe has its pictures. Capped: a slow network
+    // costs at most 1.5s, then the bar shows what it has.
+    const art = getBestArtworkUrl(items[idx].t);
+    const around = [items[idx - 1], items[idx + 1]]
+      .map(x => (x ? getBestArtworkUrl(x.t) : ''))
+      .filter(Boolean);
+    await Promise.race([
+      Promise.all([
+        ...[art, ...around]
+          .filter(Boolean)
+          .map(u => Image.prefetch(u).catch(() => false)),
+        art ? getArtworkColor(art).catch(() => null) : null,
+      ]),
+      new Promise(r => setTimeout(r, 1500)),
+    ]);
+    publishTrack(engineQueue[activeIndex] ?? null);
     // Left paused — see above.
     return true;
   } catch {
@@ -713,6 +710,9 @@ export async function playTrack(
   /** The collection this was launched from — see playbackOrigin. '' for a
    *  search result, a radio pick, or a single tap with no list behind it. */
   originId = '',
+  /** Play these exact copies, not your "Wrong song?" picks: a Jam plays what
+   *  the chooser shared, or phones on different versions drift apart. */
+  asShared = false,
 ): Promise<void> {
   await requireEngine();
   setPlaybackOrigin(originId);
@@ -724,9 +724,17 @@ export async function playTrack(
   const bitrate = currentQuality();
 
   const list = context?.length ? context : [track];
+  // Each song as the copy you picked for it ("Wrong song?"); `orig` is what
+  // the list holds, which is what finds the tapped song below.
   const items = list
-    .map(t => ({t, q: toQueueItem(t, bitrate)}))
-    .filter((x): x is {t: Track; q: NonNullable<typeof x.q>} => x.q !== null);
+    .map(orig => {
+      const t = asShared ? orig : chosenCopy(orig);
+      return {orig, t, q: toQueueItem(t, bitrate)};
+    })
+    .filter(
+      (x): x is {orig: Track; t: Track; q: NonNullable<typeof x.q>} =>
+        x.q !== null,
+    );
 
   if (!items.length) {
     throw new Error('This track has no playable source.');
@@ -734,7 +742,7 @@ export async function playTrack(
 
   // Find where the tapped track landed after unplayables were dropped.
   let startAt = items.findIndex(
-    x => x.t.title === track.title && x.t.artist === track.artist,
+    x => x.orig.title === track.title && x.orig.artist === track.artist,
   );
   if (startAt < 0) {
     startAt = 0;
@@ -837,12 +845,13 @@ export async function playTrack(
  */
 export async function addToQueue(track: Track): Promise<void> {
   await requireEngine();
-  const item = toQueueItem(track, currentQuality());
+  const pick = chosenCopy(track);
+  const item = toQueueItem(pick, currentQuality());
   if (!item) {
     throw new Error('This track has no playable source.');
   }
-  logEvent('queue_add', songParams(track));
-  return serialQueueOp(() => insertQueued(track, item));
+  logEvent('queue_add', songParams(pick));
+  return serialQueueOp(() => insertQueued(pick, item));
 }
 
 async function insertQueued(
@@ -1498,7 +1507,7 @@ export async function topUpFromRadio(force = false): Promise<void> {
             !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
         )
         .slice(0, 8)
-        .map(t => ({...t, _autoplay: true}));
+        .map(t => ({...chosenCopy(t), _autoplay: true}));
       if (picks.length) {
         break;
       }
@@ -1634,6 +1643,38 @@ function noteSkipToSound(): void {
   if (ms < 15000) {
     logEvent('skip_to_sound', {ms});
   }
+}
+
+/**
+ * "Wrong song?": play `pick` in place of the song playing now, from the same
+ * second, playing or paused as it was. The queue around it is untouched.
+ *
+ * TrackPlayer.load swaps the active item; its buffering and its seek are
+ * marked as ours, so Auto quality does not read them as a weak signal and
+ * playback_jump does not report them.
+ */
+export async function swapCurrentCopy(pick: Track): Promise<void> {
+  await requireEngine();
+  const idx = await TrackPlayer.getActiveTrackIndex();
+  const item = toQueueItem(pick, currentQuality());
+  if (idx == null || !item) {
+    throw new Error('That copy has nothing to play.');
+  }
+  const {position} = await TrackPlayer.getProgress();
+  markManualTrackChange();
+  cancelCrossfade();
+  if (idx < queueSource.length) {
+    queueSource = queueSource.map((t, i) => (i === idx ? pick : t));
+  }
+  await TrackPlayer.load(item);
+  const end = pick.duration_ms ? pick.duration_ms / 1000 - 2 : Infinity;
+  if (position > 1 && position < end) {
+    await TrackPlayer.seekTo(position);
+  }
+  await refreshEngineMirror();
+  publishTrack(engineQueue[activeIndex] ?? null);
+  applyAudioEffects();
+  applyPlaybackRate();
 }
 
 /**

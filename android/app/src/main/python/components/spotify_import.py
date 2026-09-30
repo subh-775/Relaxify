@@ -104,7 +104,7 @@ def fetch_tracklist(kind: str, sid: str):
     return {"name": _norm_ws(name), "tracks": tracks, "image": cover}
 
 
-def is_good_match(item, track) -> bool:
+def is_good_match(item, track, weak_artist: bool = False) -> bool:
     """Is `track` (a search hit) genuinely the Spotify song `item`?
 
     ONE predicate, used by both the desktop (api/main.py) and mobile
@@ -117,13 +117,18 @@ def is_good_match(item, track) -> bool:
       duration — within 25% of Spotify's length. This is what rejects the
                  29-second snippet uploads that carry a correct title+artist
                  and were being imported as if they were the full song.
+
+    `weak_artist`: the item's artist may be wrong, as a YouTube channel name
+    is when a label ("T-Series") uploaded the song. Then a near-exact title
+    and a length within five seconds are enough without the artist.
     """
     from components.fuzz_compat import fuzz
 
     def norm(s):
         return re.sub(r"[^\w\s]", " ", (s or "").lower()).strip()
 
-    if fuzz.token_set_ratio(norm(item["title"]), norm(getattr(track, "title", ""))) < 82:
+    title_score = fuzz.token_set_ratio(norm(item["title"]), norm(getattr(track, "title", "")))
+    if title_score < 82:
         return False
 
     want = int(item.get("duration_ms") or 0)
@@ -132,6 +137,8 @@ def is_good_match(item, track) -> bool:
     # source omitted its duration.
     if want > 0 and got > 0 and abs(got - want) > max(want * 0.25, 20_000):
         return False
+    if weak_artist and title_score >= 90 and want > 0 and got > 0 and abs(got - want) <= 5_000:
+        return True
 
     cand_artist = norm(getattr(track, "artist", ""))
     for a in re.split(r"[,&/]| x |feat| ft ", norm(item["artist"])):

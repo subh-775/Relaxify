@@ -8,6 +8,7 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.search.SearchInfo
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
@@ -176,6 +177,58 @@ object YouTubeNP {
         } catch (e: Throwable) {
             Log.w(TAG, "streamUrl failed: $videoUrlOrId", e)
             "{}"
+        }
+    }
+
+    /**
+     * A public YouTube / YouTube Music playlist, in order, up to [max] songs:
+     * JSON {name, image, tracks:[{title, artist, duration_ms, url, artwork}]},
+     * or {error} when it can't be read (private, deleted, or a kind the
+     * extractor does not handle, such as a YouTube Music mix). Live streams
+     * and entries with no length are skipped: they are not songs.
+     */
+    @JvmStatic
+    fun playlist(url: String, max: Int): String {
+        if (!ensureStarted()) return JSONObject().put("error", "extractor unavailable").toString()
+        return try {
+            val yt = ServiceList.YouTube
+            val info = PlaylistInfo.getInfo(yt, url)
+            val tracks = JSONArray()
+            fun take(items: List<StreamInfoItem>) {
+                for (item in items) {
+                    if (tracks.length() >= max) return
+                    val secs = item.duration
+                    if (secs <= 0) continue
+                    tracks.put(
+                        JSONObject()
+                            .put("title", item.name ?: "")
+                            .put("artist", item.uploaderName ?: "")
+                            .put("duration_ms", secs * 1000L)
+                            .put("url", item.url ?: "")
+                            .put("artwork", firstThumbnail(item)),
+                    )
+                }
+            }
+            take(info.relatedItems)
+            var page = info.nextPage
+            while (page != null && tracks.length() < max) {
+                val more = PlaylistInfo.getMoreItems(yt, url, page)
+                take(more.items)
+                page = more.nextPage
+            }
+            val cover = try {
+                info.thumbnails.maxByOrNull { it.height }?.url ?: ""
+            } catch (e: Throwable) {
+                ""
+            }
+            JSONObject()
+                .put("name", info.name ?: "")
+                .put("image", cover)
+                .put("tracks", tracks)
+                .toString()
+        } catch (e: Throwable) {
+            Log.w(TAG, "playlist failed: $url", e)
+            JSONObject().put("error", "${e.javaClass.simpleName}: ${e.message ?: ""}").toString()
         }
     }
 

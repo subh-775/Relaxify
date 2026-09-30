@@ -74,6 +74,21 @@ def stream_url(video_url: str):
         return None
 
 
+def playlist(url: str, limit: int = 100):
+    """-> {name, image, tracks:[{title, artist, duration_ms, url, artwork}]}
+    for a public YouTube / YouTube Music playlist, or {error} when it can't be
+    read (private, deleted, a kind NewPipe does not support). None when not
+    running inside the APK."""
+    np = _bridge()
+    if np is None or not url:
+        return None
+    try:
+        return json.loads(str(np.playlist(url, int(limit)))) or None
+    except Exception as e:
+        log.warning("NewPipe playlist failed (%s): %s", url, e)
+        return {"error": str(e)}
+
+
 def self_test() -> bool:
     """Can we ACTUALLY resolve a playable YouTube audio URL on this device?
 

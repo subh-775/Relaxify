@@ -22,14 +22,10 @@ import {ChevronLeft} from '../icons';
 import {C, S, T} from '../theme';
 import {BOTTOM_INSET} from '../layout';
 import {BRIGHT_PALS} from '../brandArt';
-import {createStore, useStoreValue} from '../storage';
-import {joinJam, leaveJam, startJam, useJam} from '../jam';
+import {useStoreValue} from '../storage';
+import {joinJam, leaveJam, savedName, startJam, useJam} from '../jam';
 import {getBestArtworkUrl} from '../tracks';
 import {toast} from '../toast';
-
-const savedName = createStore<string>('mp.jamName.v1', '', raw =>
-  typeof raw === 'string' ? raw : '',
-);
 
 export function JamScreen({onClose}: {onClose: () => void}) {
   const jam = useJam();

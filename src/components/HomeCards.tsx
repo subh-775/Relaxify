@@ -33,7 +33,9 @@ import {
   cancelImport,
   dismissImport,
   importProblem,
-  isSpotifyUrl,
+  importSourceName,
+  isImportUrl,
+  PRIVATE_LIST,
   keepWaiting,
   markImportOpened,
   retryImport,
@@ -223,8 +225,8 @@ export function ImportCard({
   const [link, setLink] = useState('');
   const submit = () => {
     const url = link.trim();
-    if (!isSpotifyUrl(url)) {
-      toast("That isn't a Spotify playlist or album link");
+    if (!isImportUrl(url)) {
+      toast("That isn't a Spotify or YouTube playlist link");
       return;
     }
     setLink('');
@@ -250,7 +252,7 @@ export function ImportCard({
       <FeatureCard
         pal={IMPORT_PAL}
         width={width}
-        kicker="Importing from Spotify, keep browsing"
+        kicker={`Importing from ${importSourceName(job.url)}, keep browsing`}
         title={job.name || 'Reading the playlist'}
         action="See progress"
         onPress={() => job.url && onOpenImport(job.url)}
@@ -311,7 +313,7 @@ export function ImportCard({
         pal={IMPORT_PAL}
         width={width}
         kicker={`Import cancelled, ${n} of ${job.total} found`}
-        title={job.name || 'Spotify playlist'}
+        title={job.name || `${importSourceName(job.url)} playlist`}
         action={save}
         onPress={saveCancelled}
         spin={false}>
@@ -325,8 +327,9 @@ export function ImportCard({
 
   if (phase === 'failed') {
     const none = !job.error && job.matched <= 0;
-    // A wrong link fails the same way every time; only "another link" helps.
-    const canRetry = job.error !== BAD_LINK;
+    // A wrong link, or a private list, fails the same way every time; only
+    // "another link" helps.
+    const canRetry = job.error !== BAD_LINK && job.error !== PRIVATE_LIST;
     return (
       <FeatureCard
         pal={PROBLEM_PAL}
@@ -361,7 +364,11 @@ export function ImportCard({
       <FeatureCard
         pal={IMPORT_PAL}
         width={width}
-        kicker="Imported, saved to Your Library"
+        kicker={
+          last.kept
+            ? `Imported, ${last.kept} kept from YouTube`
+            : 'Imported, saved to Your Library'
+        }
         title={last.name}
         action="Open playlist"
         onPress={openIt}
@@ -381,7 +388,11 @@ export function ImportCard({
     <FeatureCard
       pal={p}
       width={width}
-      kicker={last ? `Last import: ${last.name}, ${last.found} songs` : 'Moving from Spotify?'}
+      kicker={
+        last
+          ? `Last import: ${last.name}, ${last.found} songs`
+          : 'Moving from Spotify or YouTube?'
+      }
       title={last ? 'Bring another playlist' : 'Bring your playlists'}
       action="Paste a link"
       onPress={() => setOpen(true)}
@@ -392,7 +403,7 @@ export function ImportCard({
           <TextInput
             value={link}
             onChangeText={setLink}
-            placeholder="open.spotify.com/playlist/…"
+            placeholder="Spotify or YouTube playlist link"
             placeholderTextColor="rgba(17,16,20,0.45)"
             autoFocus
             autoCapitalize="none"

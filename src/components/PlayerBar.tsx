@@ -189,6 +189,8 @@ export const PlayerBar = React.memo(function PlayerBar({
   const pullFrom = useSharedValue(0);
   const pullStartP = useSharedValue(1);
   const pullAt = useSharedValue(0);
+  /** This pull reached onEnd; see onFinalize. */
+  const pullEnded = useSharedValue(true);
 
   const pullUp = useMemo(
     () =>
@@ -206,6 +208,7 @@ export const PlayerBar = React.memo(function PlayerBar({
           // the panel used to jump by on its first frame. And from the
           // panel's CURRENT proportion rather than a hard 1, so catching a
           // panel that is still settling closed carries on from where it is.
+          pullEnded.value = false;
           pullFrom.value = e.translationY;
           pullStartP.value = sheetP.value;
           pullAt.value = Date.now();
@@ -232,9 +235,20 @@ export const PlayerBar = React.memo(function PlayerBar({
           // gesture you abandoned must not commit.
           const open =
             success && (tapLike || sheetP.value < 0.7 || e.velocityY < -700);
+          pullEnded.value = true;
           runOnJS(onEndExpandDrag)(open, e.velocityY);
+        })
+        .onFinalize(() => {
+          // A pull that was cancelled from outside never reaches onEnd, and
+          // nothing else moves sheetP: the panel used to stay half open, with
+          // the mini player faded out beneath it and no control left to
+          // recover with. Back to closed, which is what the app believes.
+          if (!pullEnded.value) {
+            pullEnded.value = true;
+            sheetP.value = withTiming(1, {duration: 240});
+          }
         }),
-    [onEndExpandDrag, pullFrom, pullStartP, pullAt],
+    [onEndExpandDrag, pullFrom, pullStartP, pullAt, pullEnded],
   );
 
   const barGesture = useMemo(

@@ -24,6 +24,7 @@ import {
   COLLECTED_ITEMS,
   COLLECTED_PROMISE,
   JAM_NOTE,
+  SHARE_NOTE,
   logEvent,
 } from '../analytics';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
@@ -1040,6 +1041,9 @@ export function SettingsScreen({
             </Text>
             <Text style={[styles.statementText, styles.statementMore]}>
               {JAM_NOTE}
+            </Text>
+            <Text style={[styles.statementText, styles.statementMore]}>
+              {SHARE_NOTE}
             </Text>
           </View>
         </View>
