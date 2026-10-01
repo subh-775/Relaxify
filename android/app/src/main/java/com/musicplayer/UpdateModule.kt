@@ -243,19 +243,23 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
                 !name.equals(RC_ASSET, ignoreCase = true)
         }
 
-    /** Newest first, as GitHub lists them: the first non-draft PRE-release
-     *  carrying the test APK. Older pre-releases without it are skipped. */
+    /** The highest-versioned non-draft PRE-release carrying the test APK.
+     *  Not the first one listed: GitHub orders by tag name, so rc10 came
+     *  after rc9 and the rc9 app never saw it. */
     private fun newestRcRelease(list: JSONArray): JSONObject? {
+        var best: JSONObject? = null
         for (i in 0 until list.length()) {
             val r = list.getJSONObject(i)
             if (!r.optBoolean("prerelease") || r.optBoolean("draft")) continue
             val assets = r.optJSONArray("assets") ?: continue
-            for (j in 0 until assets.length()) {
-                if (assets.getJSONObject(j).optString("name") == RC_ASSET) return r
-            }
+            val hasApk = (0 until assets.length())
+                .any { assets.getJSONObject(it).optString("name") == RC_ASSET }
+            if (hasApk && (best == null || isNewer(tagOf(r), tagOf(best)))) best = r
         }
-        return null
+        return best
     }
+
+    private fun tagOf(r: JSONObject) = r.optString("tag_name").removePrefix("v")
 
     /**
      * Is this a URL we are willing to download an APK from?
@@ -394,7 +398,7 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
         private const val TAG = "MusicPlayerUpd"
         private const val RELEASES_API =
             "https://api.github.com/repos/subh-775/Relaxify/releases/latest"
-        /** Test builds: the release list, newest first; see newestRcRelease. */
+        /** Test builds: the release list; see newestRcRelease. */
         private const val RC_RELEASES_API =
             "https://api.github.com/repos/subh-775/Relaxify/releases?per_page=20"
         /** The test build's asset name: CI's Stage APK step for the rc variant. */
