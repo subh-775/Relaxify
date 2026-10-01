@@ -574,9 +574,6 @@ class AudioModule(private val ctx: ReactApplicationContext) :
     private var cfLeadMs = 0L
     /** The final short handover ramp is running. */
     private var cfHandingOver = false
-    /** Effects cloned onto the overlap's own session — see cloneEffectsOnto. */
-    private var cfEq: Equalizer? = null
-    private var cfLoud: LoudnessEnhancer? = null
     private var cfTicking = false
     private val cfTick = object : Runnable {
         override fun run() {
@@ -913,6 +910,14 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build(),
                 )
+                // ExoPlayer's own session, so the overlap goes through the very
+                // EQ and loudness chain the main player has. It used to get a
+                // cloned chain on a session of its own; with the EQ on (rc2
+                // on, a device EQ loaded per headset) the overlap came out dim,
+                // then silent, while song1 faded out over it. One chain also
+                // means the handover's two copies are processed identically.
+                val session = PlaybackSession.currentId()
+                if (session > 0) setAudioSessionId(session)
                 // The engine answers with a redirect to the song's CDN, so this
                 // player makes the real request and must send what ExoPlayer
                 // sends (player.ts toQueueItem). JioSaavn's CDN answers 403
@@ -944,11 +949,6 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                         }
                     }
                     if (cfPlayer === mp) {
-                        // The EQ and loudness onto a prepared session (see
-                        // cloneEffectsOnto). They used to be created while the
-                        // player was still opening, which is the one crossfade
-                        // path rc1's testing (equalizer off) never reached.
-                        cloneEffectsOnto(mp.audioSessionId)
                         cfReadyAt = SystemClock.uptimeMillis()
                         cfReady = true
                     }
@@ -1114,7 +1114,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
             putLong("stall_ms", cfStallMs)
             putLong("handoff_ms", if (cfHandoffAt > 0) now - cfHandoffAt else 0L)
             putLong("align_tries", cfAlignTries.toLong())
-            putString("eq", (cfEq != null).toString())
+            putString("eq", (equalizer?.enabled == true).toString())
         }
         Log.i(TAG, "crossfade_report $b")
         runCatching { FirebaseAnalytics.getInstance(ctx).logEvent("crossfade_report", b) }
@@ -1122,42 +1122,6 @@ class AudioModule(private val ctx: ReactApplicationContext) :
 
     private fun overlapPos(mp: MediaPlayer): Long =
         try { mp.currentPosition.toLong() } catch (_: Exception) { -1L }
-
-    /**
-     * The EQ and loudness the main player has, on the overlap's session too.
-     *
-     * Effects attach to an audio SESSION, and the overlap has its own — so with
-     * EQ or normalization on, the incoming song used to play unprocessed for
-     * the whole fade and then change character at the handoff, the moment
-     * ExoPlayer's processed copy took over. Cloned here, the two sound alike
-     * and the handover has nothing to give it away.
-     */
-    private fun cloneEffectsOnto(session: Int) {
-        val eq = equalizer
-        if (eq != null && eq.enabled) {
-            try {
-                cfEq = Equalizer(0, session).apply {
-                    for (b in 0 until minOf(numberOfBands.toInt(), eq.numberOfBands.toInt())) {
-                        setBandLevel(b.toShort(), eq.getBandLevel(b.toShort()))
-                    }
-                    enabled = true
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "overlap EQ refused: ${e.message}")
-            }
-        }
-        val ld = loudness
-        if (ld != null && ld.enabled) {
-            try {
-                cfLoud = LoudnessEnhancer(session).apply {
-                    setTargetGain(ld.targetGain.toInt())
-                    enabled = true
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "overlap loudness refused: ${e.message}")
-            }
-        }
-    }
 
     /** Cut the overlap and forget the schedule — a manual skip, a pause, a
      *  fresh play. The caller restores the main player's volume. */
@@ -1189,10 +1153,6 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         try { cfPlayer?.stop() } catch (_: Exception) {}
         try { cfPlayer?.release() } catch (_: Exception) {}
         cfPlayer = null
-        try { cfEq?.release() } catch (_: Exception) {}
-        try { cfLoud?.release() } catch (_: Exception) {}
-        cfEq = null
-        cfLoud = null
     }
 
     // ─── Main player volume, ramped NATIVELY ────────────────────────────────
