@@ -1350,6 +1350,13 @@ async function dropQueuedRadioNow(): Promise<void> {
 
 export async function setRepeat(mode: RepeatMode): Promise<void> {
   logEvent('repeat', {mode: RepeatMode[mode] ?? String(mode)});
+  if (mode === RepeatMode.Track) {
+    // Replay pressed in the song's last seconds: the next song may already be
+    // fading in. This song plays again instead, so that fade stops and the
+    // song comes back to full volume. Before the window, there is nothing to
+    // stop: with repeat on, the native scheduler never starts one.
+    cancelCrossfade();
+  }
   await TrackPlayer.setRepeatMode(mode);
 }
 

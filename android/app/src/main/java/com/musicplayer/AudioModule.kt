@@ -774,9 +774,15 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         // ── A sounding overlap that should not be ─────────────────────────
         if (cfStartedIdx >= 0) {
             val paused = exoGet(exo, "getPlayWhenReady") as? Boolean == false
+            // Repeat this song switched on mid-fade: the song plays again, so
+            // the next one fading in is wrong (JS cancels too; this is the
+            // backstop for a repeat set from anywhere else).
+            val nowNext = (exoGet(exo, "getNextMediaItemIndex")
+                ?: exoGet(exo, "getNextWindowIndex")) as? Int ?: -1
+            val repeating = nowNext == idx
             // Paused outside JS (a headset unplugged), or seeked back out of the
             // fade: drop the overlap and put the outgoing song back to full.
-            if (paused || remaining > cfSpanMs + 2500) {
+            if (paused || repeating || remaining > cfSpanMs + 2500) {
                 resetCf()
                 cancelVolWork()
                 setExoVolume(1f)
