@@ -318,7 +318,41 @@ export function streamUrlFor(
 }
 
 /** One-time engine setup. Returns false when the native module isn't in this build. */
-export async function setupPlayer(): Promise<boolean> {
+/**
+ * One setup at a time: boot and a first play can both call this, and the
+ * second TrackPlayer.setupPlayer used to be refused ("already initialized")
+ * and read as "no audio engine" for the rest of the session.
+ */
+let setupInFlight: Promise<boolean> | null = null;
+export function setupPlayer(): Promise<boolean> {
+  if (!setupInFlight) {
+    setupInFlight = setupPlayerOnce().finally(() => {
+      setupInFlight = null;
+    });
+  }
+  return setupInFlight;
+}
+
+/**
+ * RNTP refuses setup until Android counts the app as foreground (an activity
+ * resumed). The first launch after an update is a cold start where JS can get
+ * here first, and that refusal showed "audio engine missing" until a restart.
+ * It is a "not yet", so wait for the activity instead of giving up.
+ */
+async function setupEngine(opts: Parameters<typeof TrackPlayer.setupPlayer>[0]) {
+  for (let i = 0; ; i++) {
+    try {
+      return await TrackPlayer.setupPlayer(opts);
+    } catch (e: any) {
+      if (e?.code !== 'android_cannot_setup_player_in_background' || i >= 20) {
+        throw e;
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+}
+
+async function setupPlayerOnce(): Promise<boolean> {
   if (ready) {
     return true;
   }
@@ -326,7 +360,7 @@ export async function setupPlayer(): Promise<boolean> {
     return false;
   }
   try {
-    await TrackPlayer.setupPlayer({
+    await setupEngine({
       // Android handles audio focus for us: a call or another app ducks/pauses
       // us and we resume after. Doing this natively is what keeps Bluetooth
       // hand-offs in sync instead of the app and the headset disagreeing.
