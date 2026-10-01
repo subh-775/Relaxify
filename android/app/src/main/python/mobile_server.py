@@ -54,6 +54,7 @@ import android_env
 import requests as http_requests
 from requests.adapters import HTTPAdapter
 from flask import Flask, Response, jsonify, redirect, request, send_file, send_from_directory
+import logging
 from werkzeug.serving import make_server
 
 # On Android, Gradle's `syncPythonSources` task copies components/ next to this
@@ -2324,6 +2325,10 @@ def start_server(files_dir: str, downloads_dir: str, web_dir: str,
     # Werkzeug's production-grade WSGI server. Threaded so a long proxy_stream
     # (which holds its connection open for the whole song) can't block search,
     # lyrics, or the download queue.
+    # No per-request access log. Werkzeug printed one line per request to
+    # logcat, URL included, so the per-launch API token (_t=) sat in the
+    # system log, and every proxied stream and poll cost a write.
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
     _server = make_server("127.0.0.1", port, app, threaded=True)
     print(f"[backend] ready on 127.0.0.1:{port}")
     _server.serve_forever()

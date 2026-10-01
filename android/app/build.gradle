@@ -171,6 +171,13 @@ android {
     packagingOptions {
         // Several transitive Python deps ship duplicate metadata files.
         resources.excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
+        // Native libs compressed in the APK and extracted at install. Loaded
+        // straight from the APK (the default), our 4 KB-aligned libraries
+        // (RN 0.75, Chaquopy 15) crash a 16 KB-page phone at launch: "failed
+        // to setup 16KiB App Compat" (Test Lab, Android 16 ps16k). Extracted,
+        // Android's page-size compat mode can load them. ponytail: the real
+        // fix is RN 0.77+ and Chaquopy 16.1+, which ship 16 KB-aligned libs.
+        jniLibs.useLegacyPackaging = true
     }
 }
 
