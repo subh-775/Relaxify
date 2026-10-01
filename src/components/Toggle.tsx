@@ -19,10 +19,13 @@ export function Toggle({
   value,
   onChange,
   disabled,
+  tint,
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  /** The "on" colour, when a screen has its own (the Equalizer's red). */
+  tint?: string;
 }) {
   const anim = useRef(new Animated.Value(value ? 1 : 0)).current;
 
@@ -51,7 +54,7 @@ export function Toggle({
       <View style={styles.track}>
         {/* The "on" colour, faded in over the off colour underneath. */}
         <Animated.View
-          style={[styles.on, {opacity: anim}]}
+          style={[styles.on, tint ? {backgroundColor: tint} : null, {opacity: anim}]}
           pointerEvents="none"
         />
         <Animated.View
