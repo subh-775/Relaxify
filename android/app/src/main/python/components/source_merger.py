@@ -484,8 +484,17 @@ class SourceMerger:
         if not entries:
             raise ValueError("Cannot merge empty entries")
 
-        # Sort entries by priority (descending)
-        entries.sort(key=lambda x: x[1].get("source_priority", 0), reverse=True)
+        # Sort entries by priority (descending); within one source, the
+        # earliest release first. JioSaavn returns the same recording on its
+        # original album AND on years of later compilations ("Best of Arijit
+        # Singh", "30 Mins : Easy Drive"); the original is the oldest pressing.
+        def _year(d: Dict) -> int:
+            try:
+                return int(str(d.get("release_year") or "")[:4])
+            except ValueError:
+                return 9999
+
+        entries.sort(key=lambda x: (-x[1].get("source_priority", 0), _year(x[1])))
 
         # Primary entry (highest priority)
         primary_source, primary_data = entries[0]
@@ -520,6 +529,12 @@ class SourceMerger:
 
         # Process all entries (including primary) to ensure sources and artwork are properly aggregated
         for source_type, data in entries:
+            # One copy per source: the first (see the sort above). Later
+            # duplicates used to OVERWRITE the source's URL and cover, so a
+            # result titled from the album copy played and showed whichever
+            # compilation (or "Acoustic" take) came last.
+            if source_type in track.sources:
+                continue
             source_url = data.get("url") or ""
             if source_type not in self.PLAYABLE_SOURCES:
                 source_url = ""

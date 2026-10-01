@@ -27,6 +27,8 @@ import {C, S} from '../theme';
 import {CARD_PALS, PALS, type Pal} from '../brandArt';
 import {CARD_ART, FeatureCard} from './FeatureCard';
 import {RecapTeaser} from './RecapTeaser';
+import {recapCardDue} from '../recap';
+import {useStatsState} from '../stats';
 import {useJam} from '../jam';
 import {
   BAD_LINK,
@@ -381,19 +383,16 @@ export function ImportCard({
     );
   }
 
-  // Ask: a link box on demand, with a way out. After an import it says what
-  // came in last and asks for another.
+  // Ask: a link box on demand, with a way out. The same words every time: the
+  // last import's name is in Library, and "Last import: ..." read as a
+  // leftover rather than an invitation.
   const p = IMPORT_PAL;
   return (
     <FeatureCard
       pal={p}
       width={width}
-      kicker={
-        last
-          ? `Last import: ${last.name}, ${last.found} songs`
-          : 'Moving from Spotify or YouTube?'
-      }
-      title={last ? 'Bring another playlist' : 'Bring your playlists'}
+      kicker="Moving from Spotify or YouTube?"
+      title="Bring your playlists"
       action="Paste a link"
       onPress={() => setOpen(true)}
       art={listArt(p)}
@@ -522,16 +521,21 @@ export function HomeCardCarousel({
   const cardW = screen - 2 * S.gutter;
   const step = cardW + CARD_GAP;
   const importPhase = useImportPhase();
+  const stats = useStatsState();
   const [page, setPage] = useState(0);
+  // Re-read on every stats change (once a song), so the card goes on Tuesday.
+  const recap = recapCardDue(stats, Date.now());
 
-  // All four, always, in this order; an import with news (running, slow,
-  // failed, cancelled, just done) moves to the front while it needs you.
+  // In this order; an import with news (running, slow, failed, cancelled,
+  // just done) moves to the front while it needs you. The Recap card is there
+  // on Sunday and Monday only (recapCardDue).
   const keys = useMemo(
     () =>
-      importPhase === 'ask'
+      (importPhase === 'ask'
         ? ['recap', 'jam', 'import', 'continue']
-        : ['import', 'recap', 'jam', 'continue'],
-    [importPhase],
+        : ['import', 'recap', 'jam', 'continue']
+      ).filter(k => k !== 'recap' || recap),
+    [importPhase, recap],
   );
 
   const render = (k: string) => {

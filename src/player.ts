@@ -122,6 +122,13 @@ let userMoveAt = 0;
 export function markEngineSeek(): void {
   userMoveAt = Date.now();
 }
+/**
+ * When the playing song last changed, by any route. A new song starts by
+ * buffering, and a crossfade hands over with a few short re-aligning seeks:
+ * neither is the network stalling. rc1 counted them as stalls, about one in
+ * every two songs, and Auto quality kept stepping down for no reason.
+ */
+let trackChangedAt = 0;
 /** When the person last skipped, until the next song is heard (noteSkipToSound). */
 let skipAt = 0;
 
@@ -415,7 +422,10 @@ export async function setupPlayer(): Promise<boolean> {
         pushWidgetPlaying(false);
       }
       // Stalls feed Auto quality (adaptiveQuality.ts).
-      noteState(e.state, Date.now() - Math.max(userMoveAt, manualStepAt));
+      noteState(
+        e.state,
+        Date.now() - Math.max(userMoveAt, manualStepAt, trackChangedAt),
+      );
     });
 
     // Where you are, saved with no JS timer involved, so a background
@@ -443,6 +453,7 @@ export async function setupPlayer(): Promise<boolean> {
       // The "play this soon" window is relative to the current song — a new song
       // starts a fresh one, so anything queued now goes right after it again.
       queuedAhead = 0;
+      trackChangedAt = Date.now();
       noteTrackChange();
       // The engine is authoritative — reconcile the optimistic mirror with what
       // actually started, and keep the queue snapshot warm for the next gesture.

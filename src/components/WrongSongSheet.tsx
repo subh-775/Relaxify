@@ -8,10 +8,12 @@
  *   - More results: a fresh search for its title and artist, and a box to
  *     type a search of your own when none of those is right.
  *
- * A pick swaps in at the same second (swapCurrentCopy) and is remembered for
- * that song everywhere (songChoice). The note that confirms it has Undo. A
- * downloaded song's file stays what it is: the note offers to replace the
- * download with the pick instead.
+ * Listen first, then choose. Tapping a copy TRIES it: it plays from the same
+ * second and nothing is remembered. "Use this one" keeps it, for that song
+ * everywhere (songChoice), with Undo; tapping "This copy" again, or closing
+ * the sheet, goes back to the original. A pick used to be kept on the first
+ * tap, before anyone had heard it. A downloaded song's file stays what it is:
+ * keeping a copy offers to replace the download instead.
  */
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
@@ -75,10 +77,13 @@ function CopyRow({
   t,
   on,
   onPick,
+  onUse,
 }: {
   t: Track;
   on: boolean;
   onPick: (t: Track) => void;
+  /** Set on the copy being tried: the button that keeps it. */
+  onUse?: () => void;
 }) {
   const art = getBestArtworkUrl(t);
   const meta = SOURCE_META[t.file_path ? 'local' : sourceOf(t)];
@@ -107,9 +112,20 @@ function CopyRow({
             <Text style={[styles.src, {color: meta.tint}]}>{meta.label}</Text>
           )}
           {!!len && <Text style={styles.rowSub}>{len}</Text>}
+          {!!onUse && <Text style={styles.trying}>Playing now</Text>}
         </View>
       </View>
-      <Tick on={on} />
+      {onUse ? (
+        <TouchableOpacity
+          style={styles.use}
+          activeOpacity={0.8}
+          onPress={onUse}
+          accessibilityRole="button">
+          <Text style={styles.useText}>Use this one</Text>
+        </TouchableOpacity>
+      ) : (
+        <Tick on={on} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -125,6 +141,8 @@ function WrongSongSheetView({
   const [shown, setShown] = useState<Track | null>(track);
   const [results, setResults] = useState<Track[] | null>(null);
   const [query, setQuery] = useState('');
+  /** The copy playing on trial, not yet kept; null = the original plays. */
+  const [trying, setTrying] = useState<Track | null>(null);
   const ticket = useRef(0);
 
   const find = useCallback((t: Track, q: string) => {
@@ -151,6 +169,7 @@ function WrongSongSheetView({
     }
     setShown(track);
     setQuery('');
+    setTrying(null);
     find(track, `${cleanText(track.title)} ${cleanText(track.artist)}`);
   }, [track, find]);
 
@@ -168,58 +187,90 @@ function WrongSongSheetView({
     return () => clearTimeout(t);
   }, [query, track, find]);
 
+  /** A row tapped: try that copy, or go back to the original. */
   const pick = useCallback(
     (p: Track) => {
       const t = shown;
-      if (!t || sameCopy(p, t)) {
-        onClose();
+      if (!t) {
         return;
       }
-      onClose();
-      const via = otherCopies(t).some(c => sameCopy(c, p))
-        ? 'copies'
-        : query.trim()
-        ? 'search'
-        : 'results';
-      const before = setChoice(t, p);
-      logEvent('wrong_song', {from: sourceOf(t) || 'local', to: sourceOf(p), via});
-      swapCurrentCopy(p)
-        .then(() => {
-          const undo = () => {
+      if (sameCopy(p, t)) {
+        // Back to the song as it was.
+        if (trying) {
+          setTrying(null);
+          swapCurrentCopy(t).catch(() => {});
+        }
+        return;
+      }
+      if (trying && sameCopy(p, trying)) {
+        return; // already playing it
+      }
+      setTrying(p);
+      logEvent('wrong_song_try', {from: sourceOf(t) || 'local', to: sourceOf(p)});
+      swapCurrentCopy(p).catch(() => {
+        setTrying(null);
+        swapCurrentCopy(t).catch(() => {});
+        toast('That copy would not play. Try another.');
+      });
+    },
+    [shown, trying],
+  );
+
+  /** "Use this one": keep the copy on trial, for this song everywhere. */
+  const keep = useCallback(() => {
+    const t = shown;
+    const p = trying;
+    if (!t || !p) {
+      return;
+    }
+    setTrying(null);
+    onClose();
+    const via = otherCopies(t).some(c => sameCopy(c, p))
+      ? 'copies'
+      : query.trim()
+      ? 'search'
+      : 'results';
+    const before = setChoice(t, p);
+    logEvent('wrong_song', {from: sourceOf(t) || 'local', to: sourceOf(p), via});
+    if (t.file_path) {
+      // The file on the phone is still the wrong song.
+      toast('Kept. Replace the downloaded file too?', 'info', {
+        art: getBestArtworkUrl(p),
+        action: {
+          label: 'Replace',
+          onPress: () => {
+            enqueueDownload(p)
+              .then(async () => {
+                await deleteDownload(String(t.file_path));
+                forgetDownloads([t]);
+                toast('Downloading the right one; the old file is gone');
+              })
+              .catch(() => toast('Could not start that download'));
+          },
+        },
+      });
+    } else {
+      toast('Kept. This one plays everywhere now.', 'info', {
+        art: getBestArtworkUrl(p),
+        action: {
+          label: 'Undo',
+          onPress: () => {
             setChoice(t, before);
             swapCurrentCopy(t).catch(() => {});
-          };
-          if (t.file_path) {
-            // The file on the phone is still the wrong song.
-            toast('Swapped. Replace the downloaded file too?', 'info', {
-              art: getBestArtworkUrl(p),
-              action: {
-                label: 'Replace',
-                onPress: () => {
-                  enqueueDownload(p)
-                    .then(async () => {
-                      await deleteDownload(String(t.file_path));
-                      forgetDownloads([t]);
-                      toast('Downloading the right one; the old file is gone');
-                    })
-                    .catch(() => toast('Could not start that download'));
-                },
-              },
-            });
-          } else {
-            toast('Swapped. This one plays everywhere now.', 'info', {
-              art: getBestArtworkUrl(p),
-              action: {label: 'Undo', onPress: undo},
-            });
-          }
-        })
-        .catch(() => {
-          setChoice(t, before);
-          toast('That copy would not play. Try another.');
-        });
-    },
-    [shown, query, onClose],
-  );
+          },
+        },
+      });
+    }
+  }, [shown, trying, query, onClose]);
+
+  /** Closed without keeping anything: the original comes back. */
+  const close = useCallback(() => {
+    if (trying && shown) {
+      setTrying(null);
+      swapCurrentCopy(shown).catch(() => {});
+    }
+    onClose();
+  }, [trying, shown, onClose]);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler(e => {
@@ -233,10 +284,12 @@ function WrongSongSheetView({
   const copies = otherCopies(t);
 
   return (
-    <Sheet open={!!track} onClose={onClose} scrollY={scrollY} style={styles.sheet}>
+    <Sheet open={!!track} onClose={close} scrollY={scrollY} style={styles.sheet}>
       <Text style={styles.title}>Not the right song?</Text>
       <Text style={styles.subtitle} numberOfLines={1}>
-        {`${cleanText(t.title)} · ${cleanText(t.artist)}. Pick the one you meant.`}
+        {trying
+          ? 'Listen, then keep it or go back to this copy.'
+          : `${cleanText(t.title)} · ${cleanText(t.artist)}. Tap one to listen.`}
       </Text>
       <Animated.ScrollView
         onScroll={onScroll}
@@ -244,13 +297,19 @@ function WrongSongSheetView({
         style={styles.list}
         keyboardShouldPersistTaps="handled">
         <Text style={styles.section}>This copy</Text>
-        <CopyRow t={t} on onPick={pick} />
+        <CopyRow t={t} on={!trying} onPick={pick} />
 
         {copies.length > 0 && (
           <>
             <Text style={styles.section}>Other copies</Text>
             {copies.map(c => (
-              <CopyRow key={sourceOf(c)} t={c} on={false} onPick={pick} />
+              <CopyRow
+                key={sourceOf(c)}
+                t={c}
+                on={false}
+                onPick={pick}
+                onUse={trying && sameCopy(c, trying) ? keep : undefined}
+              />
             ))}
           </>
         )}
@@ -262,7 +321,13 @@ function WrongSongSheetView({
           <ActivityIndicator style={styles.wait} color={C.sub} />
         ) : results.length ? (
           results.map((r, i) => (
-            <CopyRow key={`${sourceOf(r)}${i}`} t={r} on={false} onPick={pick} />
+            <CopyRow
+              key={`${sourceOf(r)}${i}`}
+              t={r}
+              on={false}
+              onPick={pick}
+              onUse={trying && sameCopy(r, trying) ? keep : undefined}
+            />
           ))
         ) : (
           <Text style={styles.empty}>Nothing else found. Try your own search.</Text>
@@ -327,6 +392,14 @@ const styles = StyleSheet.create({
   rowSub: {...T.sub, color: C.sub},
   metaRow: {flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2},
   src: {fontSize: 11.5, fontWeight: '800'},
+  trying: {fontSize: 11.5, fontWeight: '800', color: C.brand},
+  use: {
+    backgroundColor: C.brand,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  useText: {color: '#111014', fontSize: 12.5, fontWeight: '800'},
   wait: {paddingVertical: 18},
   empty: {
     color: C.faint,

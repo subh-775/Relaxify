@@ -1,7 +1,7 @@
 /**
- * The Recap's front door on Home: a card in the Recap's own colours, always
- * there, with the week so far and a button into the full Recap. Without it a
- * feature this good was hiding in the menu.
+ * The Recap's front door on Home: a card in the Recap's own colours, with the
+ * week so far and a button into the full Recap. On Sunday and Monday only,
+ * for a listener with some history (recapCardDue); the menu has it any day.
  *
  * Its palette is picked by the week, so it holds still while you use the app
  * and is different next week. A week with nothing played yet invites a first

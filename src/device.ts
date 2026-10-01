@@ -8,7 +8,7 @@
 import {DeviceEventEmitter, NativeModules} from 'react-native';
 import {onSettingsChange, readSettings, setOnCellular} from './store';
 import {onStatsChange, readStats} from './stats';
-import {buildRecap, reminderText} from './recap';
+import {buildRecap, recapEligible, reminderText} from './recap';
 
 type DeviceNative = {
   watchNetwork?: () => Promise<boolean>;
@@ -25,7 +25,12 @@ function pushReminder(): void {
     return;
   }
   const on = readSettings().recapReminder;
-  const body = on ? reminderText(buildRecap(readStats(), Date.now(), 'week')) : '';
+  const stats = readStats();
+  // '' sends nothing: a new listener's first Sunday has nothing to recap.
+  const body =
+    on && recapEligible(stats)
+      ? reminderText(buildRecap(stats, Date.now(), 'week'))
+      : '';
   const key = `${on}|${body}`;
   if (key === sent) {
     return;

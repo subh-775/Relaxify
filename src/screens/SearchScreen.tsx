@@ -94,7 +94,9 @@ export const SearchScreen = React.memo(function SearchScreen({
    *  you leave it (that's what keeps it instant to come back to), so leaving is
    *  the only signal there is that the search is over. */
   visible: boolean;
-  onPickTrack: (track: Track, context: Track[]) => void;
+  /** A result tapped: that song alone. Autoplay follows it with similar
+   *  songs, not with the rest of the list (other versions, covers, remixes). */
+  onPickTrack: (track: Track) => void;
   onImportSpotify: (url: string) => void;
   onMenu: (track: Track) => void;
   onOpenArtist?: (name: string) => void;
@@ -595,7 +597,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           renderItem={({item}) => (
             <TrackRow
               track={item}
-              onPress={() => onPickTrack(item, results)}
+              onPress={() => onPickTrack(item)}
               onMenu={() => onMenu(item)}
               showDuration={false}
             />

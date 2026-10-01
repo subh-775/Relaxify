@@ -601,6 +601,10 @@ class AudioModule(private val ctx: ReactApplicationContext) :
 
     private val exoMethods = HashMap<String, java.lang.reflect.Method>()
 
+    /** Replay (Player.REPEAT_MODE_ONE) is on. */
+    private fun repeatOne(exo: Any): Boolean =
+        (exoGet(exo, "getRepeatMode") as? Int) == 1
+
     private fun exoGet(exo: Any, name: String): Any? = try {
         val m = exoMethods.getOrPut(name) {
             exo.javaClass.getMethod(name).apply { isAccessible = true }
@@ -774,12 +778,10 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         // ── A sounding overlap that should not be ─────────────────────────
         if (cfStartedIdx >= 0) {
             val paused = exoGet(exo, "getPlayWhenReady") as? Boolean == false
-            // Repeat this song switched on mid-fade: the song plays again, so
-            // the next one fading in is wrong (JS cancels too; this is the
-            // backstop for a repeat set from anywhere else).
-            val nowNext = (exoGet(exo, "getNextMediaItemIndex")
-                ?: exoGet(exo, "getNextWindowIndex")) as? Int ?: -1
-            val repeating = nowNext == idx
+            // Replay switched on mid-fade: the song plays again, so the next
+            // one fading in is wrong (JS cancels too; this is the backstop
+            // for a repeat set from anywhere else, the notification say).
+            val repeating = repeatOne(exo)
             // Paused outside JS (a headset unplugged), or seeked back out of the
             // fade: drop the overlap and put the outgoing song back to full.
             if (paused || repeating || remaining > cfSpanMs + 2500) {
@@ -800,11 +802,13 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         if (span <= 0 || !playing || remaining == Long.MAX_VALUE) {
             return 1000L
         }
-        // C.INDEX_UNSET (-1) at the end of a queue; the SAME index under
-        // repeat-one, where crossfading a song into itself is just noise.
+        // C.INDEX_UNSET (-1) at the end of a queue. And no fade at all with
+        // Replay (repeat this song) on: the song plays again, it does not
+        // move on. That has to be read from the repeat mode itself, because
+        // getNextMediaItemIndex answers as if repeat-one were off.
         val nextAny = exoGet(exo, "getNextMediaItemIndex") ?: exoGet(exo, "getNextWindowIndex")
         val next = nextAny as? Int ?: -1
-        if (next < 0 || next == idx) {
+        if (next < 0 || next == idx || repeatOne(exo)) {
             return 1000L
         }
 
@@ -892,7 +896,14 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                             Log.w(TAG, "overlap rate " + rate + " rejected: " + e.message)
                         }
                     }
-                    if (cfPlayer === mp) cfReady = true
+                    if (cfPlayer === mp) {
+                        // The EQ and loudness onto a prepared session (see
+                        // cloneEffectsOnto). They used to be created while the
+                        // player was still opening, which is the one crossfade
+                        // path rc1's testing (equalizer off) never reached.
+                        cloneEffectsOnto(mp.audioSessionId)
+                        cfReady = true
+                    }
                 }
                 // A dead stream must not crash — just abandon the overlap; the
                 // outgoing track still ends and ExoPlayer advances normally.
@@ -903,7 +914,6 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                 prepareAsync()
             }
             cfPlayer = mp
-            cloneEffectsOnto(mp.audioSessionId)
         } catch (e: Exception) {
             Log.w(TAG, "prepareCrossfade failed: ${e.message}")
             stopCfInternal()
@@ -966,7 +976,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                     mp.setVolume(1f - t, 1f - t)
                 } catch (_: Exception) {}
                 setExoVolume(FADE_FLOOR + (1f - FADE_FLOOR) * t)
-                if (t < 1f) cfHandler.postDelayed(this, HANDOVER_STEP_MS) else finishHandoff()
+                if (t < 1f) cfHandler.postDelayed(this, RAMP_STEP_MS) else finishHandoff()
             }
         }
         cfRamp = r
@@ -1301,18 +1311,14 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         /**
          * The final overlap → ExoPlayer handover, once the two are in step.
          *
-         * Short, because for its whole length two copies of the same song
-         * sound together, and whatever offset is left between them is heard
-         * as a faint doubling (reported at 240 ms as "the same bit played
-         * twice"). Same signal on both, so a short ramp cannot click.
+         * 240 ms, 25 ms and 3 tries are v1.2.35-rc1's values, put back. rc2
+         * tried 80 ms / 12 ms / 5 to remove a faint doubling at the switch,
+         * and the crossfade as a whole sounded worse for it.
          */
-        private const val HANDOVER_MS = 80L
-        /** The handover's volume steps: fine enough that 80 ms is smooth. */
-        private const val HANDOVER_STEP_MS = 8L
-        /** Closer than this and the two copies are heard as one. Was 25 ms,
-         *  which is enough of a gap to hear as a flam over the handover. */
-        private const val ALIGN_TOLERANCE_MS = 12L
-        private const val MAX_ALIGN_TRIES = 5
+        private const val HANDOVER_MS = 240L
+        /** Closer than this and the two copies are heard as one. */
+        private const val ALIGN_TOLERANCE_MS = 25L
+        private const val MAX_ALIGN_TRIES = 3
         private const val MAX_LEAD_MS = 400L
         private const val ALIGN_POLL_MS = 30L
         /** Stop waiting for ExoPlayer and hand over anyway. */
