@@ -7,6 +7,7 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.audiofx.Equalizer
 import android.media.audiofx.LoudnessEnhancer
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -19,6 +20,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.google.firebase.analytics.FirebaseAnalytics
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.math.abs
@@ -552,6 +554,17 @@ class AudioModule(private val ctx: ReactApplicationContext) :
     private var cfAlignTries = 0
     /** ExoPlayer's position at the last handoff poll; -1 = none since a seek. */
     private var cfLastExoPos = -1L
+    /** The overlap's last position, when it last moved forward, and the
+     *  volume the ramp last gave it. A stalled overlap is silent. */
+    private var cfLastMpPos = -1L
+    private var cfMpMovedAt = 0L
+    private var cfMpVol = 0f
+    /** For the crossfade_report event: when the overlap became ready, when
+     *  it started, how long it sat stalled during the fade, how it ended. */
+    private var cfReadyAt = 0L
+    private var cfStartAt = 0L
+    private var cfStallMs = 0L
+    private var cfOutcome = "handover"
     /**
      * How far AHEAD of the overlap an in-buffer seek has to aim to land in
      * step with it — the time ExoPlayer takes to restart output after a seek.
@@ -730,10 +743,26 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                 return 100L
             }
             val rate = exoSpeed(exo)
+            // The overlap stopped moving: on mobile data its stream stalls,
+            // and a stalled overlap is silence. Waiting on it, or seeking
+            // ExoPlayer forward to where it froze, is what left the new song
+            // "almost silent". ExoPlayer already has the new song from its
+            // first second: let it play that, at full volume.
+            if (now - cfMpMovedAt > STALL_MS) {
+                cfOutcome = if (cfHandoffAt == 0L) "cut_stalled" else "stalled_in_handoff"
+                finishHandoff()
+                return 100L
+            }
             if (cfHandoffAt == 0L) {
                 cfHandoffAt = now
                 cfAlignTries = 0
                 cfLastExoPos = -1L
+                // The ramp follows the overlap's progress, so a fade that
+                // stalled for a while is not finished yet: the overlap takes
+                // the song at full volume now, ExoPlayer waits at the floor.
+                cfRamp?.let { cfHandler.removeCallbacks(it) }
+                setExoVolume(FADE_FLOOR)
+                riseToFull(mp)
                 val pos = overlapPos(mp)
                 if (pos > 500) exoSeek(exo, pos + (cfLeadMs * rate).toLong())
                 return ALIGN_POLL_MS
@@ -754,6 +783,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                 // A stream that cannot catch up at all still gets handed over
                 // in the end: the overlap cannot follow a pause or a seek.
                 if (waited < HANDOFF_ABANDON_MS) return ALIGN_POLL_MS
+                cfOutcome = "handover_unready"
             } else if (waited < HANDOFF_GIVE_UP_MS && cfAlignTries < MAX_ALIGN_TRIES) {
                 val mpPos = overlapPos(mp)
                 if (exoPos >= 0 && mpPos > 500) {
@@ -855,7 +885,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
             try {
                 mp.start()
                 cancelVolWork() // a fade-in still running must not fight this
-                startOverlapRamp(mp, remaining.toInt())
+                startOverlapRamp(mp, remaining.toInt(), exoSpeed(exo), idx)
                 cfStartedIdx = idx
                 Log.i(TAG, "crossfade: overlap ${remaining}ms")
             } catch (e: Exception) {
@@ -919,6 +949,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                         // player was still opening, which is the one crossfade
                         // path rc1's testing (equalizer off) never reached.
                         cloneEffectsOnto(mp.audioSessionId)
+                        cfReadyAt = SystemClock.uptimeMillis()
                         cfReady = true
                     }
                 }
@@ -945,26 +976,84 @@ class AudioModule(private val ctx: ReactApplicationContext) :
      * which is heard as the music dipping and then climbing back — a "ramp" in
      * the middle of every crossfade. sin² + cos² = 1 keeps it level.
      *
-     * Driven by the clock, not a step count. It was 16 fixed steps, so a
-     * 12-second fade moved in 750ms stairs, each one audible as a small jump.
-     * One step every RAMP_STEP_MS, positioned by elapsed time, cannot drift
-     * and is finer than the ear resolves.
+     * Updated every RAMP_STEP_MS, not in a fixed number of steps: 16 steps
+     * moved a 12-second fade in 750ms stairs, each one audible as a jump.
      */
-    private fun startOverlapRamp(mp: MediaPlayer, durationMs: Int) {
-        val start = SystemClock.uptimeMillis()
-        val dur = durationMs.coerceAtLeast(1).toFloat()
+    private fun startOverlapRamp(mp: MediaPlayer, durationMs: Int, rate: Float, outIdx: Int) {
+        // Positioned by how far the OVERLAP has actually played, not by the
+        // wall clock. On mobile data the overlap's stream can stall right as
+        // it starts; a clock-driven ramp kept fading the old song out under
+        // it anyway, so the whole fade went quiet: the old song gone, the new
+        // one silent. Following the overlap, a stall just holds both where
+        // they are, and the old song stays audible until the new one plays.
+        val fadeMedia = (durationMs * rate).coerceAtLeast(1f)
+        val now0 = SystemClock.uptimeMillis()
+        cfStartAt = now0
+        cfLastMpPos = -1L
+        cfMpMovedAt = now0
+        cfStallMs = 0L
+        cfMpVol = 0f
         val r = object : Runnable {
+            var last = now0
             override fun run() {
-                if (cfPlayer !== mp) return // superseded — stop ramping
-                val t = ((SystemClock.uptimeMillis() - start) / dur).coerceIn(0f, 1f)
+                if (cfPlayer !== mp || cfHandoffAt != 0L) return // superseded
+                val now = SystemClock.uptimeMillis()
+                val pos = overlapPos(mp)
+                if (pos > cfLastMpPos) {
+                    cfLastMpPos = pos
+                    cfMpMovedAt = now
+                } else if (now - cfMpMovedAt > RAMP_STEP_MS * 3) {
+                    cfStallMs += now - last
+                }
+                last = now
+                // The old song ended (ExoPlayer moved on) before the fade
+                // did: it must not stay up over the new song's first second.
+                val exo = PlaybackSession.exoPlayer()
+                val idx = exo?.let {
+                    exoGet(it, "getCurrentMediaItemIndex") ?: exoGet(it, "getCurrentWindowIndex")
+                } as? Int
+                if (idx != null && idx != outIdx) {
+                    setExoVolume(FADE_FLOOR) // cfStep's handoff takes it from here
+                    cfHandler.postDelayed(this, RAMP_STEP_MS)
+                    return
+                }
+                val t = (pos.coerceAtLeast(0L) / fadeMedia).coerceIn(0f, 1f)
                 val a = t * HALF_PI
+                cfMpVol = sin(a)
                 try {
-                    mp.setVolume(sin(a), sin(a))
+                    mp.setVolume(cfMpVol, cfMpVol)
                 } catch (_: Exception) {
                     return
                 }
                 setExoVolume(cos(a).coerceAtLeast(FADE_FLOOR))
-                if (t < 1f) cfHandler.postDelayed(this, RAMP_STEP_MS)
+                // Runs on past the end of the fade until the handoff: the stall
+                // check there needs to know the overlap is still moving.
+                cfHandler.postDelayed(this, if (t < 1f) RAMP_STEP_MS else 60L)
+            }
+        }
+        cfRamp = r
+        cfHandler.post(r)
+    }
+
+    /** The overlap to full volume over a moment, from wherever the ramp left
+     *  it: it is the only voice of the new song until the handover. Keeps
+     *  noting the overlap's movement afterwards, for the stall check. */
+    private fun riseToFull(mp: MediaPlayer) {
+        val from = cfMpVol
+        val start = SystemClock.uptimeMillis()
+        val r = object : Runnable {
+            override fun run() {
+                if (cfPlayer !== mp || cfHandingOver) return
+                val now = SystemClock.uptimeMillis()
+                val pos = overlapPos(mp)
+                if (pos > cfLastMpPos) {
+                    cfLastMpPos = pos
+                    cfMpMovedAt = now
+                }
+                val t = ((now - start) / RISE_MS.toFloat()).coerceIn(0f, 1f)
+                cfMpVol = from + (1f - from) * t
+                try { mp.setVolume(cfMpVol, cfMpVol) } catch (_: Exception) { return }
+                cfHandler.postDelayed(this, if (t < 1f) RAMP_STEP_MS else 60L)
             }
         }
         cfRamp = r
@@ -1003,9 +1092,32 @@ class AudioModule(private val ctx: ReactApplicationContext) :
     /** One player again, at full volume. The overlap is already silent when
      *  this runs from the handover, so stopping it cannot click. */
     private fun finishHandoff() {
+        reportCrossfade()
         resetCf()
         cancelVolWork()
         setExoVolume(1f)
+    }
+
+    /**
+     * One crossfade_report per crossfade (Firebase Analytics, the project's
+     * own): how it ended and what the overlap's stream did. "cut_stalled"
+     * and a large stall_ms mean the network, not the fade, decided it.
+     */
+    private fun reportCrossfade() {
+        if (cfStartAt == 0L) return
+        val now = SystemClock.uptimeMillis()
+        val b = Bundle().apply {
+            putString("outcome", cfOutcome)
+            putLong("span_ms", cfSpanMs.toLong())
+            putLong("prep_ms", if (cfReadyAt > 0) cfReadyAt - cfPreparedAt else -1L)
+            putLong("idle_ms", if (cfReadyAt > 0) cfStartAt - cfReadyAt else -1L)
+            putLong("stall_ms", cfStallMs)
+            putLong("handoff_ms", if (cfHandoffAt > 0) now - cfHandoffAt else 0L)
+            putLong("align_tries", cfAlignTries.toLong())
+            putString("eq", (cfEq != null).toString())
+        }
+        Log.i(TAG, "crossfade_report $b")
+        runCatching { FirebaseAnalytics.getInstance(ctx).logEvent("crossfade_report", b) }
     }
 
     private fun overlapPos(mp: MediaPlayer): Long =
@@ -1066,6 +1178,8 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         cfAlignTries = 0
         cfLastExoPos = -1L
         cfHandingOver = false
+        cfStartAt = 0L
+        cfOutcome = "handover"
     }
 
     private fun stopCfInternal() {
@@ -1347,5 +1461,9 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         private const val HANDOFF_GIVE_UP_MS = 3000L
         /** ExoPlayer still silent after this: hand over regardless. */
         private const val HANDOFF_ABANDON_MS = 8000L
+        /** The overlap has not moved for this long: its stream has stalled. */
+        private const val STALL_MS = 450L
+        /** The overlap's rise to full volume as the old song ends. */
+        private const val RISE_MS = 150L
     }
 }
