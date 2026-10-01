@@ -276,6 +276,11 @@ jobs:
       - name: Summary
         if: always()
         run: |
+          # Annotations are readable without signing in, unlike job logs:
+          # the reason a run failed must be visible from the API.
+          if grep -qiE "ERROR|denied|failed" testlab.txt 2>/dev/null; then
+            grep -iE "ERROR|denied|failed" testlab.txt | head -5 | while read -r l; do echo "::error::$l"; done
+          fi
           {
             echo "## Test Lab: $GITHUB_REF_NAME"
             echo
