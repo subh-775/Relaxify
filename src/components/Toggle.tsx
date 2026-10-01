@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
   on: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: H / 2,
-    backgroundColor: C.accent,
+    backgroundColor: C.brand, // the logo red, like the Equalizer
   },
   thumb: {
     width: THUMB,

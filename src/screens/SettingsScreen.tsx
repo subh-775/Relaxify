@@ -839,6 +839,7 @@ export function SettingsScreen({
           <Text style={styles.barTitle}>Crossfade and sleep</Text>
         </View>
         <ScrollView
+          key="playback" // its own scroll position, as About's (below)
           ref={scrollRef}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
@@ -940,7 +941,11 @@ export function SettingsScreen({
           </TouchableOpacity>
           <Text style={styles.barTitle}>About and support</Text>
         </View>
+        {/* Keyed: without it React reuses the Settings list's ScrollView,
+            scroll offset and all, and About opened at the bottom (its row
+            is at the end of Settings). */}
         <ScrollView
+          key="about"
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
@@ -972,7 +977,7 @@ export function SettingsScreen({
               <Animated.View style={{transform: [{rotate: spinDeg}]}}>
                 <RefreshCw
                   size={19}
-                  color={updateAvailable ? C.accent : C.sub}
+                  color={updateAvailable ? C.brand : C.sub}
                   strokeWidth={2}
                 />
               </Animated.View>
@@ -1200,7 +1205,7 @@ export function SettingsScreen({
                   <Text style={styles.rowHint}>{q.hint}</Text>
                 </View>
                 {settings.audioQuality === q.value && (
-                  <Check size={18} color={C.accent} strokeWidth={2.6} />
+                  <Check size={18} color={C.brand} strokeWidth={2.6} />
                 )}
               </TouchableOpacity>
             ))}
@@ -1503,7 +1508,7 @@ const styles = StyleSheet.create({
   // ring, because with no card fill there is nothing else to tint.
   cardHighlight: {
     borderWidth: 1.5,
-    borderColor: C.accent,
+    borderColor: C.brand,
     borderRadius: 10,
   },
   sectionFooter: {
@@ -1534,11 +1539,11 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 4,
   },
-  choiceOn: {color: C.accent},
+  choiceOn: {color: C.brand},
   sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   rowText: {flex: 1, minWidth: 0},
   rowLabel: {...T.body, color: C.text},
-  rowLabelAccent: {color: C.accent},
+  rowLabelAccent: {color: C.brand},
   rowHint: {...T.sub, color: C.sub, marginTop: 3, lineHeight: 17},
   rowValue: {
     ...T.sub,
@@ -1567,7 +1572,7 @@ const styles = StyleSheet.create({
   sliderHead: {flexDirection: 'row', alignItems: 'flex-start', gap: 14},
   sliderValue: {
     ...T.rowTitle,
-    color: C.accent,
+    color: C.brand,
     fontSize: 16,
     // Tabular, or the whole row twitches sideways every time the number goes
     // from one digit to two while you are dragging.
@@ -1611,7 +1616,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.13)',
     overflow: 'hidden',
   },
-  sliderFill: {height: '100%', backgroundColor: C.accent, borderRadius: 2},
+  sliderFill: {height: '100%', backgroundColor: C.brand, borderRadius: 2},
   sliderThumb: {
     position: 'absolute',
     // Half the thumb's width, so it sits centred on the value.
@@ -1619,7 +1624,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: C.accentBright,
+    backgroundColor: C.brand,
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 3,
