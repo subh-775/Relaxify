@@ -273,7 +273,7 @@ export function recapEligible(s: Stats): boolean {
 /**
  * Home's Recap card: Sunday, and Monday for anyone who missed it, then gone
  * until next Sunday. Only for an eligible listener with music this week.
- * The Recap itself stays in the menu every day.
+ * The notification goes out on Sunday too (RecapReminder.kt).
  */
 export function recapCardDue(s: Stats, now: number): boolean {
   const day = new Date(now).getDay(); // 0 = Sunday, 1 = Monday

@@ -40,7 +40,7 @@ import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
 import {LogoMark} from './Logo';
 
-export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
+export type SidebarDest = 'settings' | 'help' | 'languages' | 'equalizer' | 'jam';
 
 // No per-item hint text any more — "Everything you have listened to" under
 // "Recents" was explaining a label that already explains itself, and it made
@@ -67,13 +67,15 @@ export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
 //
 // Words only, no icon per row and no colour: the drawer is the app's quiet
 // back room, and five plain labels read faster than five glyphs beside them.
+//
+// Shortcuts only: each row opens its thing directly, with no Settings list to
+// dig through first. Recap is not one: it is a Sunday event, reached from its
+// Home card (and the notification), not a page to visit any day.
 const ITEMS: {id: SidebarDest; label: string}[] = [
   {id: 'equalizer', label: 'Equalizer'},
-  {id: 'stats', label: 'Recap'},
-  // Listening together; lives here beside Recap, the other "about you and
-  // your friends" place.
   {id: 'jam', label: 'Jam'},
   {id: 'help', label: 'How to use'},
+  {id: 'languages', label: 'Home languages'},
   {id: 'settings', label: 'Settings'},
 ];
 

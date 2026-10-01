@@ -74,11 +74,11 @@ class DeviceModule(private val ctx: ReactApplicationContext) :
     @ReactMethod
     fun removeListeners(count: Int) {}
 
-    /** What Sunday's notification says, and whether it is on. An empty body
-     *  means a quiet week: no notification. */
+    /** What Sunday's notification says (its title is picked natively). An
+     *  empty body means a quiet week: no notification. */
     @ReactMethod
-    fun setRecapReminder(enabled: Boolean, title: String, body: String) {
-        RecapReminder.save(ctx, enabled, title, body)
+    fun setRecapReminder(enabled: Boolean, body: String) {
+        RecapReminder.save(ctx, enabled, body)
         RecapReminder.schedule(ctx)
     }
 }

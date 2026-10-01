@@ -59,6 +59,7 @@ import {
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {Splash} from './src/components/Splash';
 import {Sidebar, type SidebarDest} from './src/components/Sidebar';
+import {LanguagesSheet} from './src/components/LanguageChips';
 import {resetDrawer, settleDrawer} from './src/drawer';
 import {
   panelDrawn,
@@ -138,6 +139,7 @@ function Shell() {
   /** Equalizer, same reasoning as Shortcuts. Settings keeps its own row and
    *  both point at the one component. */
   const [eqOpen, setEqOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
   // null = not yet determined, false = this APK has no native audio engine.
   const [engine, setEngine] = useState<boolean | null>(null);
@@ -531,6 +533,7 @@ function Shell() {
   const closeJam = useCallback(() => setJamOpen(false), []);
   const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
+  const closeLanguages = useCallback(() => setLangOpen(false), []);
   // Sunday's Recap notification opens the app on relaxify://recap, whether it
   // was closed (the initial URL) or already running (a url event).
   useEffect(() => {
@@ -597,8 +600,8 @@ function Shell() {
         Linking.openURL(DOCS_URL).catch(() =>
           toast('Could not open the documentation'),
         );
-      } else if (dest === 'stats') {
-        setActivity(dest);
+      } else if (dest === 'languages') {
+        setLangOpen(true);
       } else if (dest === 'jam') {
         setJamOpen(true);
       }
@@ -941,6 +944,7 @@ function Shell() {
         onClose={closeDrawer}
         onNavigate={navigateFromDrawer}
       />
+      <LanguagesSheet open={langOpen} onClose={closeLanguages} />
 
       {booted && hydrated && !welcomed && <WelcomeScreen />}
 

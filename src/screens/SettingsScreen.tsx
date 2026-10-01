@@ -70,7 +70,7 @@ import {LegalView} from '../components/LegalView';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
-import {LanguageChips, languagesLabel} from '../components/LanguageChips';
+import {LanguagesSheet, languagesLabel} from '../components/LanguageChips';
 import {EqualizerScreen} from './EqualizerScreen';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {applyAudioEffects} from '../audioEffects';
@@ -1213,19 +1213,7 @@ export function SettingsScreen({
             value={languagesLabel(settings.homeLanguages)}
             onPress={() => setLangOpen(true)}
           />
-          <Sheet open={langOpen} onClose={() => setLangOpen(false)}>
-            <Text style={styles.sheetTitle}>Home languages</Text>
-            <Text style={styles.sheetHint}>
-              Home and Browse are drawn from these. Search always covers everything.
-            </Text>
-            <LanguageChips />
-          </Sheet>
-          <ToggleRow
-            label="Weekly Recap"
-            hint="A notification on Sunday evening with your week in music"
-            value={settings.recapReminder}
-            onChange={v => writeSetting('recapReminder', v)}
-          />
+          <LanguagesSheet open={langOpen} onClose={() => setLangOpen(false)} />
         </Section>
 
         {/*

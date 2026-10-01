@@ -550,6 +550,8 @@ class AudioModule(private val ctx: ReactApplicationContext) :
     private var cfHandoffAt = 0L
     /** Re-seeks spent pulling ExoPlayer into step with the overlap. */
     private var cfAlignTries = 0
+    /** ExoPlayer's position at the last handoff poll; -1 = none since a seek. */
+    private var cfLastExoPos = -1L
     /**
      * How far AHEAD of the overlap an in-buffer seek has to aim to land in
      * step with it — the time ExoPlayer takes to restart output after a seek.
@@ -713,7 +715,12 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         // ramp. The overlap is at full volume throughout, so the time this
         // takes is never heard.
         if (cfStartedIdx >= 0 && idx != cfStartedIdx) {
-            if (cfHandingOver) return 60L // the handover ramp finishes the job
+            if (cfHandingOver) {
+                // The overlap died mid-handover (a stream error): its ramp
+                // stopped with it, so nothing else would bring ExoPlayer up.
+                if (cfPlayer == null) finishHandoff()
+                return 60L // otherwise the handover ramp finishes the job
+            }
             val mp = cfPlayer
             val paused = exoGet(exo, "getPlayWhenReady") as? Boolean == false
             if (mp == null || paused) {
@@ -726,19 +733,28 @@ class AudioModule(private val ctx: ReactApplicationContext) :
             if (cfHandoffAt == 0L) {
                 cfHandoffAt = now
                 cfAlignTries = 0
+                cfLastExoPos = -1L
                 val pos = overlapPos(mp)
                 if (pos > 500) exoSeek(exo, pos + (cfLeadMs * rate).toLong())
                 return ALIGN_POLL_MS
             }
             val state = exoGet(exo, "getPlaybackState") as? Int ?: 3
-            val ready = state == 3 && playing
-            // A slow network must not hold two copies of the song forever; the
-            // overlap is full-volume meanwhile, so waiting is inaudible, but it
-            // is not unbounded either.
-            val givenUp = now - cfHandoffAt > HANDOFF_GIVE_UP_MS
-            if (!ready && !givenUp) return ALIGN_POLL_MS
-            if (ready && !givenUp && cfAlignTries < MAX_ALIGN_TRIES) {
-                val exoPos = exoGet(exo, "getCurrentPosition") as? Long ?: -1L
+            val exoPos = exoGet(exo, "getCurrentPosition") as? Long ?: -1L
+            // SOUNDING, not just READY: playing, and its clock has moved since
+            // the last poll. ExoPlayer stays READY through a seek into audio it
+            // has buffered, and reports the seek target while its output is
+            // still restarting. Trusting READY, rc2 measured "in step" against
+            // a player that was not yet making a sound, faded the overlap out
+            // over it, and the new song came in dim. Until ExoPlayer really
+            // plays, the overlap carries the song at full volume, unheard.
+            val sounding = state == 3 && playing && cfLastExoPos in 0L until exoPos
+            cfLastExoPos = exoPos
+            val waited = now - cfHandoffAt
+            if (!sounding) {
+                // A stream that cannot catch up at all still gets handed over
+                // in the end: the overlap cannot follow a pause or a seek.
+                if (waited < HANDOFF_ABANDON_MS) return ALIGN_POLL_MS
+            } else if (waited < HANDOFF_GIVE_UP_MS && cfAlignTries < MAX_ALIGN_TRIES) {
                 val mpPos = overlapPos(mp)
                 if (exoPos >= 0 && mpPos > 500) {
                     val drift = mpPos - exoPos // positive: ExoPlayer is behind
@@ -753,6 +769,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                     if (abs(drift) > ALIGN_TOLERANCE_MS) {
                         cfAlignTries++
                         exoSeek(exo, mpPos + (cfLeadMs * rate).toLong())
+                        cfLastExoPos = -1L // sounding is re-proven after a seek
                         return ALIGN_POLL_MS
                     }
                 }
@@ -976,7 +993,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                     mp.setVolume(1f - t, 1f - t)
                 } catch (_: Exception) {}
                 setExoVolume(FADE_FLOOR + (1f - FADE_FLOOR) * t)
-                if (t < 1f) cfHandler.postDelayed(this, RAMP_STEP_MS) else finishHandoff()
+                if (t < 1f) cfHandler.postDelayed(this, HANDOVER_STEP_MS) else finishHandoff()
             }
         }
         cfRamp = r
@@ -1047,6 +1064,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         cfStartedIdx = -1
         cfHandoffAt = 0L
         cfAlignTries = 0
+        cfLastExoPos = -1L
         cfHandingOver = false
     }
 
@@ -1311,17 +1329,23 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         /**
          * The final overlap → ExoPlayer handover, once the two are in step.
          *
-         * 240 ms, 25 ms and 3 tries are v1.2.35-rc1's values, put back. rc2
-         * tried 80 ms / 12 ms / 5 to remove a faint doubling at the switch,
-         * and the crossfade as a whole sounded worse for it.
+         * Short, because for its whole length two copies of the same song
+         * sound together, and any offset left between them is heard as a
+         * faint doubling (rc1's 240 ms: "the same bit played twice"). rc2's
+         * 80 ms removed that but faded out over a silent ExoPlayer (see
+         * cfStep's `sounding`); with that wait in place, 80 ms is safe.
          */
-        private const val HANDOVER_MS = 240L
+        private const val HANDOVER_MS = 80L
+        /** The handover's volume steps: fine enough that 80 ms is smooth. */
+        private const val HANDOVER_STEP_MS = 8L
         /** Closer than this and the two copies are heard as one. */
-        private const val ALIGN_TOLERANCE_MS = 25L
-        private const val MAX_ALIGN_TRIES = 3
+        private const val ALIGN_TOLERANCE_MS = 12L
+        private const val MAX_ALIGN_TRIES = 5
         private const val MAX_LEAD_MS = 400L
         private const val ALIGN_POLL_MS = 30L
-        /** Stop waiting for ExoPlayer and hand over anyway. */
-        private const val HANDOFF_GIVE_UP_MS = 2500L
+        /** Stop aligning a sounding ExoPlayer and hand over as it is. */
+        private const val HANDOFF_GIVE_UP_MS = 3000L
+        /** ExoPlayer still silent after this: hand over regardless. */
+        private const val HANDOFF_ABANDON_MS = 8000L
     }
 }

@@ -6,37 +6,35 @@
  * worked out here whenever the stats change and handed over ahead of time.
  */
 import {DeviceEventEmitter, NativeModules} from 'react-native';
-import {onSettingsChange, readSettings, setOnCellular} from './store';
+import {setOnCellular} from './store';
 import {onStatsChange, readStats} from './stats';
 import {buildRecap, recapEligible, reminderText} from './recap';
 
 type DeviceNative = {
   watchNetwork?: () => Promise<boolean>;
-  setRecapReminder?: (enabled: boolean, title: string, body: string) => void;
+  setRecapReminder?: (enabled: boolean, body: string) => void;
 };
 
 const native = (NativeModules.Device ?? {}) as DeviceNative;
 
 let started = false;
-let sent = '';
+let sent: string | null = null;
 
 function pushReminder(): void {
   if (typeof native.setRecapReminder !== 'function') {
     return;
   }
-  const on = readSettings().recapReminder;
+  // No setting: it goes to anyone who allows notifications. '' sends
+  // nothing: a new listener's first Sunday has nothing to recap.
   const stats = readStats();
-  // '' sends nothing: a new listener's first Sunday has nothing to recap.
-  const body =
-    on && recapEligible(stats)
-      ? reminderText(buildRecap(stats, Date.now(), 'week'))
-      : '';
-  const key = `${on}|${body}`;
-  if (key === sent) {
+  const body = recapEligible(stats)
+    ? reminderText(buildRecap(stats, Date.now(), 'week'))
+    : '';
+  if (body === sent) {
     return;
   }
-  sent = key;
-  native.setRecapReminder(on, 'Your week in music', body);
+  sent = body;
+  native.setRecapReminder(true, body);
 }
 
 export function startDevice(): void {
@@ -48,9 +46,8 @@ export function startDevice(): void {
     native.watchNetwork().then(setOnCellular, () => {});
     DeviceEventEmitter.addListener('mp.network', (v: boolean) => setOnCellular(!!v));
   }
-  // Scheduled on every start as well (sent is '' here), which is what brings
-  // the alarm back after a reboot.
+  // Scheduled on every start as well (sent is null here), which is what
+  // brings the alarm back after a reboot.
   pushReminder();
   onStatsChange(pushReminder);
-  onSettingsChange(pushReminder);
 }
