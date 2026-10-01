@@ -72,7 +72,7 @@ export function useAddToPlaylistHost(open: (t: Track) => void): void {
 const FILTER_FROM = 3;
 
 /** The mark's red: a filled tick means the song is in that list. */
-const TICKED = '#FF5A6E';
+const TICKED = C.brand;
 
 /** A round tick: an empty ring, or filled red with a check. Also the
  *  "this copy" mark in WrongSongSheet. */

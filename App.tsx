@@ -180,7 +180,10 @@ function Shell() {
     // logging, not the thing being investigated.
     diag('boot', `Relaxify ${appVersion || '?'} starting`);
     askForNotifications();
-    hydrate().then(() => {
+    hydrate().then(async () => {
+      // Each headphone and speaker keeps its own equalizer: the one connected
+      // now is put in place first, then applied, all under the splash.
+      await startDeviceMemory();
       applyAudioEffects();
       settleWelcome();
       setHydrated(true);
@@ -223,9 +226,6 @@ function Shell() {
     // Again on every return to the foreground, because a process kept alive
     // by the playback service may not launch again for days.
     watchForegroundUpdates();
-    // Each headphone and speaker keeps its own equalizer; also resumes on
-    // connect when that is switched on.
-    startDeviceMemory();
     // Data saver on mobile data, and the weekly Recap notification.
     startDevice();
     // Store writes are debounced (see storage.ts). Leaving the foreground is

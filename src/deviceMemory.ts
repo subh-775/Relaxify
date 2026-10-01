@@ -98,22 +98,43 @@ async function switched(added: boolean, headset: boolean): Promise<void> {
   }
 }
 
-/** Once, at start-up. Also starts the native device watch. */
-export function startDeviceMemory(): void {
+/**
+ * Once, at start-up, AFTER the stores have loaded: the device connected now
+ * gets its own EQ before anything plays. Resolves when that is done.
+ *
+ * It used to save the EQ left from the last session UNDER whatever device
+ * was connected now (and could run before the stores had loaded, saving the
+ * defaults), so the first seconds of a launch played with the wrong device's
+ * sound until a device event put the right one back.
+ */
+export async function startDeviceMemory(): Promise<void> {
   if (started) {
     return;
   }
   started = true;
-  getAudioOutput()
-    .then(name => {
-      current = keyOf(name);
+  try {
+    current = keyOf(await getAudioOutput());
+    const saved = profiles.get()[current];
+    const s = readSettings();
+    if (s.deviceMemory && saved && !sameProfile(saved, snapshot(s))) {
+      loading = true;
+      writeSettings(saved);
+      loading = false;
+    } else {
       remember();
-    })
-    .catch(() => {});
+    }
+  } catch {}
   onSettingsChange(remember);
+  // Registering the device watch makes Android report every device already
+  // connected as just "added": not a headset being put on, so neither a
+  // switch nor a resume. Real connections come later.
+  const quietUntil = Date.now() + 2000;
   DeviceEventEmitter.addListener(
     'mp.audio.devices',
     (e: {added?: boolean; headset?: boolean}) => {
+      if (Date.now() < quietUntil) {
+        return;
+      }
       switched(!!e?.added, !!e?.headset).catch(() => {});
     },
   );

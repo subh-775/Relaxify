@@ -138,10 +138,29 @@ let skipAt = 0;
  * racing it.
  */
 export async function playWithFade(ms: number = FADE_IN_MS): Promise<void> {
+  const first = !effectsWarm;
+  effectsWarm = true;
+  if (first) {
+    // The equalizer and loudness, on before the first sound of the launch.
+    await applyAudioEffects();
+  }
   await TrackPlayer.setVolume(1);
-  await fadeInPlayer(ms);
+  await fadeInPlayer(first ? FIRST_FADE_MS : ms);
   await TrackPlayer.play();
+  if (first) {
+    // …and again now the stream is live: one that could not attach before
+    // the first play attaches here, while the ramp is still near silence.
+    // Attaching mid-song re-routes the mix with an audible level step; that
+    // step is what a play pressed straight after launch heard as 2-3 s of
+    // too-loud sound. (It catches its own failures, like every caller's.)
+    applyAudioEffects();
+  }
 }
+
+/** The effects have been put on a playing stream since this launch. */
+let effectsWarm = false;
+/** The first play of a launch rises slower, so the attach above is inaudible. */
+const FIRST_FADE_MS = 700;
 
 /**
  * Stop, but by receding rather than by cutting.
@@ -359,9 +378,11 @@ export async function setupPlayer(): Promise<boolean> {
         // refuses to drag.
         Capability.SeekTo,
       ],
-      // No progressUpdateEventInterval: nothing listens for that event, and it
-      // woke JS every second of playback, screen off included. The bars read
+      // Every 10 s, not every second: the one listener (below) keeps the
+      // resume point current while the app is in the background, where JS
+      // timers stop. Once a second woke JS for nothing; the bars read
       // position with useProgress, which polls only while they are mounted.
+      progressUpdateEventInterval: 10,
     });
     await TrackPlayer.setRepeatMode(RepeatMode.Off);
 
@@ -397,6 +418,20 @@ export async function setupPlayer(): Promise<boolean> {
       noteState(e.state, Date.now() - Math.max(userMoveAt, manualStepAt));
     });
 
+    // Where you are, saved with no JS timer involved, so a background
+    // session that is then swiped away reopens on the right song and second.
+    // The 1 s tick and the track-settle save both run on timers, which
+    // Android stops in the background while the music plays on: a phone that
+    // played two songs with the screen off reopened two songs behind.
+    TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, () => {
+      saveSession().catch(() => {});
+    });
+    AppState.addEventListener('change', s => {
+      if (s !== 'active') {
+        saveSession(true).catch(() => {}); // leaving: the exact second
+      }
+    });
+
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
       logEvent('playback_error', {message: e.message, code: e.code});
       retryAfterError()
@@ -412,6 +447,9 @@ export async function setupPlayer(): Promise<boolean> {
       // The engine is authoritative — reconcile the optimistic mirror with what
       // actually started, and keep the queue snapshot warm for the next gesture.
       publishTrack(e.track ?? null);
+      // The new song is the resume point NOW, from this native event, not
+      // from onTrackSettled's timer (frozen in the background).
+      saveSession(true).catch(() => {});
       // A native event, so the sleep timer's deadline is honoured even when the
       // screen has been off long enough for JS timers to be throttled. This is
       // the BACKSTOP for end-of-track; the punctual stop is armed by the
@@ -1416,6 +1454,23 @@ let radioBusy = false;
  * still update on the event. Only the WARMING waits.
  */
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Save the resume point from the engine itself: the playing song, where it
+ * is, and the queue around it. Needs no timer, so it works from native events
+ * in the background. Throttled inside saveResume unless `force`.
+ */
+async function saveSession(force = false): Promise<void> {
+  const [{position}, idx, active] = await Promise.all([
+    TrackPlayer.getProgress(),
+    TrackPlayer.getActiveTrackIndex(),
+    TrackPlayer.getActiveTrack(),
+  ]);
+  const src = sourceTrackFor(active ?? null);
+  if (src) {
+    saveResume({track: src, position, queue: queueSource, index: idx ?? 0}, force);
+  }
+}
 
 function onTrackSettled(fn: () => void): void {
   if (settleTimer) {

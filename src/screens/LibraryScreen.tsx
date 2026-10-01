@@ -73,7 +73,6 @@ import {MenuMark} from '../components/MenuMark';
 import {useListEnd} from '../components/UpdateModal';
 import {LibraryHeroes} from '../components/LibraryHeroes';
 import {EmptyState} from '../components/EmptyState';
-import {useAccent} from '../accent';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
@@ -226,7 +225,6 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const heroes = filter === 'all' && !query.trim();
   const liked = withArtists.find(c => c.kind === 'liked');
   const downloaded = withArtists.find(c => c.kind === 'downloads');
-  const [accent] = useAccent();
 
   const rows = useMemo(() => {
     const matches = (c: Collection) => {
@@ -414,7 +412,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
               key={f.id}
               activeOpacity={0.75}
               onPress={() => setFilter(f.id)}
-              style={[styles.chip, on && {backgroundColor: accent}]}>
+              style={[styles.chip, on && styles.chipOn]}>
               <Text style={[styles.chipText, on && styles.chipTextOn]}>
                 {f.label}
               </Text>
@@ -749,6 +747,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: C.surfaceHi,
   },
+  // One colour, the logo's, not the greeting's of the moment: the filter is
+  // part of the Library, and the Library should not change colour with Home.
+  chipOn: {backgroundColor: C.brand},
   chipCount: {color: C.faint, fontSize: 11.5, fontWeight: '800'},
   chipCountOn: {color: '#111014', opacity: 0.6},
   chipText: {...T.sub, color: C.text, fontSize: 13},

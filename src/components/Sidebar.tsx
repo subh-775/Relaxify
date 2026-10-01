@@ -32,16 +32,7 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import {
-  ArrowUpRight,
-  AudioLines,
-  BookOpen,
-  ChevronRight,
-  Clock,
-  Headphones,
-  Settings as SettingsIcon,
-  SlidersHorizontal,
-} from '../icons';
+import {ArrowUpRight, ChevronRight} from '../icons';
 import {C, S, T} from '../theme';
 import {appVersion} from '../backend';
 import {useUpdateAvailable} from '../update';
@@ -73,17 +64,17 @@ export type SidebarDest = 'settings' | 'help' | 'stats' | 'equalizer' | 'jam';
 // Sleep timer is NOT here any more. It is a now-action taken with the phone
 // already face-down, and the drawer is two gestures away from the music; it
 // lives beside the queue in the player, where the thing it acts on is.
-const ITEMS: {id: SidebarDest; label: string; Icon: typeof Clock}[] = [
-  {id: 'equalizer', label: 'Equalizer', Icon: SlidersHorizontal},
-  // AudioLines, not Sparkles: a sparkle says "AI" to most people now, and it
-  // is also the badge on the update popup — the same glyph meaning two
-  // unrelated things. A waveform reads as "your listening" with no caption.
-  {id: 'stats', label: 'Recap', Icon: AudioLines},
+//
+// Words only, no icon per row and no colour: the drawer is the app's quiet
+// back room, and five plain labels read faster than five glyphs beside them.
+const ITEMS: {id: SidebarDest; label: string}[] = [
+  {id: 'equalizer', label: 'Equalizer'},
+  {id: 'stats', label: 'Recap'},
   // Listening together; lives here beside Recap, the other "about you and
   // your friends" place.
-  {id: 'jam', label: 'Jam', Icon: Headphones},
-  {id: 'help', label: 'How to use', Icon: BookOpen},
-  {id: 'settings', label: 'Settings', Icon: SettingsIcon},
+  {id: 'jam', label: 'Jam'},
+  {id: 'help', label: 'How to use'},
+  {id: 'settings', label: 'Settings'},
 ];
 
 /**
@@ -220,7 +211,7 @@ export const Sidebar = React.memo(function Sidebar({
             <LogoMark size={56} />
             <View style={styles.brandText}>
               <Text style={styles.brand}>Relaxify</Text>
-              <Text style={styles.brandSub}>Your library, your sound</Text>
+              <Text style={styles.brandSub}>vibes on repeat</Text>
             </View>
           </View>
 
@@ -231,7 +222,6 @@ export const Sidebar = React.memo(function Sidebar({
                 style={styles.item}
                 activeOpacity={0.7}
                 onPress={() => go(item.id)}>
-                <item.Icon size={21} color={C.text} strokeWidth={2} />
                 <View style={styles.itemText}>
                   <Text style={styles.itemLabel}>{item.label}</Text>
                 </View>
@@ -313,10 +303,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: C.accent,
+    backgroundColor: C.text, // no colour in the drawer, the update dot too
     marginRight: 4,
   },
-  itemLabel: {color: C.text, fontSize: 15.5, fontWeight: '700'},
+  itemLabel: {color: C.text, fontSize: 16, fontWeight: '700'},
   itemValue: {color: C.accent, fontSize: 12.5, fontWeight: '700'},
   foot: {paddingBottom: 22, gap: 3},
   version: {

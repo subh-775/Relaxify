@@ -13,7 +13,6 @@ export {default as ArrowRight} from 'lucide-react-native/dist/esm/icons/arrow-ri
 export {default as ArrowUpDown} from 'lucide-react-native/dist/esm/icons/arrow-up-down';
 export {default as ArrowUpRight} from 'lucide-react-native/dist/esm/icons/arrow-up-right';
 export {default as AudioLines} from 'lucide-react-native/dist/esm/icons/audio-lines';
-export {default as BookOpen} from 'lucide-react-native/dist/esm/icons/book-open';
 export {default as ChartColumn} from 'lucide-react-native/dist/esm/icons/chart-column';
 export {default as Check} from 'lucide-react-native/dist/esm/icons/check';
 export {default as CheckSquare} from 'lucide-react-native/dist/esm/icons/square-check-big';
@@ -59,7 +58,6 @@ export {default as Radio} from 'lucide-react-native/dist/esm/icons/radio';
 export {default as RefreshCw} from 'lucide-react-native/dist/esm/icons/refresh-cw';
 export {default as Repeat2} from 'lucide-react-native/dist/esm/icons/repeat-2';
 export {default as Search} from 'lucide-react-native/dist/esm/icons/search';
-export {default as Settings} from 'lucide-react-native/dist/esm/icons/settings';
 export {default as Share2} from 'lucide-react-native/dist/esm/icons/share-2';
 export {default as Shuffle} from 'lucide-react-native/dist/esm/icons/shuffle';
 export {default as SkipBack} from 'lucide-react-native/dist/esm/icons/skip-back';

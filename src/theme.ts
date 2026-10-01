@@ -14,6 +14,9 @@ export const C = {
   accent: '#1db954',
   accentBright: '#1ed760',
   danger: '#ff6b6b',
+  /** The logo's red (Ember): the app's own colour wherever one colour
+   *  stands for Relaxify itself, such as the Library's chips. */
+  brand: '#FF5A6E',
   border: 'rgba(255,255,255,0.08)',
 };
 

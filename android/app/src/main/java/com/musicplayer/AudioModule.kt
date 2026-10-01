@@ -960,7 +960,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                     mp.setVolume(1f - t, 1f - t)
                 } catch (_: Exception) {}
                 setExoVolume(FADE_FLOOR + (1f - FADE_FLOOR) * t)
-                if (t < 1f) cfHandler.postDelayed(this, RAMP_STEP_MS) else finishHandoff()
+                if (t < 1f) cfHandler.postDelayed(this, HANDOVER_STEP_MS) else finishHandoff()
             }
         }
         cfRamp = r
@@ -1292,11 +1292,21 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         /** Crossfade ramp resolution: ~50 volume updates a second. */
         private const val RAMP_STEP_MS = 20L
         private const val HALF_PI = 1.5707964f // π/2
-        /** The final overlap → ExoPlayer handover, once the two are in step. */
-        private const val HANDOVER_MS = 240L
-        /** Closer than this and the two copies are heard as one. */
-        private const val ALIGN_TOLERANCE_MS = 25L
-        private const val MAX_ALIGN_TRIES = 3
+        /**
+         * The final overlap → ExoPlayer handover, once the two are in step.
+         *
+         * Short, because for its whole length two copies of the same song
+         * sound together, and whatever offset is left between them is heard
+         * as a faint doubling (reported at 240 ms as "the same bit played
+         * twice"). Same signal on both, so a short ramp cannot click.
+         */
+        private const val HANDOVER_MS = 80L
+        /** The handover's volume steps: fine enough that 80 ms is smooth. */
+        private const val HANDOVER_STEP_MS = 8L
+        /** Closer than this and the two copies are heard as one. Was 25 ms,
+         *  which is enough of a gap to hear as a flam over the handover. */
+        private const val ALIGN_TOLERANCE_MS = 12L
+        private const val MAX_ALIGN_TRIES = 5
         private const val MAX_LEAD_MS = 400L
         private const val ALIGN_POLL_MS = 30L
         /** Stop waiting for ExoPlayer and hand over anyway. */
