@@ -1023,6 +1023,14 @@ def quality_cap():
 
 
 # ─── Downloads ────────────────────────────────────────────────────────────────
+def _fit_bytes(text: str, max_bytes: int) -> str:
+    """`text` cut to at most `max_bytes` of UTF-8, never mid-character."""
+    raw = text.encode("utf-8")
+    if len(raw) <= max_bytes:
+        return text
+    return raw[:max_bytes].decode("utf-8", "ignore").rstrip()
+
+
 @app.post("/api/download")
 def download_track():
     if not _download_manager:
@@ -1043,8 +1051,13 @@ def download_track():
     except Exception:
         pass
 
-    safe_title = re.sub(r'[<>:"/\\|?*]', "_", track_info.get("title", "unknown")).strip() or "unknown"
-    safe_artist = re.sub(r'[<>:"/\\|?*]', "_", track_info.get("artist", "unknown")).strip() or "unknown"
+    # Capped in BYTES: Android's file name limit is 255 bytes, and a Devanagari
+    # character is three of them, so a long Hindi title (or a JioSaavn credit
+    # listing a dozen singers) failed the download with "File name too long".
+    # 140 + " - " + 80 + ".m4a.part" stays well under it; the full title and
+    # artist still go into the tags, and the library scan reads them back.
+    safe_title = _fit_bytes(re.sub(r'[<>:"/\\|?*]', "_", str(track_info.get("title") or "")).strip(), 140) or "unknown"
+    safe_artist = _fit_bytes(re.sub(r'[<>:"/\\|?*]', "_", str(track_info.get("artist") or "")).strip(), 80) or "unknown"
     output_path = str(out_dir_path / f"{safe_title} - {safe_artist}")
 
     try:
