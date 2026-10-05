@@ -295,6 +295,14 @@ const styles = StyleSheet.create({
   songText: {flex: 1, minWidth: 0},
   songTitle: {color: C.text, fontSize: 15, fontWeight: '700'},
   songSub: {color: C.sub, fontSize: 12.5, marginTop: 2},
-  leave: {marginTop: 26, paddingVertical: 12},
-  leaveText: {color: C.danger, fontSize: 15, fontWeight: '800'},
+  // Filled red: ending a Jam stops it for everyone in it.
+  leave: {
+    marginTop: 26,
+    alignSelf: 'flex-start',
+    backgroundColor: C.danger,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+  },
+  leaveText: {color: '#fff', fontSize: 15, fontWeight: '800'},
 });

@@ -773,7 +773,7 @@ const styles = StyleSheet.create({
   },
   rowText: {flex: 1, minWidth: 0},
   rowTitle: {...T.rowTitle, color: C.text, fontSize: 16},
-  rowTitlePlaying: {color: C.accent},
+  rowTitlePlaying: {color: C.accent, fontWeight: '800'},
   metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 3},
   pin: {marginRight: 5, transform: [{rotate: '45deg'}]},
   rowSub: {...T.sub, color: C.sub, flex: 1},

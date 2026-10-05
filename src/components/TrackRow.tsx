@@ -65,6 +65,7 @@ export const TrackRow = React.memo(function TrackRow({
   onLongPress,
   onMenu,
   index,
+  rank,
   active,
   /** Show the inline + and download buttons. On by default; the queue and
    *  other tight lists turn them off to keep the row from getting crowded. */
@@ -78,6 +79,9 @@ export const TrackRow = React.memo(function TrackRow({
   onLongPress?: () => void;
   onMenu?: () => void;
   index?: number;
+  /** A chart position drawn BESIDE the cover (an artist's Popular list);
+   *  `index` replaces the cover instead, as an album's track number. */
+  rank?: number;
   /** True for the track that's currently playing. */
   active?: boolean;
   showActions?: boolean;
@@ -158,7 +162,7 @@ export const TrackRow = React.memo(function TrackRow({
           still reads clearly against the accent-tinted icon. */}
         <View style={styles.queueHintBg} pointerEvents="none">
           <View style={styles.queueHint}>
-            <ListPlus size={22} color={C.accentBright} strokeWidth={2.4} />
+            <ListPlus size={22} color={C.accent} strokeWidth={2.4} />
           </View>
         </View>
 
@@ -169,6 +173,11 @@ export const TrackRow = React.memo(function TrackRow({
             onPress={onPress}
             onLongPress={onLongPress}
             delayLongPress={350}>
+            {rank != null && (
+              <Text style={[styles.rank, isActive && styles.rankActive]}>
+                {rank}
+              </Text>
+            )}
             {index != null ? (
               <Text style={styles.index}>{index + 1}</Text>
             ) : artwork ? (
@@ -227,7 +236,7 @@ const styles = StyleSheet.create({
   swipeWrap: {justifyContent: 'center'},
   queueHintBg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(29,185,84,0.16)',
+    backgroundColor: 'rgba(255,90,110,0.16)',
   },
   queueHint: {
     position: 'absolute',
@@ -246,6 +255,15 @@ const styles = StyleSheet.create({
   },
   thumb: {width: 52, height: 52, borderRadius: 6, backgroundColor: C.surface},
   thumbFallback: {backgroundColor: C.surfaceHi},
+  rank: {
+    width: 18,
+    textAlign: 'right',
+    color: C.sub,
+    fontSize: 14,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  rankActive: {color: C.accent},
   index: {
     width: 52,
     textAlign: 'center',
@@ -255,7 +273,7 @@ const styles = StyleSheet.create({
   },
   text: {flex: 1, minWidth: 0},
   title: {...T.body, color: C.text},
-  titleActive: {color: C.accent},
+  titleActive: {color: C.accent, fontWeight: '800'},
   metaLine: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3},
   sub: {...T.sub, color: C.sub, flex: 1},
   act: {paddingHorizontal: 5, paddingVertical: 6},

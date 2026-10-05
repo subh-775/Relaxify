@@ -278,10 +278,11 @@ export function EqualizerScreen({onClose}: {onClose: () => void}) {
         <Text style={styles.section}>Presets</Text>
         <View style={styles.presets}>
           {EQ_PRESETS.map(p => {
-            // Highlight the SELECTED preset even with the effect off, so the
-            // screen visibly answers a tap. Gating this on eqEnabled meant
-            // tapping a preset lit nothing up at all.
-            const on = settings.eqPreset === p.id;
+            // Lit only while the equalizer is on: with it off every chip is
+            // neutral, or the last preset looked active when nothing was.
+            // A tap still answers visibly, because picking a preset switches
+            // the equalizer on (pickPreset).
+            const on = settings.eqEnabled && settings.eqPreset === p.id;
             return (
               <TouchableOpacity
                 key={p.id}

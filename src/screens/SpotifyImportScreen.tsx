@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   checkText: {flex: 1, minWidth: 0},
   checkTitle: {color: C.text, fontSize: 14, fontWeight: '700'},
   checkSub: {color: C.sub, fontSize: 12, marginTop: 1},
-  found: {color: '#1ed760', fontSize: 11.5, fontWeight: '800'},
+  found: {color: C.accent, fontSize: 11.5, fontWeight: '800'},
   notFound: {color: C.danger, fontSize: 11.5, fontWeight: '800'},
   wrap: {flex: 1, backgroundColor: C.bg},
   bar: {flexDirection: 'row', paddingTop: 12, paddingHorizontal: 8},

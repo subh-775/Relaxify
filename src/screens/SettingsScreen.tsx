@@ -1379,10 +1379,10 @@ export function SettingsScreen({
           activeOpacity={0.7}
           onPress={() => setResetOpen(true)}>
           <Text style={styles.resetText}>Reset all settings</Text>
-          <Text style={styles.rowHint}>
-            Puts everything back to defaults. Your library isn&apos;t touched.
-          </Text>
         </TouchableOpacity>
+        <Text style={[styles.rowHint, styles.resetHint]}>
+          Puts everything back to defaults. Your library isn&apos;t touched.
+        </Text>
 
         <View style={styles.tail} />
       </ScrollView>
@@ -1552,14 +1552,18 @@ const styles = StyleSheet.create({
     maxWidth: 190,
     textAlign: 'right',
   },
+  // Filled red: the one button here that undoes everything you set.
   reset: {
     marginTop: 26,
-    paddingHorizontal: S.gutter,
-    paddingVertical: 14,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.border,
+    marginHorizontal: S.gutter,
+    alignSelf: 'flex-start',
+    backgroundColor: C.danger,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
   },
-  resetText: {color: C.danger, fontSize: 15, fontWeight: '700'},
+  resetText: {color: '#fff', fontSize: 15, fontWeight: '800'},
+  resetHint: {paddingHorizontal: S.gutter, marginTop: 8},
   tail: {height: 10},
   folderPath: {
     ...T.sub,
