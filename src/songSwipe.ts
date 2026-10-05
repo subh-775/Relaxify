@@ -42,6 +42,7 @@ import {
   skipPrevious,
   sourceTrackFor,
 } from './player';
+import {logEvent} from './analytics';
 
 /** Distance, or a flick, that commits a swipe. */
 const COMMIT_PX = 64;
@@ -56,6 +57,10 @@ export type Neighbour = {dir: 1 | -1; track: RNTPTrack; art: string};
 export type Sides = {prev: Neighbour | null; next: Neighbour | null};
 
 const NONE: Sides = {prev: null, next: null};
+
+/** Swipes landed since the process started: the first one after opening the
+ *  app is the one reported as sticking for a second or two. */
+let swipeCount = 0;
 
 function side(dir: 1 | -1): Neighbour | null {
   const t = peekAdjacentTrack(dir);
@@ -116,6 +121,10 @@ export function useSongSwipe({
     key: string;
     art: string;
     glided: boolean;
+    /** When commit ran, and how long after the finger lifted it ran: the
+     *  wait for the JS thread, which is the suspect in the first-swipe stall. */
+    at: number;
+    jsLag: number;
     timer?: ReturnType<typeof setTimeout>;
     /** The backstop: however the landing went, it ends by this. */
     guard?: ReturnType<typeof setTimeout>;
@@ -141,7 +150,7 @@ export function useSongSwipe({
 
   useEffect(refresh, [activeKey, refresh]);
 
-  const settle = useCallback(() => {
+  const settle = useCallback((how: 'landed' | 'timeout' | 'guard') => {
     const l = landing.current;
     if (!l) {
       return;
@@ -149,6 +158,15 @@ export function useSongSwipe({
     clearTimeout(l.timer);
     clearTimeout(l.guard);
     landing.current = null;
+    // `swipe_land`: lift-to-commit (js_lag) and commit-to-swap (ms), and how
+    // the swap came about. A slow first swipe with a big js_lag is the JS
+    // thread; a big ms with a small js_lag is the cover or the engine.
+    logEvent('swipe_land', {
+      ms: Date.now() - l.at,
+      js_lag: l.jsLag,
+      end: how,
+      first: swipeCount++ === 0 ? 1 : 0,
+    });
     // The offset in one UI-thread step; the neighbours are re-read only
     // after, once they are both back off screen.
     runOnUI(() => {
@@ -166,7 +184,7 @@ export function useSongSwipe({
       activeKeyRef.current === l.key &&
       (!l.art || loadedArt.current === l.art)
     ) {
-      settle();
+      settle('landed');
     }
   }, [settle]);
 
@@ -187,7 +205,7 @@ export function useSongSwipe({
       return;
     }
     l.glided = true;
-    l.timer = setTimeout(settle, LAND_TIMEOUT_MS);
+    l.timer = setTimeout(() => settle('timeout'), LAND_TIMEOUT_MS);
     tryLand();
   }, [settle, tryLand]);
 
@@ -198,7 +216,7 @@ export function useSongSwipe({
    * froze where the finger left it, then jumped.
    */
   const commit = useCallback(
-    (d: 1 | -1) => {
+    (d: 1 | -1, liftedAt: number) => {
       // Skip NOW, so the engine and the title move while the cover glides.
       (d === 1 ? skipNext() : skipPrevious(true)).catch(() => {});
       const n = d === 1 ? sidesRef.current.next : sidesRef.current.prev;
@@ -214,11 +232,13 @@ export function useSongSwipe({
         key: trackKey(n.track),
         art: n.art,
         glided: false,
+        at: Date.now(),
+        jsLag: Date.now() - liftedAt,
         // A landing that never hears its glide end (the glide was cut short,
         // the JS thread was held up at startup) used to keep `busy` set for
         // good: every later swipe was ignored and the cover sat wherever it
         // stopped until the app was restarted. Now it always ends.
-        guard: setTimeout(settle, LAND_GUARD_MS),
+        guard: setTimeout(() => settle('guard'), LAND_GUARD_MS),
       };
     },
     [slide, busy, settle],
@@ -266,7 +286,7 @@ export function useSongSwipe({
             }
             // Queued before the glide's end on the same JS queue, so the
             // landing is always set up before onGlided arrives.
-            runOnJS(commit)(d);
+            runOnJS(commit)(d, Date.now());
             return;
           }
           slide.value = withSpring(0, {
