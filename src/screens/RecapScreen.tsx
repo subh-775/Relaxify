@@ -19,10 +19,12 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   BackHandler,
   Image,
+  NativeModules,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  findNodeHandle,
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native';
@@ -74,6 +76,15 @@ import {
 } from '../brandArt';
 
 import {LogoMark} from '../components/Logo';
+import {Share2} from '../icons';
+import {inviteMessage} from '../links';
+import {logEvent} from '../analytics';
+import {toast} from '../toast';
+
+/** ImageShareModule.kt: a picture of a view, with text, to the share sheet. */
+const imageShare = NativeModules.ImageShare as
+  | {shareView(tag: number, text: string): Promise<void>}
+  | undefined;
 
 /** How long a card stays before the next one. */
 const CARD_MS = 5000;
@@ -1535,6 +1546,32 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
     setIndex(0);
   };
 
+  // ── Share the last card: a picture of it and the link to get the app ──
+  const rootRef = useRef<View>(null);
+  const [capturing, setCapturing] = useState(false);
+  const canShare = at === cards.length - 1 && recap.songs > 0 && !!imageShare;
+  const share = () => {
+    // The button hides for the picture; two frames lets that reach the
+    // screen before the native side draws the view.
+    setCapturing(true);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const tag = findNodeHandle(rootRef.current);
+        const lead =
+          mode === 'week'
+            ? 'My week in music on Relaxify 🎧'
+            : 'My music on Relaxify 🎧';
+        (tag != null
+          ? imageShare!.shareView(tag, inviteMessage(lead))
+          : Promise.reject()
+        )
+          .then(() => logEvent('recap_shared', {mode}))
+          .catch(() => toast('Could not share the Recap'))
+          .finally(() => setCapturing(false));
+      }),
+    );
+  };
+
   // ── Swipe down to put it away ────────────────────────────────────────
   const reduce = useReducedMotion();
   const drag = useSharedValue(reduce ? 0 : box.h * 0.12);
@@ -1621,6 +1658,8 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
   const ink = {color: pal.ink};
   return (
     <Animated.View
+      ref={rootRef}
+      collapsable={false}
       style={[styles.wrap, {backgroundColor: pal.bg}, sheet]}
       onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
@@ -1669,6 +1708,14 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
             <Text style={[styles.markText, ink]}>Relaxify</Text>
           </View>
           <View style={styles.modes}>
+            {canShare && !capturing && (
+              <TouchableOpacity
+                onPress={share}
+                style={[styles.share, {backgroundColor: pal.ink}]}
+                hitSlop={8}>
+                <Share2 size={16} color={pal.bg} strokeWidth={2.4} />
+              </TouchableOpacity>
+            )}
             {(['week', 'all'] as const).map(m => {
               const on = m === mode;
               return (
@@ -1742,7 +1789,15 @@ const styles = StyleSheet.create({
   },
   mark: {flexDirection: 'row', alignItems: 'center', gap: 7},
   markText: {fontSize: 15.5, fontWeight: '800', letterSpacing: -0.2},
-  modes: {flexDirection: 'row', gap: 4},
+  modes: {flexDirection: 'row', alignItems: 'center', gap: 4},
+  share: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
   mode: {
     paddingHorizontal: 11,
     paddingVertical: 5,

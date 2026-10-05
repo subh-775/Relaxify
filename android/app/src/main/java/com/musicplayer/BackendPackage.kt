@@ -14,6 +14,7 @@ class BackendPackage : ReactPackage {
             AnalyticsModule(reactContext),
             WidgetModule(reactContext),
             DeviceModule(reactContext),
+            ImageShareModule(reactContext),
         )
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
