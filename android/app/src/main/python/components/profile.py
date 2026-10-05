@@ -638,6 +638,27 @@ def _jiosaavn_search_artists(query, limit):
     return out
 
 
+def _jiosaavn_artist_photos(query, limit):
+    """{normalized name: official photo} from JioSaavn's artist search.
+
+    Photos only, never new results. Deezer's index has same-name strangers
+    (its only "Aditya Rikhari" is someone else, 883 fans), and the first
+    search hit's photo is what the Recap and "Your artists" keep. JioSaavn's
+    photo belongs to the artist whose songs we actually play. Its search puts
+    the real artist first with a 50x50 photo (scaled up here); the junk
+    entities behind it carry a placeholder, which is skipped."""
+    sr = _jcall({"__call": "search.getArtistResults", "q": query, "p": "1",
+                 "n": str(limit), "api_version": "4"})
+    hits = sr.get("results", []) if isinstance(sr, dict) else []
+    out = {}
+    for h in hits:
+        img = h.get("image") or ""
+        key = re.sub(r"[^a-z0-9]", "", _clean(h.get("name") or h.get("title")).lower())
+        if key and img and "artist-default" not in img and key not in out:
+            out[key] = re.sub(r"\d+x\d+(?=\.\w+$)", "500x500", img)
+    return out
+
+
 def search_artists(query, limit=10):
     """Real artist search for the search page's Artists section.
 
@@ -652,10 +673,11 @@ def search_artists(query, limit=10):
     query = (query or "").strip()
     if not query:
         return []
-    with ThreadPoolExecutor(max_workers=2) as ex:
+    with ThreadPoolExecutor(max_workers=3) as ex:
         f_dz = ex.submit(_deezer_search_artists, query, limit)
         f_js = ex.submit(_jiosaavn_search_artists, query, limit)
-        dz, js = f_dz.result(), f_js.result()
+        f_ph = ex.submit(_jiosaavn_artist_photos, query, limit)
+        dz, js, photos = f_dz.result(), f_js.result(), f_ph.result()
 
     merged = {}
     _noise = lambda s: sum(1 for c in s if not c.isalnum() and not c.isspace())
@@ -699,6 +721,11 @@ def search_artists(query, limit=10):
             fl = re.sub(r"[^a-z0-9]", "", (toks[0] + toks[-1]).lower())
             if fl != key and fl in merged:
                 _absorb(merged[fl], merged.pop(key))
+
+    # The official JioSaavn photo wins over Deezer's (see _jiosaavn_artist_photos).
+    for key, a in merged.items():
+        if key in photos:
+            a["image"] = photos[key]
 
     # ── Validate so we only surface REAL artists that open a profile with data
     # (the user's rule: no dead "Artist not available" cards). Three layers:

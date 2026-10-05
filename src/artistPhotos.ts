@@ -20,7 +20,11 @@ type Photos = Record<string, string>;
 /** Bounded: past this the oldest entries go first. */
 const MAX = 300;
 
-const store = createStore<Photos>('mp.artistPhotos.v1', {}, raw =>
+// v2: v1 photos came from Deezer first, which put a stranger's face on some
+// artists (its only "Aditya Rikhari" is someone else). The backend now
+// prefers JioSaavn's official photo; a new key looks every artist up again.
+// ponytail: the v1 entry (a few KB of URLs) is left behind, not deleted.
+const store = createStore<Photos>('mp.artistPhotos.v2', {}, raw =>
   raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Photos) : {},
 );
 
