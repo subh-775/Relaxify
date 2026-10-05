@@ -204,7 +204,13 @@ export function codeIn(text: string): string {
   ) {
     return word;
   }
-  // The message: "...enter K7QX2M..." — the code is the one capitalised
+  // The link (".../p/?c=K7QX2M") first: a playlist named "CHILLS" is a
+  // capitalised six-letter word too, and it comes earlier in the message.
+  const link = s.match(/[?&]c=([A-Za-z0-9]{6})\b/);
+  if (link && validCode(normalizeCode(link[1]))) {
+    return normalizeCode(link[1]);
+  }
+  // An older message: "...enter K7QX2M..." — the code is the one capitalised
   // six-character word in it.
   if (/relaxify/i.test(s)) {
     const m = s.match(/\b[A-HJ-NP-Z2-9]{6}\b/);

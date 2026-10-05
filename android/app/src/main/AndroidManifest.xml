@@ -69,6 +69,16 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- A shared playlist link: the docs page /p/?c=CODE hands the code
+             over as relaxify://p/CODE (App.tsx opens it). A custom scheme,
+             because an https App Link would need assetlinks.json at the
+             github.io root, which this project site cannot serve. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="relaxify" android:host="p" />
+        </intent-filter>
       </activity>
 
       <!-- Hears the app being swiped away and makes sure the music stops

@@ -26,15 +26,18 @@ import {
   stopSharing,
 } from '../sharedPlaylists';
 import {toast} from '../toast';
+import {playlistLink} from '../links';
 import {Sheet} from './Sheet';
 
 /** What a friend receives. The code is also typed in Library's ticket box,
  *  and the whole message can be pasted into Search. */
 export function shareMessage(name: string, code: string): string {
+  // The link opens the playlist in Relaxify, or offers the app to someone
+  // without it. The code stays for typing it in by hand.
   return (
-    `Listen to "${name}" with me on Relaxify 🎧 Open Relaxify, go to Your ` +
-    `Library, tap the ticket and enter ${code}. Or paste this whole message ` +
-    'into Search.'
+    `Listen to "${name}" with me on Relaxify 🎧\n${playlistLink(code)}\n\n` +
+    'No app yet? The link gets it for you. Already have it? Library, tap ' +
+    `the ticket and enter ${code}.`
   );
 }
 

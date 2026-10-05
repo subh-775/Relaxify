@@ -6,6 +6,7 @@ import {
   PermissionsAndroid,
   Platform,
   SafeAreaView,
+  Share,
   StatusBar,
   StyleSheet,
   View,
@@ -14,7 +15,7 @@ import {ErrorBoundary} from './src/ErrorBoundary';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {RecapScreen} from './src/screens/RecapScreen';
 import {JamScreen} from './src/screens/JamScreen';
-import {DOCS_URL} from './src/links';
+import {DOCS_URL, inviteMessage} from './src/links';
 import {startDeviceMemory} from './src/deviceMemory';
 import {startDevice} from './src/device';
 import {WelcomeScreen, settleWelcome, useWelcomed} from './src/screens/WelcomeScreen';
@@ -40,7 +41,7 @@ import {
   useAddToPlaylistHost,
 } from './src/components/AddToPlaylistSheet';
 import {ArtistPickerSheet} from './src/components/ArtistPickerSheet';
-import {startSharing} from './src/sharedPlaylists';
+import {openShared, startSharing} from './src/sharedPlaylists';
 import {
   WrongSongSheet,
   useWrongSongHost,
@@ -77,7 +78,7 @@ import {
   type HomeItem,
   type Track,
 } from './src/backend';
-import {downloadsCollection} from './src/collections';
+import {downloadsCollection, playlistToCollection} from './src/collections';
 import {overlayDownloadArtwork} from './src/downloads';
 import {
   playTrack,
@@ -92,6 +93,7 @@ import {type Collection} from './src/collections';
 import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
 import {toast} from './src/toast';
+import {readPlaylists} from './src/playlists';
 import {diag} from './src/diag';
 import {logEvent} from './src/analytics';
 
@@ -534,18 +536,28 @@ function Shell() {
   const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
   const closeLanguages = useCallback(() => setLangOpen(false), []);
-  // Sunday's Recap notification opens the app on relaxify://recap, whether it
-  // was closed (the initial URL) or already running (a url event).
+  // Sunday's Recap notification opens the app on relaxify://recap, and a
+  // shared playlist link's page on relaxify://p/CODE, whether the app was
+  // closed (the initial URL) or already running (a url event).
   useEffect(() => {
     const go = (url: string | null) => {
       if (url?.startsWith('relaxify://recap')) {
         openRecap();
       }
+      const code = url?.match(/^relaxify:\/\/p\/(\w{6})/)?.[1];
+      if (code) {
+        openShared(code)
+          .then(id => {
+            const p = readPlaylists().find(x => x.id === id);
+            p && openCollection(playlistToCollection(p));
+          })
+          .catch(e => toast(e instanceof Error ? e.message : String(e)));
+      }
     };
     Linking.getInitialURL().then(go, () => {});
     const sub = Linking.addEventListener('url', e => go(e.url));
     return () => sub.remove();
-  }, [openRecap]);
+  }, [openRecap, openCollection]);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -604,6 +616,9 @@ function Shell() {
         setLangOpen(true);
       } else if (dest === 'jam') {
         setJamOpen(true);
+      } else if (dest === 'recommend') {
+        logEvent('app_recommended');
+        Share.share({message: inviteMessage()}).catch(() => {});
       }
       // updateWaiting is read above, so it has to be a dependency — with an empty
       // array this closure would keep whatever the flag was on first render and

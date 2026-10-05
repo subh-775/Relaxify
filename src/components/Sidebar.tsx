@@ -40,7 +40,13 @@ import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
 import {LogoMark} from './Logo';
 
-export type SidebarDest = 'settings' | 'help' | 'languages' | 'equalizer' | 'jam';
+export type SidebarDest =
+  | 'settings'
+  | 'help'
+  | 'languages'
+  | 'equalizer'
+  | 'jam'
+  | 'recommend';
 
 // No per-item hint text any more — "Everything you have listened to" under
 // "Recents" was explaining a label that already explains itself, and it made
@@ -76,6 +82,7 @@ const ITEMS: {id: SidebarDest; label: string}[] = [
   {id: 'jam', label: 'Jam'},
   {id: 'help', label: 'How to use'},
   {id: 'languages', label: 'Home languages'},
+  {id: 'recommend', label: 'Recommend Relaxify'},
   {id: 'settings', label: 'Settings'},
 ];
 

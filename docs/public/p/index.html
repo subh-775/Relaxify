@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>A playlist on Relaxify</title>
+<!-- A shared playlist link: /p/?c=K7QX2M. On Android it hands the code to the
+     app (relaxify://p/CODE, see AndroidManifest.xml); without the app the
+     browser falls back to /get/. The preview tags are static, so WhatsApp
+     shows the app, not the playlist's name. -->
+<meta name="description" content="Someone shared a playlist with you. Tap to open it in Relaxify, a free music app for Android.">
+<meta name="theme-color" content="#000000">
+<meta property="og:type" content="website">
+<meta property="og:title" content="A playlist for you on Relaxify">
+<meta property="og:description" content="Tap to open it in Relaxify. No app yet? The link gets it for you, free.">
+<meta property="og:image" content="https://subh-775.github.io/Relaxify/logo.png">
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --surface: #121212;
+    --text: #f4f5f7;
+    --body: #c9ccd3;
+    --sub: #9096a2;
+    --ember-grad: linear-gradient(135deg, #ffb38a, #ff5a6e 55%, #c2185b);
+    --font: "Plus Jakarta Sans", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
+  main { max-width: 440px; margin: 0 auto; padding: max(48px, env(safe-area-inset-top)) 20px 48px; display: grid; gap: 26px; }
+  .mark { width: 64px; height: 64px; }
+  h1 { font-size: 36px; line-height: 1.05; font-weight: 800; letter-spacing: -1.2px; margin: 0; text-wrap: balance; }
+  .lede { font-size: 16.5px; line-height: 1.55; color: var(--body); margin: 10px 0 0; }
+  .ticket { background: var(--surface); border-radius: 16px; padding: 18px 20px; display: grid; gap: 6px; }
+  .ticket span { font-size: 13px; color: var(--sub); }
+  .code { font-size: 34px; font-weight: 800; letter-spacing: 8px; font-variant-numeric: tabular-nums; }
+  .btn { display: flex; align-items: center; justify-content: center; min-height: 58px; border-radius: 999px; background: var(--ember-grad); color: #000; font-weight: 800; font-size: 17px; text-decoration: none; }
+  .ghost { display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 999px; border: 1.5px solid rgba(255,255,255,.28); color: var(--text); font-weight: 700; font-size: 15.5px; text-decoration: none; }
+  .btn:focus-visible, .ghost:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+  .actions { display: grid; gap: 12px; }
+  .foot { font-size: 14px; color: var(--sub); line-height: 1.6; margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="g" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FFB38A"/><stop offset=".5" stop-color="#FF5A6E"/><stop offset="1" stop-color="#C2185B"/></linearGradient></defs><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#g)"/></svg>
+  <div>
+    <h1 id="title">A playlist for you</h1>
+    <p class="lede" id="lede">Someone shared a playlist with you on Relaxify. Open it in the app, or get the app first. It's free.</p>
+  </div>
+  <div class="ticket" id="ticket" hidden>
+    <span>Playlist code</span>
+    <div class="code" id="code"></div>
+  </div>
+  <div class="actions">
+    <a class="btn" id="open" href="../get/">Open in Relaxify</a>
+    <a class="ghost" href="../get/">Get Relaxify</a>
+  </div>
+  <p class="foot" id="foot">The link didn't open the app? Open Relaxify, go to Library, tap the ticket and enter the code above.</p>
+</main>
+<script>
+  (function () {
+    var m = /[?&]c=([A-Za-z0-9]{6})(?:&|$)/.exec(location.search);
+    var code = m ? m[1].toUpperCase() : '';
+    // The app's own alphabet: no O, I, 0 or 1.
+    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) {
+      document.getElementById('title').textContent = 'This link is incomplete';
+      document.getElementById('lede').textContent =
+        'It is missing its playlist code. Ask for the link again, or get Relaxify below.';
+      document.getElementById('open').hidden = true;
+      document.getElementById('foot').hidden = true;
+      return;
+    }
+    document.getElementById('code').textContent = code;
+    document.getElementById('ticket').hidden = false;
+    if (!/Android/i.test(navigator.userAgent)) {
+      // Relaxify is Android only; the code still works on a phone later.
+      document.getElementById('open').hidden = true;
+      return;
+    }
+    var fallback = new URL('../get/', location.href).href;
+    var intent = 'intent://p/' + code + '#Intent;scheme=relaxify;' +
+      'S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end';
+    document.getElementById('open').href = intent;
+    // One try straight away; the button stays for browsers that block it.
+    location.href = intent;
+  })();
+</script>
+</body>
+</html>
