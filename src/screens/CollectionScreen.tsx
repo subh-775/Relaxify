@@ -62,8 +62,10 @@ import {DownloadRow} from '../components/DownloadRow';
 import {
   State,
   setShuffle,
+  shuffleInAfterCurrent,
   togglePlay,
   useActiveTrack,
+  usePlaybackOrigin,
   usePlaybackState,
   useShuffle,
 } from '../player';
@@ -250,6 +252,7 @@ export function CollectionScreen({
   // if the big green button means pause/resume or "start from the top".
   const activeEngine = useActiveTrack();
   const {state: playState} = usePlaybackState() as {state?: State};
+  const origin = usePlaybackOrigin();
   const playingHere = useMemo(() => {
     if (!activeEngine) {
       return false;
@@ -410,9 +413,10 @@ export function CollectionScreen({
   }, [playlistId, displayName, onClose]);
 
   /**
-   * Shuffle reorders what comes NEXT without touching the current song when
-   * this collection is already playing; otherwise it starts playback from a
-   * random track. Either way the icon goes green to say the order is shuffled.
+   * Shuffle never cuts off the song playing now. This collection already
+   * playing: what comes next is reordered. Something else playing: this
+   * collection, shuffled, comes next. Nothing loaded: playback starts from a
+   * random track. Either way the icon lights to say the order is shuffled.
    */
   const shuffle = useCallback(async () => {
     if (!tracks.length) {
@@ -425,15 +429,21 @@ export function CollectionScreen({
       toast('Shuffle off');
       return;
     }
-    if (playingHere) {
+    // The origin too: a "Wrong song?" pick or a cleaned-up title misses the
+    // title match, and Shuffle then restarted the list on a random song.
+    if (playingHere || origin === collection.id) {
       await setShuffle(true).catch(() => {});
       toast('Shuffled what comes next');
+    } else if (
+      await shuffleInAfterCurrent(tracks, collection.id).catch(() => false)
+    ) {
+      toast(`${displayName} comes next, shuffled`);
     } else {
       onPlay(tracks[Math.floor(Math.random() * tracks.length)], tracks);
       // Give the queue a beat to build before shuffling its tail.
       setTimeout(() => setShuffle(true).catch(() => {}), 600);
     }
-  }, [onPlay, tracks, playingHere, shuffled]);
+  }, [onPlay, tracks, playingHere, shuffled, origin, collection.id, displayName]);
 
   /** The green button: pause/resume when this collection is playing, start it
    *  otherwise — never a dead control. */

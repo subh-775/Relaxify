@@ -427,9 +427,6 @@ async function setupPlayerOnce(): Promise<boolean> {
     });
     await TrackPlayer.setRepeatMode(RepeatMode.Off);
 
-    // Every track the engine lands on — auto-advance, radio, a queue tap —
-    // goes into Recently Played AS IT STARTS, so Home updates live. Manual
-    // playTrack() also records (first write wins on order; remember() de-dupes).
     // The end-of-track sleep stop is ExoPlayer pausing itself on the last
     // frame (setPauseAtEndOfTrack). This notices that pause — a native event,
     // so it arrives with the screen off — and clears the timer, so the next
@@ -532,7 +529,10 @@ async function setupPlayerOnce(): Promise<boolean> {
         TrackPlayer.getPlaybackState()
           .then(p => pushWidget(src, p.state === State.Playing))
           .catch(() => pushWidget(src, false));
-        remember(src);
+        // Recents: a song you tapped goes in as it starts (playTrack); one the
+        // engine moved on to (autoplay, Next, a swipe) only once it has earned a
+        // play (countListened), so a song skipped after a second never shows up.
+
         // The same queue ROW again is not a new play. Tapping a song part-way
         // down a list starts it alone, then inserts the earlier songs in front
         // of it; the shift fires this event a second time for the song that is
@@ -1352,6 +1352,48 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
 }
 
 /**
+ * Shuffle a collection in AFTER the song playing now: the song carries on,
+ * and everything after it becomes `tracks` in a random order. Shuffle off
+ * then puts them back in the collection's own order.
+ *
+ * This is the collection screen's Shuffle while something else is playing.
+ * It used to start a random song from the list, cutting off the one being
+ * listened to. Returns false when nothing is loaded (the caller then starts
+ * playback itself).
+ */
+export function shuffleInAfterCurrent(
+  tracks: Track[],
+  originId: string,
+): Promise<boolean> {
+  logEvent('shuffle', {on: 1});
+  return serialQueueOp(async () => {
+    const index = await TrackPlayer.getActiveTrackIndex();
+    if (index == null) {
+      return false;
+    }
+    const playing = sourceTrackFor(engineQueue[index] ?? null);
+    const key = playing ? getDownloadKey(playing) : '';
+    const items = tracks
+      .map(orig => chosenCopy(orig))
+      .filter(t => getDownloadKey(t) !== key)
+      .map(t => ({t, q: toQueueItem(t, currentQuality())}))
+      .filter((x): x is {t: Track; q: NonNullable<typeof x.q>} => !!x.q);
+    if (!items.length) {
+      return false;
+    }
+    const order = items.map(x => x.q as RNTPTrack);
+    await TrackPlayer.removeUpcomingTracks();
+    await TrackPlayer.add(shuffleUpcoming(order));
+    queueSource = [...queueSource, ...items.map(x => x.t)];
+    preShuffleUpcoming = order;
+    setShuffleFlag(true);
+    setPlaybackOrigin(originId);
+    await refreshEngineMirror();
+    return true;
+  });
+}
+
+/**
  * Drop the radio picks still sitting in the queue.
  *
  * Turning autoplay off stops the top-up from running again, which is all it
@@ -1717,8 +1759,7 @@ function countListened(
       // ran out behind a locked screen is the beginning.
       countRow = undefined;
       if (earnedPlay(0, position, duration)) {
-        const src = sourceTrackFor(row);
-        src && recordPlay(src, Date.now() - position * 1000);
+        heard(row, position);
       }
       return;
     }
@@ -1732,8 +1773,16 @@ function countListened(
     return;
   }
   counted = true;
+  heard(row, position);
+}
+
+/** A play that counts: for the Recap, and into Recents if it is not there. */
+function heard(row: RNTPTrack, position: number): void {
   const src = sourceTrackFor(row);
-  src && recordPlay(src, Date.now() - position * 1000);
+  if (src) {
+    recordPlay(src, Date.now() - position * 1000);
+    remember(src);
+  }
 }
 
 /**

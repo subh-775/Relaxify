@@ -90,7 +90,7 @@ function prefetchFirstCovers(rows: HomeRow[]): Promise<unknown> {
 
 type Props = {
   onPickTrack: (item: HomeItem) => void;
-  onPlayTrack: (track: Track, context: Track[]) => void;
+  onPlayTrack: (track: Track, context?: Track[]) => void;
   onOpenMenu: () => void;
   /** A drawer pull has started — mount the panel NOW so it can be dragged. */
   onBeginDrag: () => void;

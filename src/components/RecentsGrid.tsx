@@ -2,8 +2,9 @@
  * Recents: the last nine songs you played, as a three-by-three grid of covers
  * at the top of Home — the "speed dial" layout YouTube Music uses.
  *
- * A tap plays the song with the rest of your recents queued after it. The
- * song playing now wears a ring in the greeting's colour and a little
+ * A tap plays that song alone and lets autoplay find similar ones, as a
+ * search result does: your recents are a history, not a playlist. The sheet's
+ * "Play all" is the one way to queue them all. The song playing now wears a ring in the greeting's colour and a little
  * equalizer that dances while it plays and lies flat when paused, so the grid
  * also answers "what is on, and is it playing" at a glance.
  *
@@ -49,7 +50,7 @@ export function RecentsGrid({
   onPlay,
 }: {
   recent: Track[];
-  onPlay: (track: Track, context: Track[]) => void;
+  onPlay: (track: Track, context?: Track[]) => void;
 }) {
   const {width} = useWindowDimensions();
   const [open, setOpen] = useState(false);
@@ -75,7 +76,7 @@ export function RecentsGrid({
             key={getTrackId(t)}
             track={t}
             size={size}
-            onPress={() => onPlay(t, recent)}
+            onPress={() => onPlay(t)}
           />
         ))}
         {more && <MoreTile size={size} onPress={() => setOpen(true)} />}
@@ -85,9 +86,9 @@ export function RecentsGrid({
           open={open}
           recent={recent}
           onClose={() => setOpen(false)}
-          onPlay={(t: Track) => {
+          onPlay={(t: Track, all?: Track[]) => {
             setOpen(false);
-            onPlay(t, recent);
+            onPlay(t, all);
           }}
         />
       )}
@@ -122,7 +123,7 @@ function LastSongs({
   open: boolean;
   recent: Track[];
   onClose: () => void;
-  onPlay: (t: Track) => void;
+  onPlay: (t: Track, all?: Track[]) => void;
 }) {
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler(e => {
@@ -135,7 +136,7 @@ function LastSongs({
         <TouchableOpacity
           style={styles.playAll}
           activeOpacity={0.8}
-          onPress={() => onPlay(recent[0])}
+          onPress={() => onPlay(recent[0], recent)}
           accessibilityRole="button">
           <Text style={styles.playAllText}>Play all</Text>
         </TouchableOpacity>
