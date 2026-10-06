@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Get Relaxify</title>
+<!-- The page every invite links to (the app's "Recommend Relaxify" and the
+     Recap's share). Static on purpose: WhatsApp reads these tags without
+     running any script. The button always downloads the newest release. -->
+<meta name="description" content="A free music app for Android. Tap to download the newest version.">
+<meta name="theme-color" content="#000000">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Get Relaxify">
+<meta property="og:description" content="A free music app for Android. Search once, play from JioSaavn, SoundCloud and YouTube. Tap to download the newest version.">
+<meta property="og:image" content="https://subh-775.github.io/Relaxify/logo.png">
+<meta property="og:url" content="https://subh-775.github.io/Relaxify/get/">
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --surface: #121212;
+    --text: #f4f5f7;
+    --body: #c9ccd3;
+    --sub: #9096a2;
+    --ember: #ff5a6e;
+    --ember-grad: linear-gradient(135deg, #ffb38a, #ff5a6e 55%, #c2185b);
+    --font: "Plus Jakarta Sans", system-ui, -apple-system, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
+  main { max-width: 440px; margin: 0 auto; padding: max(48px, env(safe-area-inset-top)) 20px 48px; display: grid; gap: 28px; }
+  .mark { width: 84px; height: 84px; }
+  h1 { font-size: 44px; line-height: 1; font-weight: 800; letter-spacing: -1.8px; margin: 0; }
+  .lede { font-size: 17px; line-height: 1.55; color: var(--body); margin: 10px 0 0; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 58px; border-radius: 999px; background: var(--ember-grad); color: #000; font-weight: 800; font-size: 17px; text-decoration: none; }
+  .btn:focus-visible, a:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+  .meta { font-size: 13.5px; color: var(--sub); text-align: center; margin-top: 10px; font-variant-numeric: tabular-nums; }
+  ol { margin: 0; padding: 18px 20px 18px 40px; background: var(--surface); border-radius: 16px; display: grid; gap: 10px; color: var(--body); font-size: 15px; line-height: 1.5; }
+  ol li::marker { color: var(--ember); font-weight: 800; }
+  .foot { font-size: 14px; color: var(--sub); line-height: 1.6; margin: 0; }
+  .foot a { color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="g" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FFB38A"/><stop offset=".5" stop-color="#FF5A6E"/><stop offset="1" stop-color="#C2185B"/></linearGradient></defs><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#g)"/></svg>
+  </div>
+  <div>
+    <h1>Relaxify</h1>
+    <p class="lede">A free music app for Android. Search once, play from JioSaavn, SoundCloud and YouTube, and listen together with Jam.</p>
+  </div>
+  <div>
+    <a class="btn" id="dl" href="https://github.com/subh-775/Relaxify/releases/latest/download/Relaxify.apk">Download for Android</a>
+    <div class="meta" id="meta">Always the newest version</div>
+  </div>
+  <ol>
+    <li>Tap Download, then open the file when it finishes.</li>
+    <li>If Android asks, allow installs from your browser.</li>
+    <li>Open Relaxify and pick the languages you listen in.</li>
+  </ol>
+  <p class="foot">Already have it? New versions arrive inside the app. Stuck? <a href="../">How to use Relaxify</a>.</p>
+</main>
+<script>
+  // The version and size, when GitHub answers. The button works without it.
+  fetch('https://api.github.com/repos/subh-775/Relaxify/releases/latest')
+    .then(r => (r.ok ? r.json() : Promise.reject()))
+    .then(rel => {
+      const apk = (rel.assets || []).find(a => a.name === 'Relaxify.apk');
+      const mb = apk ? ` · ${Math.round(apk.size / 1048576)} MB` : '';
+      document.getElementById('meta').textContent =
+        `${rel.tag_name}${mb} · always the newest version`;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

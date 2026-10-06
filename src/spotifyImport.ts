@@ -26,6 +26,8 @@ export type LastImport = {
   found: number;
   total: number;
   opened: boolean;
+  /** YouTube songs kept as their YouTube original (nothing else matched). */
+  kept?: number;
 };
 const lastImport = createStore<LastImport | null>('mp.lastImport.v1', null, raw =>
   raw && typeof raw === 'object' && typeof (raw as LastImport).playlistId === 'string'
@@ -55,7 +57,7 @@ function saveFinished(url: string, res: ImportSnapshot): void {
   }
   savedUrls.add(url);
   const tracks = normalizeTracks(res.tracks);
-  const pl = createPlaylist(res.name || 'Spotify playlist');
+  const pl = createPlaylist(res.name || `${importSourceName(url)} playlist`);
   if (!pl) {
     return;
   }
@@ -68,9 +70,15 @@ function saveFinished(url: string, res: ImportSnapshot): void {
     found: res.matched,
     total: res.total,
     opened: false,
+    kept: res.kept || 0,
   });
   toast(`Saved "${pl.name}" to Your Library, ${res.matched} songs`);
-  logEvent('spotify_import_done', {found: res.matched, total: res.total});
+  logEvent('spotify_import_done', {
+    found: res.matched,
+    total: res.total,
+    source: res.source || 'spotify',
+    kept: res.kept || 0,
+  });
 }
 
 /** The words for a failed import, from the engine's error. */
@@ -82,10 +90,13 @@ export function importProblem(error: string | null, found: number): string {
     return "Relaxify's music engine did not answer";
   }
   const e = error.toLowerCase();
+  if (e.includes('google login')) {
+    return 'Your own likes and Watch later are private';
+  }
   if (e.includes('public') || e.includes('read that playlist')) {
     return 'That playlist is private';
   }
-  if (e.includes('not a spotify')) {
+  if (e.includes('not a spotify') || e.includes('not a playlist')) {
     return 'That is not a playlist link';
   }
   return 'Check your connection';
@@ -93,8 +104,14 @@ export function importProblem(error: string | null, found: number): string {
 
 /** Set as the error when the engine stops answering, so the card can say so. */
 const NO_ENGINE = 'engine did not answer';
-/** The engine's own words for a link it cannot read as Spotify. */
-export const BAD_LINK = 'Not a Spotify playlist or album link';
+/** Set as the error when the engine refuses the link itself. */
+export const BAD_LINK = 'Not a playlist link';
+/** Your own YouTube lists (Liked videos, Liked music, Watch later): they need
+ *  a Google login, which Relaxify does not ask for. Known from the link, so
+ *  the import says why at once instead of failing on the engine. */
+export const PRIVATE_LIST = 'Private playlist: needs a Google login';
+const privateYouTubeList = (url: string) =>
+  isYouTubePlaylistUrl(url) && /[?&]list=(?:LL|LM|WL)(?:[&#]|$)/.test(url);
 /** Failed checks in a row before an import gives up on the engine. */
 const MAX_FAILURES = 6;
 /** No new song checked for this long: the card says it is slow. */
@@ -155,6 +172,30 @@ export function isSpotifyUrl(text: string): boolean {
   );
 }
 
+/** A YouTube or YouTube Music link that carries a playlist (list=). The
+ *  engine's components/youtube_playlist.py parse_url is the same rule. */
+export function isYouTubePlaylistUrl(text: string): boolean {
+  const s = (text || '').trim();
+  return (
+    /^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//i.test(s) &&
+    /[?&]list=[A-Za-z0-9_-]+/.test(s)
+  );
+}
+
+/** Any link the import takes: Spotify, YouTube or YouTube Music. */
+export function isImportUrl(text: string): boolean {
+  return isSpotifyUrl(text) || isYouTubePlaylistUrl(text);
+}
+
+/** Where a link is from, in the words a person uses. */
+export function importSourceName(url: string | null): string {
+  const s = url || '';
+  if (/music\.youtube\.com/i.test(s)) {
+    return 'YouTube Music';
+  }
+  return isYouTubePlaylistUrl(s) ? 'YouTube' : 'Spotify';
+}
+
 /**
  * Start (or resume) importing a URL.
  *
@@ -176,13 +217,21 @@ export function startImport(url: string): void {
     return;
   }
   stop();
+  if (privateYouTubeList(url)) {
+    state = {...empty(), url, error: PRIVATE_LIST, finished: true};
+    emit();
+    return;
+  }
   const mine = run;
   savedUrls.delete(url); // a fresh run of the same link saves again
   state = {...empty(), url};
   failures = 0;
   lastMove = Date.now();
   emit();
-  logEvent('spotify_import', {again: again ? 1 : 0});
+  logEvent('spotify_import', {
+    again: again ? 1 : 0,
+    source: isYouTubePlaylistUrl(url) ? 'youtube' : 'spotify',
+  });
 
   const poll = async () => {
     try {

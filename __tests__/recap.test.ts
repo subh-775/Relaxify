@@ -11,7 +11,15 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   removeItem: async () => undefined,
 }));
 
-import {buildRecap, hourLabel, personaFor, reminderText, streaks} from '../src/recap';
+import {
+  buildRecap,
+  hourLabel,
+  personaFor,
+  recapCardDue,
+  recapEligible,
+  reminderText,
+  streaks,
+} from '../src/recap';
 import type {Stats} from '../src/stats';
 
 const HOUR = 3_600_000;
@@ -128,4 +136,22 @@ test("Sunday's notification: the week's count and top song, silent when empty", 
   );
   const empty = {tracks: {}, artists: {}, plays: 0, log: [], days: {}};
   expect(reminderText(buildRecap(empty, NOW, 'week'))).toBe('');
+});
+
+test('the Home card: Sunday and Monday, for a listener with history', () => {
+  const at = (d: number) => new Date(2026, 8, d, 12).getTime(); // Sep 2026
+  const days: Record<string, number> = {'2026-09-24': 5, '2026-09-25': 5, '2026-09-26': 5};
+  const s = (plays: number, d = days) =>
+    ({tracks: {}, artists: {}, plays, days: d, log: [{at: at(26), full: 200, src: 'jiosaavn'}]}) as Stats;
+  // 27 Sep 2026 is a Sunday.
+  expect(recapCardDue(s(15), at(27))).toBe(true);
+  expect(recapCardDue(s(15), at(28))).toBe(true); // Monday, one more day
+  expect(recapCardDue(s(15), at(29))).toBe(false); // Tuesday: gone
+  expect(recapCardDue(s(15), at(26))).toBe(false); // Saturday
+  // New listeners: too few plays, or all on one day.
+  expect(recapCardDue(s(14), at(27))).toBe(false);
+  expect(recapCardDue(s(40, {'2026-09-26': 40}), at(27))).toBe(false);
+  expect(recapEligible(s(15))).toBe(true);
+  // Eligible, but nothing played in the last seven days.
+  expect(recapCardDue(s(15), at(27) + 8 * 24 * HOUR)).toBe(false);
 });

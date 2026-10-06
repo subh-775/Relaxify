@@ -29,6 +29,7 @@ import {cleanText, getBestArtworkUrl} from '../tracks';
 import {
   addTrackToPlaylist,
   createPlaylist,
+  isFollowed,
   playlistsContaining,
   removeTrackFromPlaylist,
   usePlaylists,
@@ -71,10 +72,11 @@ export function useAddToPlaylistHost(open: (t: Track) => void): void {
 const FILTER_FROM = 3;
 
 /** The mark's red: a filled tick means the song is in that list. */
-const TICKED = '#FF5A6E';
+const TICKED = C.brand;
 
-/** A round tick: an empty ring, or filled red with a check. */
-function Tick({on}: {on: boolean}) {
+/** A round tick: an empty ring, or filled red with a check. Also the
+ *  "this copy" mark in WrongSongSheet. */
+export function Tick({on}: {on: boolean}) {
   return (
     <View style={[styles.tick, on && styles.tickOn]}>
       {on && <Check size={14} color="#fff" strokeWidth={3.6} />}
@@ -125,7 +127,10 @@ function AddToPlaylistSheetView({
   // Pinned first, then filtered — so pinning still means "near the top" inside
   // a filtered result rather than only in the unfiltered list.
   const rows = useMemo(() => {
-    const sorted = sortPinned(playlists, pins, p => rowId('playlist', p));
+    // A friend's playlist you follow is theirs to change: not a place to
+    // save a song.
+    const own = playlists.filter(p => !isFollowed(p));
+    const sorted = sortPinned(own, pins, p => rowId('playlist', p));
     const q = query.trim().toLowerCase();
     return q ? sorted.filter(p => p.name.toLowerCase().includes(q)) : sorted;
   }, [playlists, pins, query]);

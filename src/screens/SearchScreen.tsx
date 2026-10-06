@@ -46,9 +46,11 @@ import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam} from '../store';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
-import {isSpotifyUrl} from '../spotifyImport';
-
-export {isSpotifyUrl};
+import {importSourceName, isImportUrl} from '../spotifyImport';
+import {codeIn, openShared} from '../sharedPlaylists';
+import {readPlaylists} from '../playlists';
+import {playlistToCollection, type Collection} from '../collections';
+import {toast} from '../toast';
 import {BRIGHT_PALS, blob} from '../brandArt';
 import Svg, {
   Circle,
@@ -86,12 +88,15 @@ export const SearchScreen = React.memo(function SearchScreen({
   onOpenArtist,
   onOpenBrowse,
   onOpenMenu,
+  onOpenCollection,
 }: {
   /** Whether the Search tab is the one on screen. The tab stays MOUNTED when
    *  you leave it (that's what keeps it instant to come back to), so leaving is
    *  the only signal there is that the search is over. */
   visible: boolean;
-  onPickTrack: (track: Track, context: Track[]) => void;
+  /** A result tapped: that song alone. Autoplay follows it with similar
+   *  songs, not with the rest of the list (other versions, covers, remixes). */
+  onPickTrack: (track: Track) => void;
   onImportSpotify: (url: string) => void;
   onMenu: (track: Track) => void;
   onOpenArtist?: (name: string) => void;
@@ -99,6 +104,8 @@ export const SearchScreen = React.memo(function SearchScreen({
   onOpenBrowse: (item: HomeItem) => void;
   /** The mark at the top-left opens the drawer, as it does on Home. */
   onOpenMenu: () => void;
+  /** A friend's shared playlist, opened from a pasted code or message. */
+  onOpenCollection: (c: Collection) => void;
 }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -148,7 +155,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       setResults(found);
       // A pasted playlist/album URL is a destination, not a query — putting it
       // in Recent searches leaves an unreadable link in the list.
-      if (!isSpotifyUrl(text)) {
+      if (!isImportUrl(text) && !codeIn(text)) {
         rememberSearch(text);
       }
 
@@ -212,7 +219,7 @@ export const SearchScreen = React.memo(function SearchScreen({
   // Debounced suggestions while typing.
   useEffect(() => {
     const text = query.trim();
-    if (text.length < 2 || isSpotifyUrl(text)) {
+    if (text.length < 2 || isImportUrl(text) || codeIn(text)) {
       setSuggestions([]);
       return;
     }
@@ -259,7 +266,25 @@ export const SearchScreen = React.memo(function SearchScreen({
       });
   }, []);
 
-  const spotify = isSpotifyUrl(query);
+  const spotify = isImportUrl(query);
+  // A friend's share code, or the whole message they sent.
+  const shareCode = spotify ? '' : codeIn(query);
+  const openCode = () => {
+    openShared(query)
+      .then(id => {
+        const p = readPlaylists().find(x => x.id === id);
+        if (p) {
+          onOpenCollection(playlistToCollection(p));
+        }
+      })
+      .catch(e =>
+        toast(
+          e instanceof Error && !/^Jam /.test(e.message)
+            ? e.message
+            : 'Could not open it. Check your connection.',
+        ),
+      );
+  };
   const idle = !query.trim() && !results.length;
   const showSuggestions = !!suggestions.length && !busy;
   /**
@@ -294,7 +319,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           ref={inputRef}
           value={query}
           onChangeText={setQuery}
-          accessibilityLabel="Search songs, artists or a Spotify link"
+          accessibilityLabel="Search songs, artists, or paste a playlist link"
           style={styles.input}
           returnKeyType="search"
           autoCorrect={false}
@@ -315,9 +340,25 @@ export const SearchScreen = React.memo(function SearchScreen({
           style={styles.spotify}
           activeOpacity={0.8}
           onPress={() => onImportSpotify(query.trim())}>
-          <Text style={styles.spotifyTitle}>Import from Spotify</Text>
+          <Text style={styles.spotifyTitle}>
+            {`Import from ${importSourceName(query)}`}
+          </Text>
           <Text style={styles.spotifySub} numberOfLines={1}>
             We'll find each song across your sources and save it as a playlist.
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {!!shareCode && (
+        <TouchableOpacity
+          style={styles.spotify}
+          activeOpacity={0.8}
+          onPress={openCode}>
+          <Text style={styles.spotifyTitle}>
+            {`Open shared playlist ${shareCode}`}
+          </Text>
+          <Text style={styles.spotifySub} numberOfLines={1}>
+            A friend's playlist: it goes in Your Library and keeps up with theirs.
           </Text>
         </TouchableOpacity>
       )}
@@ -556,7 +597,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           renderItem={({item}) => (
             <TrackRow
               track={item}
-              onPress={() => onPickTrack(item, results)}
+              onPress={() => onPickTrack(item)}
               onMenu={() => onMenu(item)}
               showDuration={false}
             />

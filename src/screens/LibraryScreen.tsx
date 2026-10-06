@@ -24,6 +24,7 @@ import {
   Pencil,
   Plus,
   Search as SearchIcon,
+  Ticket,
   Trash2,
   X,
 } from '../icons';
@@ -32,13 +33,20 @@ import {PinGlyph} from '../components/PinGlyph';
 import {getLocalLibrary, type Track} from '../backend';
 import {useLikes} from '../store';
 import {useFollowedArtists} from '../artists';
-import {collectionSubtitle, useLibrary, type Collection} from '../collections';
+import {
+  collectionSubtitle,
+  playlistToCollection,
+  useLibrary,
+  type Collection,
+} from '../collections';
 import {
   createPlaylist,
   deletePlaylist,
+  readPlaylists,
   renamePlaylist,
   setPlaylistImage,
 } from '../playlists';
+import {OpenSharedSheet} from '../components/OpenSharedSheet';
 import {
   MAX_PINS,
   isPinned,
@@ -65,7 +73,6 @@ import {MenuMark} from '../components/MenuMark';
 import {useListEnd} from '../components/UpdateModal';
 import {LibraryHeroes} from '../components/LibraryHeroes';
 import {EmptyState} from '../components/EmptyState';
-import {useAccent} from '../accent';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
@@ -123,6 +130,17 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   /** The row a long-press opened options for. */
   const [menuFor, setMenuFor] = useState<Collection | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Collection | null>(null);
+  /** The ticket: open a friend's shared playlist by its code. */
+  const [opening, setOpening] = useState(false);
+  const openFollowed = useCallback(
+    (id: string) => {
+      const p = readPlaylists().find(x => x.id === id);
+      if (p) {
+        onOpen(playlistToCollection(p));
+      }
+    },
+    [onOpen],
+  );
   const [renaming, setRenaming] = useState<Collection | null>(null);
   const [renameText, setRenameText] = useState('');
   /** The library search: open, and what is typed in it. */
@@ -207,7 +225,6 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const heroes = filter === 'all' && !query.trim();
   const liked = withArtists.find(c => c.kind === 'liked');
   const downloaded = withArtists.find(c => c.kind === 'downloads');
-  const [accent] = useAccent();
 
   const rows = useMemo(() => {
     const matches = (c: Collection) => {
@@ -350,6 +367,13 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           <SearchIcon size={24} color={C.text} strokeWidth={2.2} />
         </TouchableOpacity>
         <TouchableOpacity
+          onPress={() => setOpening(true)}
+          hitSlop={12}
+          style={styles.barBtn}
+          accessibilityLabel="Open a shared playlist">
+          <Ticket size={24} color={C.text} strokeWidth={2.2} />
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={() => setCreating(true)}
           hitSlop={12}
           style={styles.barBtn}
@@ -388,7 +412,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
               key={f.id}
               activeOpacity={0.75}
               onPress={() => setFilter(f.id)}
-              style={[styles.chip, on && {backgroundColor: accent}]}>
+              style={[styles.chip, on && styles.chipOn]}>
               <Text style={[styles.chipText, on && styles.chipTextOn]}>
                 {f.label}
               </Text>
@@ -462,6 +486,12 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                         <PinGlyph size={12} color={DOWNLOAD_TINT} />
                       </View>
                     )}
+                    {/* The owner changed it since it was last opened. */}
+                    {'follow' in item &&
+                      !!item.follow?.fresh &&
+                      !item.follow.stopped && (
+                      <Text style={styles.newTag}>NEW</Text>
+                    )}
                     <Text style={styles.rowSub} numberOfLines={1}>
                       {collectionSubtitle(item)}
                     </Text>
@@ -502,7 +532,21 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                 </Text>
               </TouchableOpacity>
             )}
-            {menuFor.kind === 'userPlaylist' && (
+            {menuFor.kind === 'userPlaylist' &&
+              menuFor.follow &&
+              !menuFor.follow.stopped && (
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => doDelete(menuFor)}>
+                  <Trash2 size={20} color={C.danger} />
+                  <Text style={[styles.sheetLabel, styles.sheetDanger]}>
+                    Remove from your Library
+                  </Text>
+                </TouchableOpacity>
+              )}
+            {menuFor.kind === 'userPlaylist' &&
+              !(menuFor.follow && !menuFor.follow.stopped) && (
               <>
                 <TouchableOpacity
                   style={styles.sheetRow}
@@ -536,6 +580,12 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           </View>
         )}
       </Sheet>
+
+      <OpenSharedSheet
+        open={opening}
+        onClose={() => setOpening(false)}
+        onOpened={openFollowed}
+      />
 
       <ConfirmModal
         visible={!!confirmDelete}
@@ -697,6 +747,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: C.surfaceHi,
   },
+  // One colour, the logo's, not the greeting's of the moment: the filter is
+  // part of the Library, and the Library should not change colour with Home.
+  chipOn: {backgroundColor: C.brand},
   chipCount: {color: C.faint, fontSize: 11.5, fontWeight: '800'},
   chipCountOn: {color: '#111014', opacity: 0.6},
   chipText: {...T.sub, color: C.text, fontSize: 13},
@@ -720,10 +773,22 @@ const styles = StyleSheet.create({
   },
   rowText: {flex: 1, minWidth: 0},
   rowTitle: {...T.rowTitle, color: C.text, fontSize: 16},
-  rowTitlePlaying: {color: C.accent},
+  rowTitlePlaying: {color: C.accent, fontWeight: '800'},
   metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 3},
   pin: {marginRight: 5, transform: [{rotate: '45deg'}]},
   rowSub: {...T.sub, color: C.sub, flex: 1},
+  newTag: {
+    color: '#fff',
+    backgroundColor: '#FF5A6E',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    borderRadius: 4,
+    overflow: 'hidden',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    marginRight: 6,
+  },
   empty: {
     color: C.faint,
     textAlign: 'center',

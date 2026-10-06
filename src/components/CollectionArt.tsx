@@ -14,7 +14,7 @@ import {getBestArtworkUrl, thumbArtwork} from '../tracks';
 import {type Collection} from '../collections';
 
 export const LIKED_TINT = '#5b3df5';
-export const DOWNLOAD_TINT = '#1db954';
+export const DOWNLOAD_TINT = C.accent;
 
 export function CollectionArt({
   collection,

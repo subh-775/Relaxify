@@ -601,6 +601,10 @@ class AudioModule(private val ctx: ReactApplicationContext) :
 
     private val exoMethods = HashMap<String, java.lang.reflect.Method>()
 
+    /** Replay (Player.REPEAT_MODE_ONE) is on. */
+    private fun repeatOne(exo: Any): Boolean =
+        (exoGet(exo, "getRepeatMode") as? Int) == 1
+
     private fun exoGet(exo: Any, name: String): Any? = try {
         val m = exoMethods.getOrPut(name) {
             exo.javaClass.getMethod(name).apply { isAccessible = true }
@@ -776,7 +780,8 @@ class AudioModule(private val ctx: ReactApplicationContext) :
             val paused = exoGet(exo, "getPlayWhenReady") as? Boolean == false
             // Paused outside JS (a headset unplugged), or seeked back out of the
             // fade: drop the overlap and put the outgoing song back to full.
-            if (paused || remaining > cfSpanMs + 2500) {
+            // Replay switched on mid-fade: the song plays again, not the next.
+            if (paused || repeatOne(exo) || remaining > cfSpanMs + 2500) {
                 resetCf()
                 cancelVolWork()
                 setExoVolume(1f)
@@ -798,7 +803,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         // repeat-one, where crossfading a song into itself is just noise.
         val nextAny = exoGet(exo, "getNextMediaItemIndex") ?: exoGet(exo, "getNextWindowIndex")
         val next = nextAny as? Int ?: -1
-        if (next < 0 || next == idx) {
+        if (next < 0 || next == idx || repeatOne(exo)) {
             return 1000L
         }
 
@@ -856,7 +861,23 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build(),
                 )
-                setDataSource(url)
+                // The engine answers with a redirect to the song's CDN, so this
+                // player makes the real request and must send what ExoPlayer
+                // sends (player.ts toQueueItem). JioSaavn's CDN answers 403
+                // without its Referer: bare setDataSource(url) went out as
+                // "stagefright" with none, every overlap failed, and crossfade
+                // became a plain cut.
+                val uri = android.net.Uri.parse(url)
+                val headers = if (uri.scheme == "http" || uri.scheme == "https") {
+                    val h = mutableMapOf("User-Agent" to STREAM_UA)
+                    if (uri.getQueryParameter("source") == "jiosaavn") {
+                        h["Referer"] = "https://www.jiosaavn.com/"
+                    }
+                    h
+                } else {
+                    null
+                }
+                setDataSource(ctx, uri, headers)
                 setVolume(0f, 0f)
                 setOnPreparedListener { mp ->
                     // Applied on the PREPARED player: setting playback params on
@@ -1264,6 +1285,9 @@ class AudioModule(private val ctx: ReactApplicationContext) :
 
     companion object {
         private const val TAG = "AudioModule"
+        /** The one User-Agent every stream request uses: player.ts STREAM_UA
+         *  and mobile_server.py _STREAM_UA say the same. */
+        private const val STREAM_UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"
         /** Never ramp fully to 0 — ExoPlayer at exactly 0 on some devices drops
          *  the output path, which clicks audibly when it comes back. */
         private const val FADE_FLOOR = 0.04f

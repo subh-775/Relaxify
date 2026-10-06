@@ -140,6 +140,49 @@ export function resolveGains(settings: EqSettings): number[] {
   return shapedGains(settings);
 }
 
+/**
+ * The equalizer curve as SVG path data: a smooth line through the knobs, one
+ * per band, each at `t` (0 = bottom of its column, 1 = top).
+ *
+ * Catmull-Rom through the points, written as cubic Beziers, so the line
+ * passes EXACTLY through every knob rather than near it. The bands share the
+ * width between `padX` margins equally (flex: 1), so knob i sits at the
+ * middle of its slot. `top` is the room above the columns; `lift` how far a
+ * knob's centre sits above its fill. `close` adds the area down to 0 dB, the
+ * middle of the column. A worklet: the screen draws it on the UI thread.
+ */
+export function curvePath(
+  ts: number[],
+  g: {w: number; padX: number; h: number; top: number; lift: number},
+  close: boolean,
+): string {
+  'worklet';
+  if (!g.w || ts.length < 2) {
+    return '';
+  }
+  const step = (g.w - 2 * g.padX) / ts.length;
+  const pts = ts.map((t, i) => [
+    g.padX + (i + 0.5) * step,
+    g.top + g.h * (1 - t) - g.lift,
+  ]);
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    d +=
+      ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6}` +
+      ` ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6}` +
+      ` ${p2[0]},${p2[1]}`;
+  }
+  if (close) {
+    const zero = g.top + g.h / 2 - g.lift;
+    d += ` L${pts[pts.length - 1][0]},${zero} L${pts[0][0]},${zero} Z`;
+  }
+  return d;
+}
+
 /** Short axis label: 60, 400, 1k, 16k. */
 export function bandLabel(hz: number): string {
   return hz >= 1000 ? `${hz / 1000}k` : String(hz);

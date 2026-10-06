@@ -225,3 +225,68 @@ jobs:
           # only thing the in-app updater reads, skips pre-releases. So a test
           # build reaches the tester's phone over adb and nobody else's.
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+  # Every RC tag also runs on real phones in Firebase Test Lab (project
+  # relaxify-observability): a Robo crawl that taps through the app, with
+  # video, logs, crashes and performance per device. Keyless: GitHub's OIDC
+  # token is exchanged for the relaxify-testlab service account, and Google
+  # trusts only this repository. Never blocks a release: the APK is already
+  # published by the job above. Off-switch: set the repository variable
+  # DEVICE_TESTS to "off" (see cloud_session_stop.md on that branch).
+  device-test:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-rc') && vars.DEVICE_TESTS != 'off'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Relaxify-RC.apk
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/360613152004/locations/global/workloadIdentityPools/github/providers/relaxify
+          service_account: relaxify-testlab@relaxify-observability.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Spark plan: 5 real-device and 10 virtual-device runs a day. Three
+      # phones friends actually use (Samsung, OnePlus, realme), plus Android
+      # 15 and a 16 KB-page Android 16 phone, virtual.
+      - name: Robo test on five phones
+        run: |
+          set -o pipefail
+          gcloud firebase test android run \
+            --project relaxify-observability \
+            --type robo \
+            --app Relaxify-RC.apk \
+            --timeout 5m \
+            --client-details matrixLabel="$GITHUB_REF_NAME" \
+            --device model=a15x,version=34,locale=en,orientation=portrait \
+            --device model=OP5958L1,version=34,locale=en,orientation=portrait \
+            --device model=RE58C2,version=35,locale=en,orientation=portrait \
+            --device model=MediumPhone.arm,version=35,locale=en,orientation=portrait \
+            --device model=MediumPhone_ps16k.arm,version=36,locale=en,orientation=portrait \
+            2>&1 | tee testlab.txt
+        continue-on-error: true
+
+      - name: Summary
+        if: always()
+        run: |
+          # Annotations are readable without signing in, unlike job logs:
+          # the reason a run failed must be visible from the API.
+          if grep -qiE "ERROR|denied|failed" testlab.txt 2>/dev/null; then
+            grep -iE "ERROR|denied|failed" testlab.txt | head -5 | while read -r l; do echo "::error::$l"; done
+          fi
+          {
+            echo "## Test Lab: $GITHUB_REF_NAME"
+            echo
+            echo "All runs: https://console.firebase.google.com/project/relaxify-observability/testlab/histories/"
+            echo
+            echo '```'
+            grep -E "OUTCOME|Passed|Failed|Inconclusive|Skipped|crashed|^\|" testlab.txt || tail -30 testlab.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

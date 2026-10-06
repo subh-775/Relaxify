@@ -33,6 +33,7 @@ import {
   Pencil,
   Play,
   Search as SearchIcon,
+  Share2,
   Shuffle,
   Square,
   SquareX,
@@ -61,18 +62,24 @@ import {DownloadRow} from '../components/DownloadRow';
 import {
   State,
   setShuffle,
+  shuffleInAfterCurrent,
   togglePlay,
   useActiveTrack,
+  usePlaybackOrigin,
   usePlaybackState,
   useShuffle,
 } from '../player';
 import {useLikes} from '../store';
 import {
+  copyPlaylist,
   deletePlaylist,
+  isFollowed,
+  markPlaylistSeen,
   renamePlaylist,
   setPlaylistImage,
   usePlaylists,
 } from '../playlists';
+import {ShareSheet} from '../components/ShareSheet';
 import {getLocalLibrary} from '../backend';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {Sheet} from '../components/Sheet';
@@ -129,6 +136,7 @@ export function CollectionScreen({
   const [renaming, setRenaming] = useState(false);
   const [renameText, setRenameText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   /**
    * LIVE tracks, not the snapshot the screen was opened with.
@@ -219,6 +227,19 @@ export function CollectionScreen({
     ? playlists.find(p => p.id === playlistId)
     : undefined;
   const displayName = livePlaylist?.name ?? collection.name;
+  // A friend's playlist you follow: theirs to change, yours to play, download
+  // and copy. Once they stop sharing it, it is an ordinary playlist of yours.
+  const followed = isFollowed(livePlaylist);
+  const follow = livePlaylist?.follow;
+  useEffect(() => {
+    if (follow?.fresh) {
+      markPlaylistSeen(playlistId);
+    }
+  }, [follow?.fresh, playlistId]);
+  const saveCopy = useCallback(() => {
+    const copy = copyPlaylist(playlistId);
+    toast(copy ? `Saved a copy: ${copy.name}` : 'Could not copy it');
+  }, [playlistId]);
   const shownCollection = useMemo(
     () =>
       livePlaylist
@@ -231,6 +252,7 @@ export function CollectionScreen({
   // if the big green button means pause/resume or "start from the top".
   const activeEngine = useActiveTrack();
   const {state: playState} = usePlaybackState() as {state?: State};
+  const origin = usePlaybackOrigin();
   const playingHere = useMemo(() => {
     if (!activeEngine) {
       return false;
@@ -276,7 +298,7 @@ export function CollectionScreen({
   const canSelect = collection.kind === 'downloads';
   // Only a playlist of the user's can offer "remove from this playlist".
   const playlistFrom =
-    collection.kind === 'userPlaylist'
+    collection.kind === 'userPlaylist' && !followed
       ? {
           playlistId: collection.id.replace(/^pl:/, ''),
           playlistName: collection.name,
@@ -391,9 +413,10 @@ export function CollectionScreen({
   }, [playlistId, displayName, onClose]);
 
   /**
-   * Shuffle reorders what comes NEXT without touching the current song when
-   * this collection is already playing; otherwise it starts playback from a
-   * random track. Either way the icon goes green to say the order is shuffled.
+   * Shuffle never cuts off the song playing now. This collection already
+   * playing: what comes next is reordered. Something else playing: this
+   * collection, shuffled, comes next. Nothing loaded: playback starts from a
+   * random track. Either way the icon lights to say the order is shuffled.
    */
   const shuffle = useCallback(async () => {
     if (!tracks.length) {
@@ -406,15 +429,21 @@ export function CollectionScreen({
       toast('Shuffle off');
       return;
     }
-    if (playingHere) {
+    // The origin too: a "Wrong song?" pick or a cleaned-up title misses the
+    // title match, and Shuffle then restarted the list on a random song.
+    if (playingHere || origin === collection.id) {
       await setShuffle(true).catch(() => {});
       toast('Shuffled what comes next');
+    } else if (
+      await shuffleInAfterCurrent(tracks, collection.id).catch(() => false)
+    ) {
+      toast(`${displayName} comes next, shuffled`);
     } else {
       onPlay(tracks[Math.floor(Math.random() * tracks.length)], tracks);
       // Give the queue a beat to build before shuffling its tail.
       setTimeout(() => setShuffle(true).catch(() => {}), 600);
     }
-  }, [onPlay, tracks, playingHere, shuffled]);
+  }, [onPlay, tracks, playingHere, shuffled, origin, collection.id, displayName]);
 
   /** The green button: pause/resume when this collection is playing, start it
    *  otherwise — never a dead control. */
@@ -511,6 +540,16 @@ export function CollectionScreen({
                 <SearchIcon size={21} color={C.text} />
               </TouchableOpacity>
             )}
+            {isOwnPlaylist && !followed && livePlaylist && (
+              <TouchableOpacity
+                onPress={() => setSharing(true)}
+                hitSlop={12}
+                style={styles.barBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Share with friends">
+                <Share2 size={21} color={C.text} />
+              </TouchableOpacity>
+            )}
             {isOwnPlaylist && (
               <TouchableOpacity
                 onPress={() => setMenuOpen(true)}
@@ -551,6 +590,13 @@ export function CollectionScreen({
                 {collection.kind === 'album' && !!collection.artist && (
                   <Text style={styles.by} numberOfLines={1}>
                     {collection.artist}
+                  </Text>
+                )}
+                {!!follow && (
+                  <Text style={styles.by} numberOfLines={1}>
+                    {follow.stopped
+                      ? `No longer shared by ${follow.by}`
+                      : `Shared by ${follow.by}`}
                   </Text>
                 )}
                 <Text style={styles.sub}>
@@ -652,6 +698,15 @@ export function CollectionScreen({
                         size={23}
                         color={tracks.length ? C.text : C.faint}
                       />
+                    </TouchableOpacity>
+                  )}
+                  {followed && (
+                    <TouchableOpacity
+                      style={styles.sortPill}
+                      activeOpacity={0.75}
+                      onPress={saveCopy}
+                      accessibilityRole="button">
+                      <Text style={styles.sortText}>Save a copy</Text>
                     </TouchableOpacity>
                   )}
                   <View style={styles.fill} />
@@ -761,6 +816,33 @@ export function CollectionScreen({
           <Text style={styles.sheetTitle} numberOfLines={1}>
             {displayName}
           </Text>
+          {followed ? (
+            <>
+              <TouchableOpacity
+                style={styles.sheetRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setMenuOpen(false);
+                  saveCopy();
+                }}>
+                <Pencil size={20} color={C.sub} />
+                <Text style={styles.sheetLabel}>Save a copy to change</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.sheetRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  setMenuOpen(false);
+                  setConfirmDelete(true);
+                }}>
+                <Trash2 size={20} color={C.danger} />
+                <Text style={[styles.sheetLabel, styles.sheetDanger]}>
+                  Remove from your Library
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
           <TouchableOpacity
             style={styles.sheetRow}
             activeOpacity={0.7}
@@ -791,8 +873,15 @@ export function CollectionScreen({
               Delete playlist
             </Text>
           </TouchableOpacity>
+            </>
+          )}
         </View>
       </Sheet>
+
+      <ShareSheet
+        playlist={sharing && livePlaylist ? livePlaylist : null}
+        onClose={() => setSharing(false)}
+      />
 
       {/* Rename dialog. Stays a <Modal>: a TextInput dialog wants a real window
           for soft-keyboard focus and insets. See LibraryScreen for the full

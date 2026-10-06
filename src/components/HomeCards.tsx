@@ -27,13 +27,17 @@ import {C, S} from '../theme';
 import {CARD_PALS, PALS, type Pal} from '../brandArt';
 import {CARD_ART, FeatureCard} from './FeatureCard';
 import {RecapTeaser} from './RecapTeaser';
+import {recapCardDue} from '../recap';
+import {useStatsState} from '../stats';
 import {useJam} from '../jam';
 import {
   BAD_LINK,
   cancelImport,
   dismissImport,
   importProblem,
-  isSpotifyUrl,
+  importSourceName,
+  isImportUrl,
+  PRIVATE_LIST,
   keepWaiting,
   markImportOpened,
   retryImport,
@@ -223,8 +227,8 @@ export function ImportCard({
   const [link, setLink] = useState('');
   const submit = () => {
     const url = link.trim();
-    if (!isSpotifyUrl(url)) {
-      toast("That isn't a Spotify playlist or album link");
+    if (!isImportUrl(url)) {
+      toast("That isn't a Spotify or YouTube playlist link");
       return;
     }
     setLink('');
@@ -250,7 +254,7 @@ export function ImportCard({
       <FeatureCard
         pal={IMPORT_PAL}
         width={width}
-        kicker="Importing from Spotify, keep browsing"
+        kicker={`Importing from ${importSourceName(job.url)}, keep browsing`}
         title={job.name || 'Reading the playlist'}
         action="See progress"
         onPress={() => job.url && onOpenImport(job.url)}
@@ -311,7 +315,7 @@ export function ImportCard({
         pal={IMPORT_PAL}
         width={width}
         kicker={`Import cancelled, ${n} of ${job.total} found`}
-        title={job.name || 'Spotify playlist'}
+        title={job.name || `${importSourceName(job.url)} playlist`}
         action={save}
         onPress={saveCancelled}
         spin={false}>
@@ -325,8 +329,9 @@ export function ImportCard({
 
   if (phase === 'failed') {
     const none = !job.error && job.matched <= 0;
-    // A wrong link fails the same way every time; only "another link" helps.
-    const canRetry = job.error !== BAD_LINK;
+    // A wrong link, or a private list, fails the same way every time; only
+    // "another link" helps.
+    const canRetry = job.error !== BAD_LINK && job.error !== PRIVATE_LIST;
     return (
       <FeatureCard
         pal={PROBLEM_PAL}
@@ -361,7 +366,11 @@ export function ImportCard({
       <FeatureCard
         pal={IMPORT_PAL}
         width={width}
-        kicker="Imported, saved to Your Library"
+        kicker={
+          last.kept
+            ? `Imported, ${last.kept} kept from YouTube`
+            : 'Imported, saved to Your Library'
+        }
         title={last.name}
         action="Open playlist"
         onPress={openIt}
@@ -374,15 +383,16 @@ export function ImportCard({
     );
   }
 
-  // Ask: a link box on demand, with a way out. After an import it says what
-  // came in last and asks for another.
+  // Ask: a link box on demand, with a way out. The same words every time: the
+  // last import's name is in Library, and "Last import: ..." read as a
+  // leftover rather than an invitation.
   const p = IMPORT_PAL;
   return (
     <FeatureCard
       pal={p}
       width={width}
-      kicker={last ? `Last import: ${last.name}, ${last.found} songs` : 'Moving from Spotify?'}
-      title={last ? 'Bring another playlist' : 'Bring your playlists'}
+      kicker="Moving from Spotify or YouTube?"
+      title="Bring your playlists"
       action="Paste a link"
       onPress={() => setOpen(true)}
       art={listArt(p)}
@@ -392,7 +402,7 @@ export function ImportCard({
           <TextInput
             value={link}
             onChangeText={setLink}
-            placeholder="open.spotify.com/playlist/…"
+            placeholder="Spotify or YouTube playlist link"
             placeholderTextColor="rgba(17,16,20,0.45)"
             autoFocus
             autoCapitalize="none"
@@ -511,16 +521,21 @@ export function HomeCardCarousel({
   const cardW = screen - 2 * S.gutter;
   const step = cardW + CARD_GAP;
   const importPhase = useImportPhase();
+  const stats = useStatsState();
   const [page, setPage] = useState(0);
+  // Re-read on every stats change (once a song), so the card goes on Tuesday.
+  const recap = recapCardDue(stats, Date.now());
 
-  // All four, always, in this order; an import with news (running, slow,
-  // failed, cancelled, just done) moves to the front while it needs you.
+  // In this order; an import with news (running, slow, failed, cancelled,
+  // just done) moves to the front while it needs you. The Recap card is there
+  // on Sunday and Monday only (recapCardDue).
   const keys = useMemo(
     () =>
-      importPhase === 'ask'
+      (importPhase === 'ask'
         ? ['recap', 'jam', 'import', 'continue']
-        : ['import', 'recap', 'jam', 'continue'],
-    [importPhase],
+        : ['import', 'recap', 'jam', 'continue']
+      ).filter(k => k !== 'recap' || recap),
+    [importPhase, recap],
   );
 
   const render = (k: string) => {

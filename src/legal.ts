@@ -24,11 +24,16 @@ export const JAM_NOTE =
   'During a Jam, the song, where it is, the Jam queue and the names you enter ' +
   'are shared through our database so the phones can follow each other. They ' +
   'are deleted when the Jam ends.';
+/** And when you share a playlist. */
+export const SHARE_NOTE =
+  'When you share a playlist, its name, its songs and the name you share it ' +
+  'under are kept in our database for anyone who has its code, until you ' +
+  'stop sharing it or delete it.';
 
 /** The music services Relaxify plays from, credited wherever the terms are. */
 export const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
 
-export const LEGAL_UPDATED = '29 September 2026';
+export const LEGAL_UPDATED = '30 September 2026';
 
 export type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
@@ -88,11 +93,13 @@ export const TERMS: LegalDoc = {
       ],
     },
     {
-      heading: '4. Spotify import',
+      heading: '4. Playlist import',
       paras: [
         'Importing reads the song list of a **public** Spotify playlist or ' +
-          'album from its link. No Spotify account is used, and no music is ' +
-          'taken from Spotify: each song is looked up on the sources above.',
+          'album, or a public YouTube or YouTube Music playlist, from its ' +
+          'link. No account is used. No music is taken from Spotify: each ' +
+          'song is looked up on the sources above. A YouTube song that none ' +
+          'of them has is kept as the YouTube original.',
       ],
     },
     {
@@ -149,14 +156,14 @@ export const PRIVACY: LegalDoc = {
       ],
     },
     {
-      heading: '3. Jam',
-      paras: [JAM_NOTE],
+      heading: '3. Jam and shared playlists',
+      paras: [JAM_NOTE, SHARE_NOTE],
     },
     {
       heading: '4. What stays on your phone',
       paras: [
-        'Your likes, playlists, downloads, search history, settings and your ' +
-          '**Recap** are kept only on your phone. The Recap is worked out on ' +
+        'Your likes, playlists (except those you share), downloads, search ' +
+          'history, settings and your **Recap** are kept only on your phone. The Recap is worked out on ' +
           'the phone and sends nothing.',
       ],
     },
@@ -179,8 +186,9 @@ export const PRIVACY: LegalDoc = {
       ],
       list: [
         '**JioSaavn**, **SoundCloud** and **YouTube**, for search and ' +
-          'playback (YouTube only when switched on in Settings);',
-        '**Spotify**, when you import a playlist link;',
+          'playback (YouTube when switched on in Settings, and for songs ' +
+          'imported from it);',
+        '**Spotify** or **YouTube**, when you import a playlist link from it;',
         '**LRCLIB**, for lyrics;',
         '**MusicBrainz**, **Cover Art Archive**, **Deezer**, **Apple iTunes**, ' +
           '**TheAudioDB** and **Last.fm**, for song details, artist photos ' +

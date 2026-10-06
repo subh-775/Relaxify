@@ -59,6 +59,7 @@ import {
 import {getTrackId} from './tracks';
 import {logEvent} from './analytics';
 import {toast} from './toast';
+import {createStore} from './storage';
 
 export const JAM_DB =
   'https://relaxify-observability-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -182,7 +183,8 @@ function listen(code: string): void {
 const url = (path: string) => `${JAM_DB}/${path}.json`;
 const SERVER_TIME = {'.sv': 'timestamp'};
 
-async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+/** One request to the database (Jam, and shared playlists: sharedPlaylists.ts). */
+export async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const res = await fetch(url(path), {
     method,
     headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
@@ -194,8 +196,16 @@ async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T>
   return (await res.json()) as T;
 }
 
+/**
+ * The name you go by with friends: in a Jam, and on a playlist you share.
+ * Empty until typed; phoneName() stands in.
+ */
+export const savedName = createStore<string>('mp.jamName.v1', '', raw =>
+  typeof raw === 'string' ? raw : '',
+);
+
 /** The name a phone shows in a Jam when nobody typed one: its model. */
-function phoneName(): string {
+export function phoneName(): string {
   const c = Platform.constants as {Model?: string};
   return (c?.Model || 'Friend').slice(0, 24);
 }
@@ -463,7 +473,7 @@ async function follow(now: Now): Promise<void> {
   if (!same(active, now.track)) {
     const track = await playable(now.track);
     const next = now.next ? await playable(now.next) : null;
-    await playTrack(track, next ? [track, next] : [track]);
+    await playTrack(track, next ? [track, next] : [track], '', true);
     echoUntil = Date.now() + ECHO_MS;
     // Start resolving the song after this one now, so when the Jam moves on
     // this phone is not the one everyone waits for.
@@ -569,7 +579,7 @@ function watchLocal(code: string): void {
       if (head) {
         try {
           echoUntil = Date.now() + ECHO_MS;
-          await playTrack(await playable(head.track), [head.track]);
+          await playTrack(await playable(head.track), [head.track], '', true);
           await call(`jams/${code}/queue/${head.key}`, 'DELETE');
         } catch {}
       }

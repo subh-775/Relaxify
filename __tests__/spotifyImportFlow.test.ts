@@ -20,7 +20,10 @@ jest.mock('../src/backend', () => ({
 
 import {
   BAD_LINK,
+  PRIVATE_LIST,
   STALL_MS,
+  importSourceName,
+  isImportUrl,
   cancelImport,
   dismissImport,
   retryImport,
@@ -110,4 +113,27 @@ test('cancel keeps the songs found so far; retry after nothing found starts over
   await tick(100);
   expect(mockImport).toHaveBeenCalled(); // the same link really runs again
   expect(read().finished).toBe(false);
+});
+
+test('YouTube and YouTube Music playlist links import; plain videos do not', () => {
+  const list = 'PLGo6V7qE3jPAabcdefghijklmnopqrstuv';
+  const music = `https://music.youtube.com/playlist?list=${list}&si=Ez5osjRN_N5`;
+  expect(isImportUrl(music)).toBe(true);
+  expect(isImportUrl(`https://www.youtube.com/playlist?list=${list}`)).toBe(true);
+  expect(isImportUrl(`https://youtube.com/watch?v=x1&list=${list}`)).toBe(true);
+  expect(isImportUrl(`youtu.be/x1?list=${list}`)).toBe(true);
+  expect(isImportUrl('https://www.youtube.com/watch?v=x1')).toBe(false);
+  expect(isImportUrl(`https://evil.example/playlist?list=${list}`)).toBe(false);
+  expect(isImportUrl(URL)).toBe(true);
+  expect(importSourceName(music)).toBe('YouTube Music');
+  expect(importSourceName(`https://www.youtube.com/playlist?list=${list}`)).toBe('YouTube');
+  expect(importSourceName(URL)).toBe('Spotify');
+});
+
+test('your own YouTube likes are refused with the reason, never sent to the engine', () => {
+  mockImport.mockClear();
+  startImport('https://music.youtube.com/playlist?list=LM');
+  expect(read().error).toBe(PRIVATE_LIST);
+  expect(read().finished).toBe(true);
+  expect(mockImport).not.toHaveBeenCalled();
 });

@@ -52,8 +52,6 @@ export type Settings = {
   homeLanguages: string[];
   /** Stream at DATA_SAVER_KBPS while on mobile data. */
   dataSaver: boolean;
-  /** A notification on Sunday evening when the week's Recap is ready. */
-  recapReminder: boolean;
 };
 
 /** The quality streamed on mobile data with the data saver on. */
@@ -86,7 +84,6 @@ export const DEFAULT_SETTINGS: Settings = {
   resumeOnConnect: false,
   homeLanguages: ['hindi', 'english'],
   dataSaver: true,
-  recapReminder: true,
 };
 
 /** At most this many Home languages: more and Home turns into a blur. */

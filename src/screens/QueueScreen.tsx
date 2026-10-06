@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
   artEmpty: {backgroundColor: C.surfaceHi},
   text: {flex: 1, minWidth: 0},
   title: {...T.body, color: C.text},
-  titleActive: {color: C.accent},
+  titleActive: {color: C.accent, fontWeight: '800'},
   artist: {...T.sub, color: C.sub, marginTop: 2},
   rec: {color: C.faint},
   grip: {paddingHorizontal: 14, paddingVertical: 18},

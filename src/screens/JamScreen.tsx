@@ -22,14 +22,10 @@ import {ChevronLeft} from '../icons';
 import {C, S, T} from '../theme';
 import {BOTTOM_INSET} from '../layout';
 import {BRIGHT_PALS} from '../brandArt';
-import {createStore, useStoreValue} from '../storage';
-import {joinJam, leaveJam, startJam, useJam} from '../jam';
+import {useStoreValue} from '../storage';
+import {joinJam, leaveJam, savedName, startJam, useJam} from '../jam';
 import {getBestArtworkUrl} from '../tracks';
 import {toast} from '../toast';
-
-const savedName = createStore<string>('mp.jamName.v1', '', raw =>
-  typeof raw === 'string' ? raw : '',
-);
 
 export function JamScreen({onClose}: {onClose: () => void}) {
   const jam = useJam();
@@ -299,6 +295,14 @@ const styles = StyleSheet.create({
   songText: {flex: 1, minWidth: 0},
   songTitle: {color: C.text, fontSize: 15, fontWeight: '700'},
   songSub: {color: C.sub, fontSize: 12.5, marginTop: 2},
-  leave: {marginTop: 26, paddingVertical: 12},
-  leaveText: {color: C.danger, fontSize: 15, fontWeight: '800'},
+  // Filled red: ending a Jam stops it for everyone in it.
+  leave: {
+    marginTop: 26,
+    alignSelf: 'flex-start',
+    backgroundColor: C.danger,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+  },
+  leaveText: {color: '#fff', fontSize: 15, fontWeight: '800'},
 });

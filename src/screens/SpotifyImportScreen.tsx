@@ -20,7 +20,12 @@ import {Check, ChevronLeft, Play} from '../icons';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
 import {cleanText, getTrackId, normalizeTracks} from '../tracks';
-import {cancelImport, startImport, useSpotifyImport} from '../spotifyImport';
+import {
+  cancelImport,
+  importSourceName,
+  startImport,
+  useSpotifyImport,
+} from '../spotifyImport';
 import {TrackRow} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
 
@@ -70,8 +75,8 @@ export function SpotifyImportScreen({
         )}
         <Text style={styles.name} numberOfLines={2}>
           {loading
-            ? cleanText(active?.name) || 'Importing from Spotify…'
-            : cleanText(active?.name) || 'Spotify playlist'}
+            ? cleanText(active?.name) || `Importing from ${importSourceName(url)}…`
+            : cleanText(active?.name) || `${importSourceName(url)} playlist`}
         </Text>
         {!loading && !active?.error && (
           <Text style={styles.sub}>
@@ -228,7 +233,7 @@ const styles = StyleSheet.create({
   checkText: {flex: 1, minWidth: 0},
   checkTitle: {color: C.text, fontSize: 14, fontWeight: '700'},
   checkSub: {color: C.sub, fontSize: 12, marginTop: 1},
-  found: {color: '#1ed760', fontSize: 11.5, fontWeight: '800'},
+  found: {color: C.accent, fontSize: 11.5, fontWeight: '800'},
   notFound: {color: C.danger, fontSize: 11.5, fontWeight: '800'},
   wrap: {flex: 1, backgroundColor: C.bg},
   bar: {flexDirection: 'row', paddingTop: 12, paddingHorizontal: 8},

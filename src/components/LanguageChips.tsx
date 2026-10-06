@@ -1,6 +1,6 @@
 /**
  * The languages Home and Browse are drawn from, as tiles to tap on and off.
- * Used on the welcome screen and in Settings.
+ * Used on the welcome screen, and in the sheet Settings and the drawer open.
  *
  * At most MAX_LANGUAGES: with every language on, Home is a blur of all of
  * them. At the limit the rest dim, and tapping one says to unpick one first.
@@ -10,7 +10,8 @@
 import React, {useRef, useState} from 'react';
 import {Animated, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {Check} from '../icons';
-import {C} from '../theme';
+import {C, S, T} from '../theme';
+import {Sheet} from './Sheet';
 import {MAX_LANGUAGES, useSettings, writeSetting} from '../store';
 
 /** JioSaavn's catalogue languages, the ones most people pick first. */
@@ -114,7 +115,29 @@ export function LanguageChips() {
   );
 }
 
+/** The languages, in a sheet: from Settings, and straight from the drawer. */
+export function LanguagesSheet({open, onClose}: {open: boolean; onClose: () => void}) {
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <Text style={styles.sheetTitle}>Home languages</Text>
+      <Text style={styles.sheetHint}>
+        Home and Browse are drawn from these. Search always covers everything.
+      </Text>
+      <LanguageChips />
+    </Sheet>
+  );
+}
+
 const styles = StyleSheet.create({
+  sheetTitle: {
+    ...T.body,
+    color: C.text,
+    fontWeight: '700',
+    paddingHorizontal: S.gutter,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   count: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

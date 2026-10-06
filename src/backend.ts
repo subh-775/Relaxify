@@ -494,6 +494,10 @@ export type ImportSnapshot = {
   cancelled?: boolean;
   /** Each song as it was checked, in the order the checks finished. */
   checked?: {title: string; artist: string; found: boolean; artwork_url?: string}[];
+  /** "spotify" or "youtube". */
+  source?: string;
+  /** YouTube songs kept as their YouTube original: nothing else matched. */
+  kept?: number;
 };
 
 /** Poll (and on the first call, start) the background import job for `url`.

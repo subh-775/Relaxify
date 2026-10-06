@@ -257,6 +257,33 @@ export function buildRecap(s: Stats, now: number, mode: RecapMode): Recap {
   };
 }
 
+/**
+ * Enough history for a Recap to say something: 15 counted plays (30 s each)
+ * over at least 3 different days. Below that, "your top artist" is whoever
+ * you tried first, so a new listener sees no Recap card and no notification.
+ */
+export const RECAP_MIN_PLAYS = 15;
+export const RECAP_MIN_DAYS = 3;
+
+export function recapEligible(s: Stats): boolean {
+  const days = Object.values(s.days ?? {}).filter(n => n > 0).length;
+  return s.plays >= RECAP_MIN_PLAYS && days >= RECAP_MIN_DAYS;
+}
+
+/**
+ * Home's Recap card: Sunday, and Monday for anyone who missed it, then gone
+ * until next Sunday. Only for an eligible listener with music this week.
+ * The notification goes out on Sunday too (RecapReminder.kt).
+ */
+export function recapCardDue(s: Stats, now: number): boolean {
+  const day = new Date(now).getDay(); // 0 = Sunday, 1 = Monday
+  return (
+    (day === 0 || day === 1) &&
+    recapEligible(s) &&
+    s.log.some(e => e.at <= now && now - e.at < 7 * DAY_MS)
+  );
+}
+
 /** The weekly notification's line, from this week's Recap; '' for a week
  *  with no music, which sends no notification at all. */
 export function reminderText(r: Recap): string {

@@ -6,6 +6,7 @@ import {
   PermissionsAndroid,
   Platform,
   SafeAreaView,
+  Share,
   StatusBar,
   StyleSheet,
   View,
@@ -14,7 +15,7 @@ import {ErrorBoundary} from './src/ErrorBoundary';
 import {HomeScreen} from './src/screens/HomeScreen';
 import {RecapScreen} from './src/screens/RecapScreen';
 import {JamScreen} from './src/screens/JamScreen';
-import {DOCS_URL} from './src/links';
+import {DOCS_URL, inviteMessage} from './src/links';
 import {startDeviceMemory} from './src/deviceMemory';
 import {startDevice} from './src/device';
 import {WelcomeScreen, settleWelcome, useWelcomed} from './src/screens/WelcomeScreen';
@@ -40,6 +41,11 @@ import {
   useAddToPlaylistHost,
 } from './src/components/AddToPlaylistSheet';
 import {ArtistPickerSheet} from './src/components/ArtistPickerSheet';
+import {openShared, startSharing} from './src/sharedPlaylists';
+import {
+  WrongSongSheet,
+  useWrongSongHost,
+} from './src/components/WrongSongSheet';
 import {UpdateModal} from './src/components/UpdateModal';
 import {
   checkUpdateOnLaunch,
@@ -54,6 +60,7 @@ import {
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {Splash} from './src/components/Splash';
 import {Sidebar, type SidebarDest} from './src/components/Sidebar';
+import {LanguagesSheet} from './src/components/LanguageChips';
 import {resetDrawer, settleDrawer} from './src/drawer';
 import {
   panelDrawn,
@@ -71,7 +78,7 @@ import {
   type HomeItem,
   type Track,
 } from './src/backend';
-import {downloadsCollection} from './src/collections';
+import {downloadsCollection, playlistToCollection} from './src/collections';
 import {overlayDownloadArtwork} from './src/downloads';
 import {
   playTrack,
@@ -86,6 +93,7 @@ import {type Collection} from './src/collections';
 import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
 import {toast} from './src/toast';
+import {readPlaylists} from './src/playlists';
 import {diag} from './src/diag';
 import {logEvent} from './src/analytics';
 
@@ -120,6 +128,9 @@ function Shell() {
   const [addTo, setAddTo] = useState<Track | null>(null);
   // Lets a list row's + open this sheet without a prop through every screen.
   useAddToPlaylistHost(setAddTo);
+  // "Wrong song?", opened from the player's label or its ⋮ menu.
+  const [wrongFor, setWrongFor] = useState<Track | null>(null);
+  useWrongSongHost(setWrongFor);
   const [artistChoices, setArtistChoices] = useState<string[]>([]);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -130,6 +141,7 @@ function Shell() {
   /** Equalizer, same reasoning as Shortcuts. Settings keeps its own row and
    *  both point at the one component. */
   const [eqOpen, setEqOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
   // null = not yet determined, false = this APK has no native audio engine.
   const [engine, setEngine] = useState<boolean | null>(null);
@@ -172,7 +184,10 @@ function Shell() {
     // logging, not the thing being investigated.
     diag('boot', `Relaxify ${appVersion || '?'} starting`);
     askForNotifications();
-    hydrate().then(() => {
+    hydrate().then(async () => {
+      // Each headphone and speaker keeps its own equalizer: the one connected
+      // now is put in place first, then applied, all under the splash.
+      await startDeviceMemory();
       applyAudioEffects();
       settleWelcome();
       setHydrated(true);
@@ -201,28 +216,22 @@ function Shell() {
       liftSplash();
     });
     // Never let a hung backend strand anyone on the splash. Whatever is ready
-    // at this point is what they get.
+    // at this point is what they get. Ten seconds, not six: the splash now
+    // also waits for Home's fresh rows and the whole restored queue, so the
+    // app is still when it appears, and a slow engine start needs the room.
     const bootCap = setTimeout(() => {
       engineDone.current = true;
       homeDone.current = true;
       setBooted(true);
-    }, 6000);
+    }, 10000);
     // Reads the setting each tick rather than closing over it, so changing
     // crossfade takes effect without restarting the watcher.
     startCrossfadeWatcher(() => readSettings().crossfadeDuration);
-    // Silent update check on launch — the popup only appears if a newer release
-    // is actually out. Delayed a little so it never competes with cold start.
-    const u = setTimeout(checkUpdateOnLaunch, 3500);
-    // …and again on every return to the foreground, because a process kept
-    // alive by the playback service may not launch again for days.
+    // Again on every return to the foreground, because a process kept alive
+    // by the playback service may not launch again for days.
     watchForegroundUpdates();
-    // Each headphone and speaker keeps its own equalizer; also resumes on
-    // connect when that is switched on.
-    startDeviceMemory();
     // Data saver on mobile data, and the weekly Recap notification.
     startDevice();
-    // Clear the cache once it passes the size set in Settings.
-    const stopCacheLimit = watchCacheLimit();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
     // the last moment we are reliably given before Android may reclaim the
     // process, so anything still pending goes out now.
@@ -232,12 +241,29 @@ function Shell() {
       }
     });
     return () => {
-      clearTimeout(u);
       clearTimeout(bootCap);
       bg.remove();
-      stopCacheLimit();
     };
   }, [liftSplash]);
+
+  // Chores that can wait: counted from when the app is on screen, not from
+  // launch, so none of them lands in the first seconds of use.
+  useEffect(() => {
+    if (!booted) {
+      return;
+    }
+    // Silent update check; the popup only appears if a newer release is out.
+    const u = setTimeout(checkUpdateOnLaunch, 3500);
+    // Clear the cache once it passes the size set in Settings.
+    const stopCacheLimit = watchCacheLimit();
+    // Shared playlists: friends' ones you follow refresh, yours push changes.
+    const stopSharingSync = startSharing();
+    return () => {
+      clearTimeout(u);
+      stopCacheLimit();
+      stopSharingSync();
+    };
+  }, [booted]);
 
   const play = useCallback(
     async (track: Track, context?: Track[], originId?: string) => {
@@ -509,18 +535,29 @@ function Shell() {
   const closeJam = useCallback(() => setJamOpen(false), []);
   const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
-  // Sunday's Recap notification opens the app on relaxify://recap, whether it
-  // was closed (the initial URL) or already running (a url event).
+  const closeLanguages = useCallback(() => setLangOpen(false), []);
+  // Sunday's Recap notification opens the app on relaxify://recap, and a
+  // shared playlist link's page on relaxify://p/CODE, whether the app was
+  // closed (the initial URL) or already running (a url event).
   useEffect(() => {
     const go = (url: string | null) => {
       if (url?.startsWith('relaxify://recap')) {
         openRecap();
       }
+      const code = url?.match(/^relaxify:\/\/p\/(\w{6})/)?.[1];
+      if (code) {
+        openShared(code)
+          .then(id => {
+            const p = readPlaylists().find(x => x.id === id);
+            p && openCollection(playlistToCollection(p));
+          })
+          .catch(e => toast(e instanceof Error ? e.message : String(e)));
+      }
     };
     Linking.getInitialURL().then(go, () => {});
     const sub = Linking.addEventListener('url', e => go(e.url));
     return () => sub.remove();
-  }, [openRecap]);
+  }, [openRecap, openCollection]);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -575,10 +612,13 @@ function Shell() {
         Linking.openURL(DOCS_URL).catch(() =>
           toast('Could not open the documentation'),
         );
-      } else if (dest === 'stats') {
-        setActivity(dest);
+      } else if (dest === 'languages') {
+        setLangOpen(true);
       } else if (dest === 'jam') {
         setJamOpen(true);
+      } else if (dest === 'recommend') {
+        logEvent('app_recommended');
+        Share.share({message: inviteMessage()}).catch(() => {});
       }
       // updateWaiting is read above, so it has to be a dependency — with an empty
       // array this closure would keep whatever the flag was on first render and
@@ -638,6 +678,7 @@ function Shell() {
     [openArtistCredit],
   );
   const closeAddTo = useCallback(() => setAddTo(null), []);
+  const closeWrongSong = useCallback(() => setWrongFor(null), []);
   const closeArtistChoices = useCallback(() => setArtistChoices([]), []);
   const pickArtistChoice = useCallback(
     (name: string) => {
@@ -707,6 +748,7 @@ function Shell() {
             onOpenArtist={openArtist}
             onOpenBrowse={pickHomeItem}
             onOpenMenu={openDrawer}
+            onOpenCollection={openFromLibrary}
           />
         </View>
         <View style={tab === 'library' ? styles.tabShown : styles.tabHidden}>
@@ -880,6 +922,8 @@ function Shell() {
 
       <AddToPlaylistSheet track={addTo} onClose={closeAddTo} />
 
+      <WrongSongSheet track={wrongFor} onClose={closeWrongSong} />
+
       <ArtistPickerSheet
         names={artistChoices}
         onClose={closeArtistChoices}
@@ -892,6 +936,7 @@ function Shell() {
           onClose={closePlayer}
           onAddToPlaylist={setAddTo}
           onOpenArtist={openArtistCredit}
+          onOpenMenu={openSheet}
         />
       )}
 
@@ -914,6 +959,7 @@ function Shell() {
         onClose={closeDrawer}
         onNavigate={navigateFromDrawer}
       />
+      <LanguagesSheet open={langOpen} onClose={closeLanguages} />
 
       {booted && hydrated && !welcomed && <WelcomeScreen />}
 

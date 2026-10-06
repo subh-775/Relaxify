@@ -48,8 +48,13 @@ use and much lighter on the phone's processor and battery.
   other app.
 - **Your library:** liked songs, playlists, saved albums, followed artists and
   listening history.
-- **Import from Spotify.** A public playlist or album link becomes a playlist
-  you own, saved by itself, with a way to stop part-way and keep what was found.
+- **Import from Spotify or YouTube.** A public Spotify playlist or album link,
+  or a YouTube / YouTube Music playlist link, becomes a playlist you own, saved
+  by itself, with a way to stop part-way and keep what was found.
+- **Shared playlists.** Send a friend a six-character code; they follow your
+  playlist and your changes reach them.
+- **Wrong song? Pick another copy.** Swap a bad match for the right version in
+  the player, and it stays your pick everywhere.
 - **Jam.** Listen to the same song at the same moment as friends, each on their
   own phone, with a six-character code. Everyone can play, pause, skip and add
   to a shared queue.
@@ -83,7 +88,7 @@ feature in six short pages.
 | **Playback** | ExoPlayer through react-native-track-player, running in a foreground service so music keeps playing with the screen off. It streams each song straight from the source's servers; downloads play from their files. |
 | **Audio effects** | A Kotlin module (`AudioModule.kt`) for the equalizer, loudness and crossfade. |
 | **Engine** | A Python server embedded with Chaquopy that searches the sources, finds and checks each song's stream link (the player is redirected to it, so no audio passes through the engine) and handles downloads. The interface talks to it over `127.0.0.1`, with a per-launch token. |
-| **Jam** | A Firebase Realtime Database record per Jam holds the song, position and shared queue (rules in `firebase/`). No audio passes through it; each phone streams for itself. |
+| **Jam and sharing** | A Firebase Realtime Database record per Jam holds the song, position and shared queue, and one per shared playlist its songs (rules in `firebase/`: only the phone that shared a playlist can change it). No audio passes through it; each phone streams for itself. |
 | **Usage statistics** | Firebase Analytics and Crashlytics, tied to an anonymous ID. The docs' Help page lists exactly what is sent. |
 
 ## Building from source

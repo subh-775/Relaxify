@@ -1,12 +1,14 @@
 /**
  * "Listen up ___!" — the header on Home, centred.
  *
- * "Listen up" holds still; the last word is a slot reel. On each arrival (each
- * launch, and each time you come back to Home from another tab) the reel spins
- * through a few names and lands on one at random — Legend, GOAT, Maestro,
- * Bestie — in a pill of the greeting's colour. While Home is on screen it holds
- * still: a header that kept changing under you was a distraction, not a
- * greeting. A new visit never lands on the word or colour the last one showed.
+ * "Listen up" holds still; the last word is a slot reel. At launch, and then
+ * at random every 30 to 90 seconds wherever you are in the app, the reel spins
+ * through a few names and lands on one at random (Legend, GOAT, Maestro,
+ * Bestie) in a pill of the greeting's colour. Switching tabs and coming back
+ * changes nothing: it used to re-roll on every arrival at Home, which read as
+ * the header jumping whenever you moved around. A change while Home is out of
+ * sight just lands, without a spin nobody would see. It never lands on the
+ * word or colour it showed last.
  *
  * Sized from the font's own measurements, not by wrapping: "Listen up" plus
  * the LONGEST word, pill padding included, fits the room on every phone, so the
@@ -130,6 +132,10 @@ export function buildReel(
   return reel;
 }
 
+/** How long the greeting holds a word before the next spin, at random. */
+const HOLD_MIN_MS = 30_000;
+const HOLD_MAX_MS = 90_000;
+
 /** When each reel word lands, in ms from the start: quick, then slowing. */
 const TICKS = [0, 70, 150, 240, 345, 470, 625, 830];
 
@@ -149,21 +155,29 @@ export function Greeting({visible = true}: {visible?: boolean}) {
   // outside the window.)
   const [shown, setShown] = useState(land);
 
-  // A new colour and a new word on each ARRIVAL at Home — the moment `visible`
-  // turns true — and the reel spins to it. Leaving Home changes nothing.
+  // A new colour and a new word at launch, then on a random clock. `round` 0
+  // is the launch; each tick of the clock is the next round.
   const landRef = useRef(land);
-  const first = useRef(true);
+  const [round, setRound] = useState(0);
   useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    const launch = first.current;
-    first.current = false;
+    const hold = HOLD_MIN_MS + Math.random() * (HOLD_MAX_MS - HOLD_MIN_MS);
+    const t = setTimeout(() => setRound(r => r + 1), hold);
+    return () => clearTimeout(t);
+  }, [round]);
+  // Read when a round starts, so a tab switch is not itself a round.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  useEffect(() => {
+    const launch = round === 0;
     const next = launch ? landRef.current : nextPair(landRef.current, WORDS.length);
     landRef.current = next;
     setLand(next);
     if (!launch) {
       setPair(cur => nextPair(cur));
+    }
+    if (!visibleRef.current) {
+      setShown(next); // out of sight: land without a spin
+      return;
     }
     const timers: ReturnType<typeof setTimeout>[] = [];
     let cancelled = false;
@@ -202,7 +216,7 @@ export function Greeting({visible = true}: {visible?: boolean}) {
       slide.setValue(0);
       setShown(landRef.current);
     };
-  }, [visible, slide]);
+  }, [round, slide]);
 
   useEffect(() => {
     Animated.timing(bloom, {

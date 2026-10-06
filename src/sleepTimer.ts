@@ -116,8 +116,14 @@ export function startSleepTimer(minutes: number): void {
   logEvent('sleep_timer', {minutes});
   ticker = setInterval(() => {
     const left = Math.max(0, Math.round((state.endsAt - Date.now()) / 1000));
-    state = {...state, remaining: left};
-    emit();
+    const next = {...state, remaining: left};
+    // Only when the label moves: every reader shows minutes until the last
+    // one, and the full player (always mounted, parked) re-rendered whole
+    // once a second for the length of the timer, screen off included.
+    if (sleepLabel(next) !== sleepLabel(state)) {
+      state = next;
+      emit();
+    }
     if (left <= 0) {
       fire('timer elapsed');
     }

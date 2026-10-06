@@ -2,8 +2,9 @@
  * Primary navigation — three thumb-reachable destinations with a label under
  * each icon (Spotify's own pattern; a bare icon makes "Library" ambiguous).
  *
- * Active state is a BOLDER stroke plus a brighter label, not a filled glyph —
- * a solid blob reads as a different icon rather than the same one selected.
+ * Active state is a BOLDER stroke plus the label, in the logo's red (C.brand),
+ * not a filled glyph — a solid blob reads as a different icon rather than the
+ * same one selected.
  */
 import React from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
@@ -40,7 +41,7 @@ export function BottomNav({
             <Icon
               size={23}
               strokeWidth={on ? 2.6 : 1.8}
-              color={on ? C.text : C.faint}
+              color={on ? C.brand : C.faint}
             />
             <Text style={[styles.label, on && styles.labelOn]}>{label}</Text>
           </TouchableOpacity>
@@ -67,5 +68,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: C.faint,
   },
-  labelOn: {color: C.text, fontWeight: '700'},
+  labelOn: {color: C.brand, fontWeight: '700'},
 });

@@ -1,5 +1,11 @@
 /**
- * The equalizer: a preset row over eight draggable bands.
+ * The equalizer: eight draggable bands with the curve they make drawn through
+ * them, over the presets.
+ *
+ * The curve is the sound's shape at a glance: a smooth line through the eight
+ * knobs and a soft glow down to the 0 dB guide, in the logo's red. It moves
+ * with the finger on the UI thread: each band writes its position into one
+ * shared array, and an animated SVG path is drawn from it, no JS in the loop.
  *
  * Two behaviours carried over from the WebView build, both easy to miss and
  * both the difference between an EQ that feels considered and one that fights
@@ -26,6 +32,7 @@ import {
   EQ_MIN_DB,
   EQ_PRESETS,
   bandLabel,
+  curvePath,
   normalizeGains,
   presetGains,
   shapedGains,
@@ -49,10 +56,13 @@ import {
 } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
+  useAnimatedProps,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  type SharedValue,
 } from 'react-native-reanimated';
+import Svg, {Defs, LinearGradient, Path, Stop} from 'react-native-svg';
 import {Toggle} from '../components/Toggle';
 import {BOTTOM_INSET} from '../layout';
 import {currentDevice} from '../deviceMemory';
@@ -64,7 +74,74 @@ function PresetIcon({name, color}: {name: EqPreset['icon']; color: string}) {
   return <Icon size={19} color={color} />;
 }
 
-const SLIDER_H = 150;
+const SLIDER_H = 170;
+/** The screen's colour: the logo's red, and a lighter one for the knobs. */
+const ON = C.brand;
+const ON_HI = '#ff7a8a';
+/** Room above and below the columns for the curve's ends and the knobs. */
+const CURVE_PAD = 12;
+/** How far a knob's centre sits above its fill's top edge. */
+const KNOB_LIFT = 6.5;
+
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+/** The curve for this screen's geometry (see curvePath in eq.ts). */
+function curveD(ts: number[], w: number, padX: number, close: boolean): string {
+  'worklet';
+  return curvePath(ts, {w, padX, h: SLIDER_H, top: CURVE_PAD, lift: KNOB_LIFT}, close);
+}
+
+/** The curve over the bands, drawn on the UI thread from the shared positions. */
+function Curve({
+  ts,
+  width,
+  top,
+  off,
+}: {
+  ts: SharedValue<number[]>;
+  width: SharedValue<number>;
+  top: number;
+  off: boolean;
+}) {
+  const line = useAnimatedProps(() => ({
+    d: curveD(ts.value, width.value, S.gutter, false),
+  }));
+  const area = useAnimatedProps(() => ({
+    d: curveD(ts.value, width.value, S.gutter, true),
+  }));
+  const colour = off ? C.faint : ON;
+  return (
+    <View pointerEvents="none" style={[styles.curve, {top: top - CURVE_PAD}]}>
+      {/* 0 dB: what flat is. */}
+      <View style={[styles.zero, {top: CURVE_PAD + SLIDER_H / 2 - KNOB_LIFT}]} />
+      <Svg width="100%" height={SLIDER_H + 2 * CURVE_PAD}>
+        <Defs>
+          <LinearGradient id="eqGlow" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={colour} stopOpacity={0.26} />
+            <Stop offset="1" stopColor={colour} stopOpacity={0} />
+          </LinearGradient>
+        </Defs>
+        <AnimatedPath animatedProps={area} fill="url(#eqGlow)" />
+        <AnimatedPath
+          animatedProps={line}
+          fill="none"
+          stroke={colour}
+          strokeWidth={2.4}
+          strokeLinecap="round"
+        />
+      </Svg>
+    </View>
+  );
+}
+
+/** `list` with slot `i` set to `v`, as a new array: a shared value has to be
+ *  reassigned to update. */
+function withSlot(list: number[], i: number, v: number): number[] {
+  'worklet';
+  const next = list.slice();
+  next[i] = v;
+  return next;
+}
 
 export function EqualizerScreen({onClose}: {onClose: () => void}) {
   const settings = useSettings();
@@ -86,6 +163,13 @@ export function EqualizerScreen({onClose}: {onClose: () => void}) {
   // resolveGains returns flat — so the sliders all sat at zero and no preset
   // chip lit up, which is why tapping a preset looked like it did nothing.
   const gains = useMemo(() => shapedGains(settings), [settings]);
+  // The curve's eight positions, shared with the bands, and the row's width.
+  const ts = useSharedValue(gains.map(toT));
+  useEffect(() => {
+    ts.value = gains.map(toT);
+  }, [gains, ts]);
+  const rowW = useSharedValue(0);
+  const [colTop, setColTop] = useState(0);
 
   const setBand = useCallback(
     (i: number, db: number) => {
@@ -161,6 +245,7 @@ export function EqualizerScreen({onClose}: {onClose: () => void}) {
           </View>
           <Toggle
             value={!!settings.eqEnabled}
+            tint={ON}
             disabled={!eqSupported}
             onChange={v => {
               writeSetting('eqEnabled', v);
@@ -169,10 +254,18 @@ export function EqualizerScreen({onClose}: {onClose: () => void}) {
           />
         </View>
 
-        <View style={styles.sliders}>
+        <View
+          style={styles.sliders}
+          onLayout={e => {
+            rowW.value = e.nativeEvent.layout.width;
+          }}>
+          <Curve ts={ts} width={rowW} top={colTop} off={!settings.eqEnabled} />
           {EQ_BANDS.map((hz, i) => (
             <Band
               key={hz}
+              index={i}
+              ts={ts}
+              onColumnTop={i === 0 ? setColTop : undefined}
               scrollRef={scrollRef}
               hz={hz}
               value={gains[i]}
@@ -185,10 +278,11 @@ export function EqualizerScreen({onClose}: {onClose: () => void}) {
         <Text style={styles.section}>Presets</Text>
         <View style={styles.presets}>
           {EQ_PRESETS.map(p => {
-            // Highlight the SELECTED preset even with the effect off, so the
-            // screen visibly answers a tap. Gating this on eqEnabled meant
-            // tapping a preset lit nothing up at all.
-            const on = settings.eqPreset === p.id;
+            // Lit only while the equalizer is on: with it off every chip is
+            // neutral, or the last preset looked active when nothing was.
+            // A tap still answers visibly, because picking a preset switches
+            // the equalizer on (pickPreset).
+            const on = settings.eqEnabled && settings.eqPreset === p.id;
             return (
               <TouchableOpacity
                 key={p.id}
@@ -248,12 +342,20 @@ function dbAt(t: number): number {
  * change for the readout, and once at the end to commit.
  */
 function Band({
+  index,
+  ts,
+  onColumnTop,
   hz,
   value,
   disabled,
   onChange,
   scrollRef,
 }: {
+  index: number;
+  /** The curve's positions: this band writes its own slot as it moves. */
+  ts: SharedValue<number[]>;
+  /** Where the column starts in the band, so the curve lines up with it. */
+  onColumnTop?: (y: number) => void;
   hz: number;
   value: number;
   disabled?: boolean;
@@ -331,9 +433,11 @@ function Band({
         .onBegin(e => {
           runOnJS(setDragging)(true);
           t.value = tAt(e.y, h.value);
+          ts.value = withSlot(ts.value, index, t.value);
         })
         .onUpdate(e => {
           t.value = tAt(e.y, h.value);
+          ts.value = withSlot(ts.value, index, t.value);
         })
         /**
          * onEnd, NOT onFinalize.
@@ -354,7 +458,7 @@ function Band({
         .onFinalize(() => {
           runOnJS(setDragging)(false);
         }),
-    [disabled, scrollRef, t, h, setDragging, commit],
+    [disabled, scrollRef, t, h, setDragging, commit, ts, index],
   );
 
   // Bottom-anchored fill via scaleY, and the knob via translateY — both are
@@ -380,6 +484,7 @@ function Band({
           style={[styles.column, disabled && styles.columnOff]}
           onLayout={(e: LayoutChangeEvent) => {
             h.value = e.nativeEvent.layout.height;
+            onColumnTop?.(e.nativeEvent.layout.y);
           }}>
           <View style={styles.columnTrack} />
           <Animated.View
@@ -431,6 +536,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     paddingTop: 22,
   },
+  // Behind the bands (drawn first), across the whole row.
+  curve: {position: 'absolute', left: 0, right: 0},
+  zero: {
+    position: 'absolute',
+    left: S.gutter,
+    right: S.gutter,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
   band: {alignItems: 'center', flex: 1},
   bandDb: {
     ...T.sub,
@@ -460,7 +574,7 @@ const styles = StyleSheet.create({
     width: 4,
     height: SLIDER_H, // sized by scaleY; the transform anchors it to the bottom
     borderRadius: 2,
-    backgroundColor: C.accent,
+    backgroundColor: ON,
   },
   fillOff: {backgroundColor: C.faint},
   handle: {
@@ -470,7 +584,7 @@ const styles = StyleSheet.create({
     height: 15,
     borderRadius: 8,
     marginBottom: -1, // sits on the fill's leading edge; translateY drives it up
-    backgroundColor: C.accentBright,
+    backgroundColor: ON_HI,
     // A soft ring so the knob reads as a grabbable control, not a dot.
     shadowColor: '#000',
     shadowOpacity: 0.35,
@@ -509,7 +623,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
   },
-  presetOn: {backgroundColor: C.accent, borderColor: C.accent},
+  presetOn: {backgroundColor: ON, borderColor: ON},
   presetText: {...T.sub, color: C.text, fontSize: 13},
   presetTextOn: {color: C.bg, fontWeight: '700'},
 });

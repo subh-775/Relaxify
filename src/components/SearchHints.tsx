@@ -15,7 +15,7 @@ const EVERY_MS = 3200;
 export function SearchHints({artist}: {artist?: string}) {
   const hints: [string, string][] = [
     ['Try ', artist || 'Arijit Singh'],
-    ['Paste a ', 'Spotify playlist link'],
+    ['Paste a ', 'Spotify or YouTube playlist'],
     ['Search by mood, like ', 'chill'],
   ];
   const [i, setI] = useState(0);

@@ -9,11 +9,15 @@ export const C = {
   text: '#f4f5f7',
   sub: '#9096a2',
   faint: '#5c626e',
-  /** Brand green. `accent` is the interactive/active colour; `accentBright` is
-   *  for a filled glyph that needs to read against a dark surface. */
-  accent: '#1db954',
-  accentBright: '#1ed760',
-  danger: '#ff6b6b',
+  /** The logo's red (Ember): the app's own colour wherever one colour
+   *  stands for Relaxify itself, such as the Library's chips. */
+  brand: '#FF5A6E',
+  /** The interactive/active colour: on, selected, playing, done. The logo's
+   *  colour, so what is "on" looks like Relaxify (it was Spotify's green). */
+  accent: '#FF5A6E',
+  /** Destructive only: a true red, so a warning never reads as "on" next to
+   *  the coral accent. Big actions fill with it (white text); icons wear it. */
+  danger: '#FF3B30',
   border: 'rgba(255,255,255,0.08)',
 };
 

@@ -57,6 +57,7 @@ import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
+import {chosenCopy} from './songChoice';
 
 let ready = false;
 let available: boolean | null = null;
@@ -121,6 +122,13 @@ let userMoveAt = 0;
 export function markEngineSeek(): void {
   userMoveAt = Date.now();
 }
+/**
+ * When the playing song last changed, by any route. A new song starts by
+ * buffering, and a crossfade hands over with a few short re-aligning seeks:
+ * neither is the network stalling. rc1 counted them as stalls, about one in
+ * every two songs, and Auto quality kept stepping down for no reason.
+ */
+let trackChangedAt = 0;
 /** When the person last skipped, until the next song is heard (noteSkipToSound). */
 let skipAt = 0;
 
@@ -137,10 +145,29 @@ let skipAt = 0;
  * racing it.
  */
 export async function playWithFade(ms: number = FADE_IN_MS): Promise<void> {
+  const first = !effectsWarm;
+  effectsWarm = true;
+  if (first) {
+    // The equalizer and loudness, on before the first sound of the launch.
+    await applyAudioEffects();
+  }
   await TrackPlayer.setVolume(1);
-  await fadeInPlayer(ms);
+  await fadeInPlayer(first ? FIRST_FADE_MS : ms);
   await TrackPlayer.play();
+  if (first) {
+    // …and again now the stream is live: one that could not attach before
+    // the first play attaches here, while the ramp is still near silence.
+    // Attaching mid-song re-routes the mix with an audible level step; that
+    // step is what a play pressed straight after launch heard as 2-3 s of
+    // too-loud sound. (It catches its own failures, like every caller's.)
+    applyAudioEffects();
+  }
 }
+
+/** The effects have been put on a playing stream since this launch. */
+let effectsWarm = false;
+/** The first play of a launch rises slower, so the attach above is inaudible. */
+const FIRST_FADE_MS = 700;
 
 /**
  * Stop, but by receding rather than by cutting.
@@ -291,7 +318,41 @@ export function streamUrlFor(
 }
 
 /** One-time engine setup. Returns false when the native module isn't in this build. */
-export async function setupPlayer(): Promise<boolean> {
+/**
+ * One setup at a time: boot and a first play can both call this, and the
+ * second TrackPlayer.setupPlayer used to be refused ("already initialized")
+ * and read as "no audio engine" for the rest of the session.
+ */
+let setupInFlight: Promise<boolean> | null = null;
+export function setupPlayer(): Promise<boolean> {
+  if (!setupInFlight) {
+    setupInFlight = setupPlayerOnce().finally(() => {
+      setupInFlight = null;
+    });
+  }
+  return setupInFlight;
+}
+
+/**
+ * RNTP refuses setup until Android counts the app as foreground (an activity
+ * resumed). The first launch after an update is a cold start where JS can get
+ * here first, and that refusal showed "audio engine missing" until a restart.
+ * It is a "not yet", so wait for the activity instead of giving up.
+ */
+async function setupEngine(opts: Parameters<typeof TrackPlayer.setupPlayer>[0]) {
+  for (let i = 0; ; i++) {
+    try {
+      return await TrackPlayer.setupPlayer(opts);
+    } catch (e: any) {
+      if (e?.code !== 'android_cannot_setup_player_in_background' || i >= 20) {
+        throw e;
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+}
+
+async function setupPlayerOnce(): Promise<boolean> {
   if (ready) {
     return true;
   }
@@ -299,7 +360,7 @@ export async function setupPlayer(): Promise<boolean> {
     return false;
   }
   try {
-    await TrackPlayer.setupPlayer({
+    await setupEngine({
       // Android handles audio focus for us: a call or another app ducks/pauses
       // us and we resume after. Doing this natively is what keeps Bluetooth
       // hand-offs in sync instead of the app and the headset disagreeing.
@@ -358,15 +419,14 @@ export async function setupPlayer(): Promise<boolean> {
         // refuses to drag.
         Capability.SeekTo,
       ],
-      // No progressUpdateEventInterval: nothing listens for that event, and it
-      // woke JS every second of playback, screen off included. The bars read
+      // Every 10 s, not every second: the one listener (below) keeps the
+      // resume point current while the app is in the background, where JS
+      // timers stop. Once a second woke JS for nothing; the bars read
       // position with useProgress, which polls only while they are mounted.
+      progressUpdateEventInterval: 10,
     });
     await TrackPlayer.setRepeatMode(RepeatMode.Off);
 
-    // Every track the engine lands on — auto-advance, radio, a queue tap —
-    // goes into Recently Played AS IT STARTS, so Home updates live. Manual
-    // playTrack() also records (first write wins on order; remember() de-dupes).
     // The end-of-track sleep stop is ExoPlayer pausing itself on the last
     // frame (setPauseAtEndOfTrack). This notices that pause — a native event,
     // so it arrives with the screen off — and clears the timer, so the next
@@ -393,7 +453,24 @@ export async function setupPlayer(): Promise<boolean> {
         pushWidgetPlaying(false);
       }
       // Stalls feed Auto quality (adaptiveQuality.ts).
-      noteState(e.state, Date.now() - Math.max(userMoveAt, manualStepAt));
+      noteState(
+        e.state,
+        Date.now() - Math.max(userMoveAt, manualStepAt, trackChangedAt),
+      );
+    });
+
+    // Where you are, saved with no JS timer involved, so a background
+    // session that is then swiped away reopens on the right song and second.
+    // The 1 s tick and the track-settle save both run on timers, which
+    // Android stops in the background while the music plays on: a phone that
+    // played two songs with the screen off reopened two songs behind.
+    TrackPlayer.addEventListener(Event.PlaybackProgressUpdated, () => {
+      saveSession().catch(() => {});
+    });
+    AppState.addEventListener('change', s => {
+      if (s !== 'active') {
+        saveSession(true).catch(() => {}); // leaving: the exact second
+      }
     });
 
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
@@ -407,10 +484,14 @@ export async function setupPlayer(): Promise<boolean> {
       // The "play this soon" window is relative to the current song — a new song
       // starts a fresh one, so anything queued now goes right after it again.
       queuedAhead = 0;
+      trackChangedAt = Date.now();
       noteTrackChange();
       // The engine is authoritative — reconcile the optimistic mirror with what
       // actually started, and keep the queue snapshot warm for the next gesture.
       publishTrack(e.track ?? null);
+      // The new song is the resume point NOW, from this native event, not
+      // from onTrackSettled's timer (frozen in the background).
+      saveSession(true).catch(() => {});
       // A native event, so the sleep timer's deadline is honoured even when the
       // screen has been off long enough for JS timers to be throttled. This is
       // the BACKSTOP for end-of-track; the punctual stop is armed by the
@@ -448,7 +529,10 @@ export async function setupPlayer(): Promise<boolean> {
         TrackPlayer.getPlaybackState()
           .then(p => pushWidget(src, p.state === State.Playing))
           .catch(() => pushWidget(src, false));
-        remember(src);
+        // Recents: a song you tapped goes in as it starts (playTrack); one the
+        // engine moved on to (autoplay, Next, a swipe) only once it has earned a
+        // play (countListened), so a song skipped after a second never shows up.
+
         // The same queue ROW again is not a new play. Tapping a song part-way
         // down a list starts it alone, then inserts the earlier songs in front
         // of it; the shift fires this event a second time for the song that is
@@ -545,7 +629,11 @@ export async function restoreSession(): Promise<boolean> {
     return false;
   }
   const items = s.queue
-    .map((t, from) => ({t, from, q: toQueueItem(t, currentQuality())}))
+    // Your pick for each song ("Wrong song?"), as everywhere a queue is built.
+    .map((saved, from) => {
+      const t = chosenCopy(saved);
+      return {t, from, q: toQueueItem(t, currentQuality())};
+    })
     .filter(x => x.q !== null);
   if (!items.length) {
     return false;
@@ -575,52 +663,44 @@ export async function restoreSession(): Promise<boolean> {
     // already out is exactly what the step change on resume sounds like.
     await applyAudioEffects();
     await applyPlaybackRate();
-    // Seed the now-playing mirror. A restored session is left PAUSED, so no
-    // track-change event fires — without this the mini player would sit blank
-    // until the user pressed play (RNTP's own hook self-seeded on mount; ours
-    // has to be told).
-    await refreshEngineMirror();
-    // The cover and the bar's colour BEFORE the track is published, so the
-    // mini player arrives finished under the splash instead of filling in
-    // after it lifts. Capped: a slow network costs at most 1.2s, then the bar
-    // shows what it has, exactly as before.
-    const art = getBestArtworkUrl(items[idx].t);
-    if (art) {
-      await Promise.race([
-        Promise.all([
-          Image.prefetch(art).catch(() => false),
-          getArtworkColor(art).catch(() => null),
-        ]),
-        new Promise(r => setTimeout(r, 1200)),
-      ]);
-    }
-    publishTrack(engineQueue[activeIndex] ?? null);
-    // The earlier tracks come back AFTER the player is on screen, prepended so
-    // Previous still works; this shifts the active index to idx without ever
-    // showing track 0.
+    // The earlier tracks go back in front, so Previous works; inserting at 0
+    // shifts the active index to idx without ever surfacing track 0.
     //
-    // Deferred rather than awaited above, because its cost is proportional to
-    // how far into the queue you were: a 200-track playlist left at index 180
-    // serialises 180 items across the bridge before the first frame can render.
-    // Previous is not reachable in the time this takes — the player has to be
-    // drawn before it can be pressed.
+    // Awaited, under the splash. It used to be deferred until after the
+    // player was on screen, to save the splash the cost of a long queue. But
+    // then the queue shifted, the track-change handler ran and the swipe
+    // re-read its neighbours in the first seconds after the splash lifted,
+    // which is exactly when a hand first reaches for the covers: the start
+    // felt busy, and a swipe begun in the middle of it could stall. A second
+    // more of splash is the better trade.
     if (idx > 0) {
-      setTimeout(() => {
-        (async () => {
-          await TrackPlayer.add(
-            items.slice(0, idx).map(x => x.q!),
-            0,
-          );
-          // And re-sync, because the mirror above was taken from the queue as
-          // it was BEFORE the prepend: it holds n-idx tracks with the active
-          // one at 0, while the engine now holds all n with the active one at
-          // idx. Left stale, Previous has nothing behind it and the queue sheet
-          // renders the tail of the queue as the whole of it.
-          await refreshEngineMirror();
-          publishTrack(engineQueue[activeIndex] ?? null);
-        })().catch(() => {});
-      }, 0);
+      await TrackPlayer.add(
+        items.slice(0, idx).map(x => x.q!),
+        0,
+      );
     }
+    // Seed the now-playing mirror, from the whole queue. A restored session
+    // is left PAUSED, so no track-change event fires: without this the mini
+    // player would sit blank until play was pressed.
+    await refreshEngineMirror();
+    // The cover, both neighbours' covers (the swipe draws them) and the bar's
+    // colour BEFORE the track is published, so the mini player arrives
+    // finished and the first swipe has its pictures. Capped: a slow network
+    // costs at most 1.5s, then the bar shows what it has.
+    const art = getBestArtworkUrl(items[idx].t);
+    const around = [items[idx - 1], items[idx + 1]]
+      .map(x => (x ? getBestArtworkUrl(x.t) : ''))
+      .filter(Boolean);
+    await Promise.race([
+      Promise.all([
+        ...[art, ...around]
+          .filter(Boolean)
+          .map(u => Image.prefetch(u).catch(() => false)),
+        art ? getArtworkColor(art).catch(() => null) : null,
+      ]),
+      new Promise(r => setTimeout(r, 1500)),
+    ]);
+    publishTrack(engineQueue[activeIndex] ?? null);
     // Left paused — see above.
     return true;
   } catch {
@@ -713,6 +793,9 @@ export async function playTrack(
   /** The collection this was launched from — see playbackOrigin. '' for a
    *  search result, a radio pick, or a single tap with no list behind it. */
   originId = '',
+  /** Play these exact copies, not your "Wrong song?" picks: a Jam plays what
+   *  the chooser shared, or phones on different versions drift apart. */
+  asShared = false,
 ): Promise<void> {
   await requireEngine();
   setPlaybackOrigin(originId);
@@ -724,9 +807,17 @@ export async function playTrack(
   const bitrate = currentQuality();
 
   const list = context?.length ? context : [track];
+  // Each song as the copy you picked for it ("Wrong song?"); `orig` is what
+  // the list holds, which is what finds the tapped song below.
   const items = list
-    .map(t => ({t, q: toQueueItem(t, bitrate)}))
-    .filter((x): x is {t: Track; q: NonNullable<typeof x.q>} => x.q !== null);
+    .map(orig => {
+      const t = asShared ? orig : chosenCopy(orig);
+      return {orig, t, q: toQueueItem(t, bitrate)};
+    })
+    .filter(
+      (x): x is {orig: Track; t: Track; q: NonNullable<typeof x.q>} =>
+        x.q !== null,
+    );
 
   if (!items.length) {
     throw new Error('This track has no playable source.');
@@ -734,7 +825,7 @@ export async function playTrack(
 
   // Find where the tapped track landed after unplayables were dropped.
   let startAt = items.findIndex(
-    x => x.t.title === track.title && x.t.artist === track.artist,
+    x => x.orig.title === track.title && x.orig.artist === track.artist,
   );
   if (startAt < 0) {
     startAt = 0;
@@ -837,12 +928,13 @@ export async function playTrack(
  */
 export async function addToQueue(track: Track): Promise<void> {
   await requireEngine();
-  const item = toQueueItem(track, currentQuality());
+  const pick = chosenCopy(track);
+  const item = toQueueItem(pick, currentQuality());
   if (!item) {
     throw new Error('This track has no playable source.');
   }
-  logEvent('queue_add', songParams(track));
-  return serialQueueOp(() => insertQueued(track, item));
+  logEvent('queue_add', songParams(pick));
+  return serialQueueOp(() => insertQueued(pick, item));
 }
 
 async function insertQueued(
@@ -1260,6 +1352,48 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
 }
 
 /**
+ * Shuffle a collection in AFTER the song playing now: the song carries on,
+ * and everything after it becomes `tracks` in a random order. Shuffle off
+ * then puts them back in the collection's own order.
+ *
+ * This is the collection screen's Shuffle while something else is playing.
+ * It used to start a random song from the list, cutting off the one being
+ * listened to. Returns false when nothing is loaded (the caller then starts
+ * playback itself).
+ */
+export function shuffleInAfterCurrent(
+  tracks: Track[],
+  originId: string,
+): Promise<boolean> {
+  logEvent('shuffle', {on: 1});
+  return serialQueueOp(async () => {
+    const index = await TrackPlayer.getActiveTrackIndex();
+    if (index == null) {
+      return false;
+    }
+    const playing = sourceTrackFor(engineQueue[index] ?? null);
+    const key = playing ? getDownloadKey(playing) : '';
+    const items = tracks
+      .map(orig => chosenCopy(orig))
+      .filter(t => getDownloadKey(t) !== key)
+      .map(t => ({t, q: toQueueItem(t, currentQuality())}))
+      .filter((x): x is {t: Track; q: NonNullable<typeof x.q>} => !!x.q);
+    if (!items.length) {
+      return false;
+    }
+    const order = items.map(x => x.q as RNTPTrack);
+    await TrackPlayer.removeUpcomingTracks();
+    await TrackPlayer.add(shuffleUpcoming(order));
+    queueSource = [...queueSource, ...items.map(x => x.t)];
+    preShuffleUpcoming = order;
+    setShuffleFlag(true);
+    setPlaybackOrigin(originId);
+    await refreshEngineMirror();
+    return true;
+  });
+}
+
+/**
  * Drop the radio picks still sitting in the queue.
  *
  * Turning autoplay off stops the top-up from running again, which is all it
@@ -1303,6 +1437,13 @@ async function dropQueuedRadioNow(): Promise<void> {
 
 export async function setRepeat(mode: RepeatMode): Promise<void> {
   logEvent('repeat', {mode: RepeatMode[mode] ?? String(mode)});
+  if (mode === RepeatMode.Track) {
+    // Replay pressed in the song's last seconds: the next song may already be
+    // fading in. This song plays again instead, so that fade stops and the
+    // song comes back to full volume. Before the window, there is nothing to
+    // stop: with repeat on, the native scheduler never starts one.
+    cancelCrossfade();
+  }
   await TrackPlayer.setRepeatMode(mode);
 }
 
@@ -1408,6 +1549,23 @@ let radioBusy = false;
  */
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Save the resume point from the engine itself: the playing song, where it
+ * is, and the queue around it. Needs no timer, so it works from native events
+ * in the background. Throttled inside saveResume unless `force`.
+ */
+async function saveSession(force = false): Promise<void> {
+  const [{position}, idx, active] = await Promise.all([
+    TrackPlayer.getProgress(),
+    TrackPlayer.getActiveTrackIndex(),
+    TrackPlayer.getActiveTrack(),
+  ]);
+  const src = sourceTrackFor(active ?? null);
+  if (src) {
+    saveResume({track: src, position, queue: queueSource, index: idx ?? 0}, force);
+  }
+}
+
 function onTrackSettled(fn: () => void): void {
   if (settleTimer) {
     clearTimeout(settleTimer);
@@ -1498,7 +1656,7 @@ export async function topUpFromRadio(force = false): Promise<void> {
             !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
         )
         .slice(0, 8)
-        .map(t => ({...t, _autoplay: true}));
+        .map(t => ({...chosenCopy(t), _autoplay: true}));
       if (picks.length) {
         break;
       }
@@ -1601,8 +1759,7 @@ function countListened(
       // ran out behind a locked screen is the beginning.
       countRow = undefined;
       if (earnedPlay(0, position, duration)) {
-        const src = sourceTrackFor(row);
-        src && recordPlay(src, Date.now() - position * 1000);
+        heard(row, position);
       }
       return;
     }
@@ -1616,8 +1773,16 @@ function countListened(
     return;
   }
   counted = true;
+  heard(row, position);
+}
+
+/** A play that counts: for the Recap, and into Recents if it is not there. */
+function heard(row: RNTPTrack, position: number): void {
   const src = sourceTrackFor(row);
-  src && recordPlay(src, Date.now() - position * 1000);
+  if (src) {
+    recordPlay(src, Date.now() - position * 1000);
+    remember(src);
+  }
 }
 
 /**
@@ -1634,6 +1799,38 @@ function noteSkipToSound(): void {
   if (ms < 15000) {
     logEvent('skip_to_sound', {ms});
   }
+}
+
+/**
+ * "Wrong song?": play `pick` in place of the song playing now, from the same
+ * second, playing or paused as it was. The queue around it is untouched.
+ *
+ * TrackPlayer.load swaps the active item; its buffering and its seek are
+ * marked as ours, so Auto quality does not read them as a weak signal and
+ * playback_jump does not report them.
+ */
+export async function swapCurrentCopy(pick: Track): Promise<void> {
+  await requireEngine();
+  const idx = await TrackPlayer.getActiveTrackIndex();
+  const item = toQueueItem(pick, currentQuality());
+  if (idx == null || !item) {
+    throw new Error('That copy has nothing to play.');
+  }
+  const {position} = await TrackPlayer.getProgress();
+  markManualTrackChange();
+  cancelCrossfade();
+  if (idx < queueSource.length) {
+    queueSource = queueSource.map((t, i) => (i === idx ? pick : t));
+  }
+  await TrackPlayer.load(item);
+  const end = pick.duration_ms ? pick.duration_ms / 1000 - 2 : Infinity;
+  if (position > 1 && position < end) {
+    await TrackPlayer.seekTo(position);
+  }
+  await refreshEngineMirror();
+  publishTrack(engineQueue[activeIndex] ?? null);
+  applyAudioEffects();
+  applyPlaybackRate();
 }
 
 /**
