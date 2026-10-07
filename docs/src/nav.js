@@ -1,6 +1,7 @@
 /**
- * One source of truth for the site's shape: the pages, in reading order,
- * grouped the way the sidebar shows them.
+ * One source of truth for the site's shape: the pages in reading order, each
+ * with the card colour it wears (the app's own card palette) and what its
+ * card on Home says.
  */
 
 /** owner/name once, so a rename or a fork is one edit rather than six. */
@@ -10,45 +11,39 @@ export const SITE = {
   name: 'Relaxify',
   slug: SLUG,
   repo: `https://github.com/${SLUG}`,
-  releases: `https://github.com/${SLUG}/releases/latest`,
   allReleases: `https://github.com/${SLUG}/releases`,
   issues: `https://github.com/${SLUG}/issues`,
   api: `https://api.github.com/repos/${SLUG}`,
   /** Always the newest release's app file. */
   apk: `https://github.com/${SLUG}/releases/latest/download/Relaxify.apk`,
-  /** Where "Suggest an edit" points. The page path is appended. */
+  /** Where "Suggest a change" points. The page path is appended. */
   editBase: `https://github.com/${SLUG}/edit/main/docs/content`,
 };
 
-/** Each page: its address, its name in the menu, and one line on what it
- *  answers (shown under the page title and on the home page). */
-export const GROUPS = [
-  {
-    title: 'Get going',
-    pages: [
-      {link: '/start', title: 'Start here', line: 'Install Relaxify, play your first song and find your way around.'},
-    ],
-  },
-  {
-    title: 'Using Relaxify',
-    pages: [
-      {link: '/play', title: 'Play and find', line: 'Search, the player and its gestures, lyrics, and the right copy of a song.'},
-      {link: '/music', title: 'Your music', line: 'Likes, playlists, downloads, bringing playlists over, and your Recap.'},
-      {link: '/together', title: 'Listen together', line: 'Jam with friends, share playlists, and tell a friend about the app.'},
-      {link: '/sound', title: 'Sound', line: 'The equalizer, crossfade, streaming quality and saving mobile data.'},
-    ],
-  },
-  {
-    title: 'Help',
-    pages: [
-      {link: '/help', title: 'Questions and fixes', line: 'When something does not work as you expect, the answer is probably here.'},
-      {link: '/releases', title: "What's new", line: 'The newest version and what changed in it.'},
-    ],
-  },
-];
+/** A card field, its ink, and the colour of its sticker. */
+export const PAL = {
+  coral: {bg: '#FF5A4E', ink: '#111014', art: '#B8FF3C'},
+  lime: {bg: '#B8F03C', ink: '#111014', art: '#7A2CFF'},
+  sky: {bg: '#3CB4FF', ink: '#111014', art: '#FFE14D'},
+  lav: {bg: '#A9A3FF', ink: '#111014', art: '#FF4FB3'},
+  orange: {bg: '#FF9F1C', ink: '#111014', art: '#3CC8FF'},
+  pink: {bg: '#FF6FD8', ink: '#111014', art: '#1FD1B5'},
+  teal: {bg: '#1FC3A6', ink: '#111014', art: '#FFE14D'},
+  night: {bg: '#15121C', ink: '#FFFFFF', art: '#2EE6C8'},
+};
 
-/** Every page in reading order: what "next page" walks. */
-export const FLAT = GROUPS.flatMap(g => g.pages);
+/** The order colours cycle through for steps and gesture cards. */
+export const CYCLE = ['lime', 'sky', 'lav', 'orange', 'pink', 'teal'];
+
+export const PAGES = [
+  {link: '/start', pal: 'coral', title: 'Start here', kicker: 'Your first song in a minute', card: 'Install, pick languages, hit play.'},
+  {link: '/play', pal: 'lime', title: 'Play & find', kicker: 'Every song, one search', card: 'Search, the player, the right copy.'},
+  {link: '/music', pal: 'sky', title: 'Your music', kicker: 'Keep it, move it, Recap it', card: 'Likes, downloads, playlists.'},
+  {link: '/together', pal: 'lav', title: 'Together', kicker: 'Same song, same second', card: 'Jam with friends, share playlists.'},
+  {link: '/sound', pal: 'orange', title: 'Sound', kicker: 'Make it sound yours', card: 'Equalizer, quality, data saver.'},
+  {link: '/help', pal: 'pink', title: 'Help', kicker: "Something off? Let's fix it", card: 'Quick answers, no stress.', mood: 'huh'},
+  {link: '/releases', pal: 'night', title: "What's new", kicker: 'The newest version', card: 'Version, date and downloads.'},
+];
 
 /** The download page lives outside the app shell (public/get), so links to
  *  it load it as a page of its own. */
@@ -84,4 +79,4 @@ export const MOVED = {
 
 /** Every route the site serves. The build emits a real HTML file for each,
  *  old addresses included, so deep links are 200s rather than a 404 page. */
-export const ROUTES = ['/', ...FLAT.map(p => p.link), ...Object.keys(MOVED)];
+export const ROUTES = ['/', ...PAGES.map(p => p.link), ...Object.keys(MOVED)];

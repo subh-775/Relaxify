@@ -1,8 +1,8 @@
 /**
  * What MDX renders into. Pages are plain Markdown with a few of the site's
- * own blocks (Steps, Fold, Group, Callout, Moves, GetApp, ReleaseInfo).
+ * own blocks (Steps, Moves, Callout, Fold, Group, GetApp, LiveRelease).
  */
-import {Callout, Fold, GetApp, Group, Move, Moves, ReleaseInfo, Steps, href} from './brand.jsx';
+import {Callout, Fold, GetApp, Group, LiveRelease, Move, Moves, Steps, href} from './brand.jsx';
 import {External} from './icons.jsx';
 
 /** Links: in-site ones get the GitHub Pages base; outside ones open in a new
@@ -40,8 +40,8 @@ export const mdxComponents = {
   Fold,
   GetApp,
   Group,
+  LiveRelease,
   Move,
   Moves,
-  ReleaseInfo,
   Steps,
 };

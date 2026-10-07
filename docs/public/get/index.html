@@ -8,11 +8,11 @@
      Recap's share, a playlist link without the app). Static on purpose:
      WhatsApp reads these tags without running any script. The button always
      downloads the newest release. -->
-<meta name="description" content="Relaxify is a free music app for Android. Download the newest version.">
+<meta name="description" content="Relaxify is a free music app for Android. Download it here.">
 <meta name="theme-color" content="#0f0c0d">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Get Relaxify">
-<meta property="og:description" content="A free music app for Android. Search once, press play, and it keeps the music going. No account, no ads.">
+<meta property="og:description" content="Free music for Android. Search once, tap play, vibes on repeat. No account, no ads.">
 <meta property="og:image" content="https://subh-775.github.io/Relaxify/logo.png">
 <meta property="og:url" content="https://subh-775.github.io/Relaxify/get/">
 <link rel="icon" type="image/svg+xml" href="../logo.svg">
@@ -20,82 +20,99 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #0f0c0d;
-    --panel: #1b1618;
-    --line: rgba(255, 236, 240, 0.09);
-    --text: #f6f1f2;
-    --body: #d4cacd;
-    --muted: #9b9094;
-    --coral: #ff5a6e;
-    --coral-hover: #ff7385;
-    --coral-ink: #1c0609;
-    --coral-soft: rgba(255, 90, 110, 0.12);
+    --bg: #0f0c0d; --panel: #1b1618; --text: #f6f1f2; --body: #d4cacd; --muted: #9b9094; --ink: #111014;
+    --brand: #ff5a6e; --brand-ink: #1c0609;
+    --coral: #ff5a4e; --lime: #b8f03c; --sky: #3cb4ff; --lav: #a9a3ff; --orange: #ff9f1c;
     --font: "Plus Jakarta Sans", system-ui, -apple-system, Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; background: var(--bg); color: var(--body); font: 400 17px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
-  a { color: var(--coral); text-underline-offset: 3px; }
-  :focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 8px; }
-  main { max-width: 520px; margin: 0 auto; padding: max(40px, env(safe-area-inset-top)) 20px 48px; }
-  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-weight: 800; font-size: 19px; text-decoration: none; }
-  .brand svg { width: 34px; height: 34px; }
-  h1 { color: var(--text); font-size: clamp(40px, 11vw, 56px); line-height: 1; letter-spacing: -0.04em; font-weight: 800; margin: 40px 0 0; }
-  .lede { font-size: 18px; margin: 16px 0 0; }
-  .get { display: flex; align-items: center; justify-content: center; min-height: 58px; margin-top: 28px; border-radius: 999px; background: var(--coral); color: var(--coral-ink); font-weight: 800; font-size: 17.5px; text-decoration: none; }
-  .get:hover { background: var(--coral-hover); color: var(--coral-ink); }
-  .meta { color: var(--muted); font-size: 14px; text-align: center; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
-  h2 { color: var(--text); font-size: 21px; letter-spacing: -0.3px; margin: 44px 0 6px; }
-  ol { list-style: none; counter-reset: step; margin: 16px 0 0; padding: 0; }
-  ol li { counter-increment: step; position: relative; padding: 0 0 20px 50px; }
-  ol li::before { content: counter(step); position: absolute; left: 0; top: -1px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--coral-soft); color: var(--coral); font-weight: 800; font-size: 15px; }
-  b { color: var(--text); font-weight: 700; }
-  .note { margin-top: 6px; padding: 16px 18px; border-radius: 14px; background: var(--panel); font-size: 15.5px; }
-  .note b:first-child { display: block; margin-bottom: 2px; }
-  .foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  html, body { margin: 0; background: var(--bg); color: var(--body); font: 400 16.5px/1.6 var(--font); -webkit-font-smoothing: antialiased; }
+  a { color: var(--brand); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 8px; }
+  main { max-width: 560px; margin: 0 auto; padding: max(14px, env(safe-area-inset-top)) 16px 40px; }
+  .brand { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 800; font-size: 17px; text-decoration: none; }
+  .brand svg { width: 26px; height: 26px; }
+  .head { position: relative; overflow: hidden; margin-top: 14px; border-radius: 28px; padding: 22px 20px; min-height: 220px; display: flex; flex-direction: column; justify-content: flex-end; background: var(--coral); color: var(--ink); }
+  .head .k { font-weight: 700; font-size: 14px; opacity: .75; position: relative; }
+  .head h1 { margin: 4px 0 0; font-size: clamp(40px, 12vw, 54px); line-height: .98; letter-spacing: -.04em; font-weight: 800; position: relative; }
+  .mascot { position: absolute; right: 4px; top: 6px; width: 150px; height: 150px; overflow: visible; }
+  .nf { transform-origin: 50% 90%; animation: wave 1s ease-in-out infinite alternate; }
+  .nb { animation: bob 1.4s ease-in-out infinite alternate; }
+  @keyframes wave { from { transform: rotate(-4deg); } to { transform: rotate(10deg); } }
+  @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
+  .get { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 60px; margin-top: 16px; border-radius: 999px; background: var(--brand); color: var(--brand-ink); font-weight: 800; font-size: 18px; text-decoration: none; }
+  .get:hover { color: var(--brand-ink); }
+  .meta { color: var(--muted); font-size: 13.5px; text-align: center; margin: 8px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+  h2 { color: var(--text); font-size: 22px; letter-spacing: -.3px; margin: 30px 0 4px; }
+  ol { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; counter-reset: s; }
+  ol li { counter-increment: s; position: relative; padding: 14px 16px 14px 62px; border-radius: 20px; color: var(--ink); font-weight: 600; line-height: 1.45; }
+  ol li::before { content: counter(s); position: absolute; left: 14px; top: 13px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: #fff; font-weight: 800; }
+  ol li:nth-child(1) { background: var(--lime); } ol li:nth-child(2) { background: var(--sky); }
+  ol li:nth-child(3) { background: var(--lav); } ol li:nth-child(4) { background: var(--orange); }
+  ol b { display: block; color: var(--ink); }
+  .tip { margin-top: 14px; padding: 15px 17px; border-radius: 20px; background: var(--panel); border: 1.5px dashed rgba(255,255,255,.18); font-size: 15px; }
+  .tip b { display: block; color: var(--text); margin-bottom: 2px; }
+  .warn { margin-top: 10px; padding: 15px 17px; border-radius: 20px; background: var(--coral); color: var(--ink); font-weight: 600; font-size: 15px; }
+  .warn b { display: block; color: var(--ink); }
+  .foot { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 15px; font-weight: 600; }
+  @media (orientation: landscape) and (max-height: 540px) {
+    main { max-width: 880px; }
+    .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .head { min-height: 170px; }
+    .mascot { width: 110px; height: 110px; }
+    ol { grid-template-columns: 1fr 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) { .nf, .nb { animation: none; } }
 </style>
 </head>
 <body>
 <main>
   <a class="brand" href="../">
-    <svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="mb" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#C0606C"/><stop offset=".5" stop-color="#A12C48"/><stop offset="1" stop-color="#6E1030"/></linearGradient><linearGradient id="mf" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FF9AA0"/><stop offset=".5" stop-color="#FF5A6E"/><stop offset="1" stop-color="#E2266A"/></linearGradient></defs><g transform="translate(-6.96 -3.78) scale(0.7022)"><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#mb)"/></g><g transform="translate(4.89 -2.03) scale(1.0721)"><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#mf)"/></g></svg>
+    <svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="lb" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#C0606C"/><stop offset="1" stop-color="#6E1030"/></linearGradient><linearGradient id="lf" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FF9AA0"/><stop offset="1" stop-color="#E2266A"/></linearGradient></defs><path transform="translate(-6.96 -3.78) scale(0.7022)" fill="url(#lb)" d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z"/><path transform="translate(4.89 -2.03) scale(1.0721)" fill="url(#lf)" d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z"/></svg>
     Relaxify
   </a>
 
-  <h1>Get Relaxify</h1>
-  <p class="lede">Free music for your Android phone. Search once, press play, and it keeps the music going. No account, no ads.</p>
+  <div class="top-grid">
+    <div>
+      <div class="head">
+        <svg class="mascot" viewBox="0 0 100 100" aria-hidden="true">
+          <defs><linearGradient id="mb" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#C0606C"/><stop offset=".5" stop-color="#A12C48"/><stop offset="1" stop-color="#6E1030"/></linearGradient><linearGradient id="mf" x1=".1" y1="0" x2=".9" y2="1"><stop offset="0" stop-color="#FF9AA0"/><stop offset=".5" stop-color="#FF5A6E"/><stop offset="1" stop-color="#E2266A"/></linearGradient></defs>
+          <g class="nb"><path transform="translate(-6.96 -3.78) scale(0.7022)" fill="url(#mb)" d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z"/><g transform="translate(16.4 47) scale(.62)"><ellipse rx="3.4" ry="4.2" fill="#fff"/><circle cx=".8" cy=".6" r="1.9" fill="#111014"/></g><g transform="translate(24.4 47) scale(.62)"><ellipse rx="3.4" ry="4.2" fill="#fff"/><circle cx=".8" cy=".6" r="1.9" fill="#111014"/></g></g>
+          <g class="nf"><path transform="translate(4.89 -2.03) scale(1.0721)" fill="url(#mf)" d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z"/><g transform="translate(40.2 75.3)"><ellipse rx="3.4" ry="4.2" fill="#fff"/><circle cx=".8" cy=".6" r="1.9" fill="#111014"/></g><g transform="translate(53.2 75.3)"><ellipse rx="3.4" ry="4.2" fill="#fff"/><circle cx=".8" cy=".6" r="1.9" fill="#111014"/></g><path d="M43.2 80.8 Q46.7 84.3 50.2 80.8" stroke="#111014" stroke-width="1.8" fill="none" stroke-linecap="round"/></g>
+        </svg>
+        <span class="k">Free, for Android</span>
+        <h1>Get Relaxify</h1>
+      </div>
+      <a class="get" href="https://github.com/subh-775/Relaxify/releases/latest/download/Relaxify.apk">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
+        Download
+      </a>
+      <p class="meta" id="meta"></p>
+    </div>
 
-  <a class="get" href="https://github.com/subh-775/Relaxify/releases/latest/download/Relaxify.apk">Download for Android</a>
-  <p class="meta" id="meta">Always the newest version</p>
-
-  <h2>Installing takes a minute</h2>
-  <ol>
-    <li><b>Tap Download.</b> The file is saved to your phone.</li>
-    <li><b>Open the file</b> from the notification, or from your Downloads folder.</li>
-    <li><b>Tap Install.</b> The first time, Android asks to allow installs from your browser: turn it on, go back, and tap Install.</li>
-    <li><b>Open Relaxify</b> and choose the languages you listen in.</li>
-  </ol>
-  <div class="note">
-    <b>Android says the app is from an unknown developer?</b>
-    That's because Relaxify isn't on the Play Store. Tap <b>More details</b>, then <b>Install anyway</b>.
+    <div>
+      <h2>Installing takes a minute</h2>
+      <ol>
+        <li><b>Tap Download</b>The file saves to your phone.</li>
+        <li><b>Open the file</b>From the notification, or your Downloads.</li>
+        <li><b>Tap Install</b>First time, allow installs from your browser. Go back, tap Install.</li>
+        <li><b>Pick your languages</b>Home fills up with your kind of music. Done.</li>
+      </ol>
+      <div class="tip"><b>"Unknown developer" warning?</b>That's just because Relaxify isn't on the Play Store. Tap <b style="display:inline">More details</b>, then <b style="display:inline">Install anyway</b>.</div>
+      <div class="warn"><b>Already have it?</b>When a new update appears, you'll be notified in the app. Never uninstall to update, that wipes your playlists.</div>
+      <p class="foot"><a href="../start">How to use Relaxify</a><a href="../help">Help</a></p>
+    </div>
   </div>
-
-  <h2>Already have it?</h2>
-  <p>You don't need this page. Relaxify tells you when a new version is out and updates itself, keeping your playlists and likes. Please don't uninstall it to update: that deletes them.</p>
-
-  <p class="foot">
-    <a href="../start">How to use Relaxify</a>
-    <a href="../help">Questions and fixes</a>
-  </p>
 </main>
 <script>
-  // The version and size, when GitHub answers. The button works without it.
+  // Version and size, when GitHub answers. The button works without it.
   fetch('https://api.github.com/repos/subh-775/Relaxify/releases/latest')
     .then(r => (r.ok ? r.json() : Promise.reject()))
     .then(rel => {
       const apk = (rel.assets || []).find(a => a.name === 'Relaxify.apk');
-      const size = apk ? `, ${Math.round(apk.size / 1048576)} MB` : '';
-      document.getElementById('meta').textContent = `Version ${rel.tag_name.replace(/^v/, '')}${size}, the newest`;
+      document.getElementById('meta').textContent =
+        `Version ${rel.tag_name.replace(/^v/, '')}${apk ? `, ${Math.round(apk.size / 1048576)} MB` : ''}`;
     })
     .catch(() => {});
 </script>
