@@ -315,7 +315,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       <View style={styles.field}>
         <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
         <View style={styles.inputBox}>
-          {!query && <SearchHints artist={topArtists[0]?.name} />}
+          {!query && <SearchHints />}
           <TextInput
           ref={inputRef}
           value={query}
