@@ -1,13 +1,15 @@
 /**
- * The shell: routing, the sidebar (a slide-in menu on phones), the home page,
- * and each page's frame.
+ * The shell: routing, the bottom bar (Menu + Download, where a thumb is),
+ * the menu sheet, Home, and each page's frame.
  *
- * A small path router rather than a library: the routes are a fixed list known
- * at build time (nav.js), and the build writes a real HTML file for each.
+ * Phone first: one column, the bar at the bottom in portrait and landscape.
+ * A small path router rather than a library: the routes are a fixed list
+ * known at build time (nav.js), and the build writes a real HTML file for each.
  */
-import {useCallback, useEffect, useRef, useState} from 'react';
-import {FLAT, GET_PAGE, GROUPS, MOVED, SITE} from './nav.js';
-import {Callout, GetApp, Note, Playing, href, nextOf, prevOf} from './brand.jsx';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
+import gsap from 'gsap';
+import {GET_PAGE, MOVED, PAGES, PAL, SITE} from './nav.js';
+import {Burst, Callout, Deck, DownloadIcon, Logo, Mascot, href, reduceMotion, useReveal} from './brand.jsx';
 import {mdxComponents} from './mdx.jsx';
 import {Github} from './icons.jsx';
 import '@fontsource-variable/plus-jakarta-sans';
@@ -27,10 +29,7 @@ const toPath = pathname => {
 };
 
 /** Pages that live outside this app (public/get, public/p) load for real. */
-const ownPage = pathname => {
-  const p = toPath(pathname);
-  return p === '/get' || p === '/p';
-};
+const ownPage = pathname => ['/get', '/p'].includes(toPath(pathname));
 
 function useRouter() {
   const [path, setPath] = useState(() => toPath(window.location.pathname));
@@ -89,37 +88,29 @@ function useRouter() {
   return path;
 }
 
-/* ── the sidebar ─────────────────────────────────────────────────────────── */
+/* ── the bottom bar and the menu ─────────────────────────────────────────── */
 
-function SideNav({path}) {
+function BottomBar({onMenu, open}) {
   return (
-    <nav className="nav" aria-label="Pages">
-      <a className={path === '/' ? 'nav-item on' : 'nav-item'} href={href('/')} aria-current={path === '/' ? 'page' : undefined}>
-        Home
+    <nav className="bottom" aria-label="Menu and download">
+      <button type="button" className="menu-btn" onClick={onMenu} aria-expanded={open} aria-controls="menu">
+        <i aria-hidden="true">
+          <b />
+          <b />
+          <b />
+        </i>
+        Menu
+      </button>
+      <a className="dl" href={SITE.apk}>
+        <DownloadIcon />
+        Download
       </a>
-      <a className="nav-item" href={href(GET_PAGE)}>
-        Get the app
-      </a>
-      {GROUPS.map(g => (
-        <div key={g.title} className="nav-group">
-          <span className="nav-title">{g.title}</span>
-          {g.pages.map(p => (
-            <a
-              key={p.link}
-              href={href(p.link)}
-              className={path === p.link ? 'nav-item on' : 'nav-item'}
-              aria-current={path === p.link ? 'page' : undefined}>
-              {p.title}
-            </a>
-          ))}
-        </div>
-      ))}
     </nav>
   );
 }
 
-function Sidebar({path, open, onClose}) {
-  const panel = useRef(null);
+function Menu({open, onClose, path}) {
+  const sheet = useRef(null);
   useEffect(() => {
     if (!open) {
       return;
@@ -127,118 +118,102 @@ function Sidebar({path, open, onClose}) {
     const onKey = e => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    // The panel itself takes focus: Tab goes on to its links, and a tap
-    // does not leave a focus ring on the first one.
-    panel.current?.focus();
+    sheet.current?.focus();
+    if (!reduceMotion()) {
+      gsap.fromTo(sheet.current.querySelectorAll('a'), {x: -18, autoAlpha: 0}, {x: 0, autoAlpha: 1, stagger: 0.03, duration: 0.3, delay: 0.08});
+    }
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
   }, [open, onClose]);
+  const item = (link, label, line, color, external) => (
+    <a
+      key={link}
+      href={external ? link : href(link)}
+      className={path === link ? 'on' : ''}
+      aria-current={path === link ? 'page' : undefined}
+      {...(external ? {target: '_blank', rel: 'noreferrer'} : {})}>
+      <i style={{background: color}} aria-hidden="true" />
+      <span>
+        {label}
+        <small>{line}</small>
+      </span>
+    </a>
+  );
   return (
     <>
-      <div className={open ? 'scrim show' : 'scrim'} onClick={onClose} aria-hidden="true" />
-      <aside ref={panel} tabIndex={-1} className={open ? 'side open' : 'side'} aria-label="Menu">
-        <a className="side-brand" href={href('/')}>
-          <Note size={34} />
-          <span>Relaxify</span>
-        </a>
-        <SideNav path={path} />
-        <div className="side-foot">
-          <GetApp small />
-          <a className="side-gh" href={SITE.repo} target="_blank" rel="noreferrer">
-            <Github size={16} />
-            Relaxify on GitHub
-          </a>
-        </div>
-      </aside>
+      <div className={open ? 'scrim on' : 'scrim'} onClick={onClose} aria-hidden="true" />
+      <div id="menu" ref={sheet} tabIndex={-1} className={open ? 'sheet on' : 'sheet'} role="dialog" aria-label="Menu" inert={open ? undefined : ''}>
+        <div className="grab" aria-hidden="true" />
+        {item('/', 'Home', 'Back to the start', '#FF5A6E')}
+        {item(GET_PAGE, 'Get the app', 'Install in a minute', PAL.coral.bg)}
+        {PAGES.map(p => item(p.link, p.title, p.kicker, PAL[p.pal].bg))}
+        {item(SITE.repo, 'Relaxify on GitHub', 'Free and open source', '#2a2427', true)}
+      </div>
     </>
-  );
-}
-
-/** Phones only: the bar with the menu button, the name and a way to download. */
-function TopBar({onMenu, open}) {
-  return (
-    <header className="bar">
-      <button type="button" className="menu" onClick={onMenu} aria-label="Open the menu" aria-expanded={open}>
-        <span />
-        <span />
-        <span />
-      </button>
-      <a className="bar-brand" href={href('/')}>
-        <Note size={26} />
-        Relaxify
-      </a>
-      <a className="bar-get" href={href(GET_PAGE)}>
-        Get the app
-      </a>
-    </header>
   );
 }
 
 /* ── home ────────────────────────────────────────────────────────────────── */
 
-const HIGHLIGHTS = [
-  ['One search, everywhere', 'Type a song once. Relaxify looks on JioSaavn, SoundCloud and YouTube and plays the best copy it finds.', '/play'],
-  ['Keeps going', "When your songs run out, it carries on with ones like the song you're hearing.", '/play#it-never-runs-out'],
-  ['Listen together', "Jam with friends: the same song at the same second, each on your own phone.", '/together'],
-  ['Bring your playlists', 'Paste a Spotify or YouTube playlist link and get the same playlist in Relaxify.', '/music#bring-your-playlists'],
-  ['Download songs', 'Real music files on your phone. They play without internet and stay if you remove the app.', '/music#downloads'],
-  ['Your week in music', 'Every Sunday, a Recap of what you played most, made on your phone.', '/music#your-recap'],
-];
-
 function Home() {
+  const h = useRef(null);
+  useLayoutEffect(() => {
+    if (reduceMotion()) {
+      return;
+    }
+    const ctx = gsap.context(() => {
+      gsap.from('.w', {y: 40, rotation: 6, autoAlpha: 0, stagger: 0.08, duration: 0.6, ease: 'back.out(1.8)', delay: 0.15});
+    }, h);
+    return () => ctx.revert();
+  }, []);
+  const words = 'Music that just plays.'.split(' ');
   return (
-    <main className="home" id="main">
-      <section className="hero">
-        <Playing />
-        <h1>Music that just plays.</h1>
-        <p className="lede">
-          Relaxify is a free music app for Android. Search once, press play, and it keeps the music going. No
-          account to make, no ads.
-        </p>
-        <div className="hero-actions">
-          <GetApp />
-          <a className="ghost" href={href('/start')}>
-            How to get started
-          </a>
+    <div className="home">
+      <div className="home-grid">
+        <section className="hero">
+          <Mascot mood="dance" size={124} />
+          <h1 ref={h} aria-label="Music that just plays.">
+            {words.map((w, i) => (
+              <span key={i} className="w" aria-hidden="true">
+                {w}{' '}
+              </span>
+            ))}
+          </h1>
+          <p className="lede">Free on Android. Search once, tap play, vibes on repeat. No account, no ads. 🎧</p>
+        </section>
+        <Deck />
+      </div>
+
+      <section className="quick">
+        <h2 className="reveal">Quick ones</h2>
+        <div className="stick reveal">
+          <span className="em" aria-hidden="true">⚡</span>
+          <span>
+            <b>Installs in a minute</b>
+            It's not on the Play Store, so you grab the file yourself. Super easy. <a href={href(GET_PAGE)}>Show me</a>
+          </span>
         </div>
-      </section>
-
-      <section className="home-block" aria-labelledby="does">
-        <h2 id="does">What it does</h2>
-        <ul className="highlights">
-          {HIGHLIGHTS.map(([title, text, link]) => (
-            <li key={title}>
-              <a href={href(link)}>
-                <b>{title}</b>
-                <span>{text}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="home-block" aria-labelledby="know">
-        <h2 id="know">Good to know first</h2>
-        <ul className="facts">
-          <li>
-            <b>Works on Android 8 and newer.</b> It isn't on the Play Store, so you download it here and install it
-            yourself. <a href={href(GET_PAGE)}>See how</a>.
-          </li>
-          <li>
-            <b>It updates itself.</b> When a new version is out, the app tells you and installs it over the old one.
-          </li>
-          <li>
-            <b>Free and open.</b> Anyone can read how it's made, on GitHub.
-          </li>
-        </ul>
-        <Callout kind="important" title="Never uninstall to update">
-          Removing the app deletes your playlists, likes and history, and Android can't bring them back. Always
-          update from inside the app.
+        <div className="stick reveal">
+          <span className="em" aria-hidden="true">🔁</span>
+          <span>
+            <b>Updates itself</b>
+            New version out? The app tells you and updates in place.
+          </span>
+        </div>
+        <div className="stick reveal">
+          <span className="em" aria-hidden="true">💸</span>
+          <span>
+            <b>Free, for real</b>
+            No account, no ads, no paywall. Anyone can read how it's made.
+          </span>
+        </div>
+        <Callout kind="important" title="🚫 Never uninstall to update">
+          That wipes your playlists and likes for good. Always update from inside the app.
         </Callout>
       </section>
-    </main>
+    </div>
   );
 }
 
@@ -246,58 +221,66 @@ function Home() {
 
 function Page({route, page}) {
   const Content = BY_ROUTE[route].default;
-  const next = nextOf(route);
-  const prev = prevOf(route);
+  const p = PAL[page.pal];
+  const i = PAGES.indexOf(page);
+  const next = PAGES[i + 1];
+  const head = useRef(null);
+  useLayoutEffect(() => {
+    if (reduceMotion()) {
+      return;
+    }
+    const t = gsap.fromTo(head.current, {y: 30, autoAlpha: 0, scale: 0.97}, {y: 0, autoAlpha: 1, scale: 1, duration: 0.5, ease: 'back.out(1.5)'});
+    return () => t.kill();
+  }, [route]);
   return (
-    <main className="page" id="main">
-      <header className="page-head">
+    <div className="page">
+      <header ref={head} className="phead" style={{background: p.bg, color: p.ink}}>
+        {page.mood ? <Mascot mood={page.mood} size={136} className="phead-art mascot-art" /> : <Burst color={p.art} className="phead-art" spin />}
+        <span className="k">{page.kicker}</span>
         <h1>{page.title}</h1>
-        <p className="lede">{page.line}</p>
       </header>
 
       <article className="prose">
         <Content components={mdxComponents} />
       </article>
 
-      <nav className="pager" aria-label="More pages">
-        {prev ? (
-          <a className="pager-link" href={href(prev.link)}>
-            <small>Previous</small>
-            {prev.title}
-          </a>
-        ) : (
-          <span />
-        )}
-        {next && (
-          <a className="pager-link next" href={href(next.link)}>
-            <small>Next</small>
+      {next && (
+        <a className="next reveal" href={href(next.link)} style={{background: PAL[next.pal].bg, color: PAL[next.pal].ink}}>
+          <span>
+            <small>Next up</small>
             {next.title}
-          </a>
-        )}
-      </nav>
+          </span>
+          <span aria-hidden="true" className="next-arrow">
+            ›
+          </span>
+        </a>
+      )}
 
       <p className="edit">
         Something wrong or missing here?{' '}
         <a href={`${SITE.editBase}${route}.mdx`} target="_blank" rel="noreferrer">
-          Suggest a change on GitHub
+          Suggest a change
         </a>
         .
       </p>
-    </main>
+    </div>
   );
 }
 
 function NotFound() {
   return (
-    <main className="page" id="main">
-      <header className="page-head">
-        <h1>This page isn't here.</h1>
-        <p className="lede">It may have moved. Everything is in the menu, or start from the home page.</p>
+    <div className="page">
+      <header className="phead" style={{background: PAL.pink.bg, color: PAL.pink.ink}}>
+        <Mascot mood="huh" size={136} className="phead-art mascot-art" />
+        <span className="k">Hmm, lost?</span>
+        <h1>Nothing here</h1>
       </header>
-      <p>
-        <a href={href('/')}>Go to the home page</a>
-      </p>
-    </main>
+      <div className="prose">
+        <p>
+          This page moved or never existed. <a href={href('/')}>Go back home</a> and pick a card.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -305,12 +288,14 @@ function NotFound() {
 
 export default function App() {
   const path = useRouter();
-  const page = FLAT.find(p => p.link === path);
+  const page = PAGES.find(p => p.link === path);
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  const main = useRef(null);
 
   // A new page closes the menu behind it.
   useEffect(close, [path, close]);
+  useReveal(main, path);
 
   useEffect(() => {
     document.title = page ? `${page.title}: Relaxify` : 'Relaxify: music that just plays';
@@ -321,33 +306,28 @@ export default function App() {
       <a className="skip" href="#main">
         Skip to the page
       </a>
-      <div className="shell">
-        <Sidebar path={path} open={open} onClose={close} />
-        <div className="col">
-          <TopBar onMenu={() => setOpen(true)} open={open} />
-          {path === '/' ? (
-            <Home />
-          ) : page && BY_ROUTE[path] ? (
-            <Page route={path} page={page} />
-          ) : MOVED[path] ? null : (
-            <NotFound />
-          )}
-          <footer className="foot">
-            <span>
-              Relaxify is free and open source. It doesn't host any music: songs come from JioSaavn, SoundCloud and
-              YouTube.
-            </span>
-            <span className="foot-links">
-              <a href={SITE.repo} target="_blank" rel="noreferrer">
-                GitHub
-              </a>
-              <a href={SITE.issues} target="_blank" rel="noreferrer">
-                Report a problem
-              </a>
-            </span>
-          </footer>
-        </div>
-      </div>
+      <header className="top">
+        <a className="brand" href={href('/')}>
+          <Logo size={26} />
+          Relaxify
+        </a>
+      </header>
+      <main id="main" ref={main} key={path}>
+        {path === '/' ? <Home /> : page && BY_ROUTE[path] ? <Page route={path} page={page} /> : MOVED[path] ? null : <NotFound />}
+        <footer className="foot">
+          <span>Relaxify is free and open source. It doesn't host any music: songs come from JioSaavn, SoundCloud and YouTube.</span>
+          <span className="foot-links">
+            <a href={SITE.repo} target="_blank" rel="noreferrer">
+              <Github size={14} /> GitHub
+            </a>
+            <a href={SITE.issues} target="_blank" rel="noreferrer">
+              Report a problem
+            </a>
+          </span>
+        </footer>
+      </main>
+      <BottomBar onMenu={() => setOpen(true)} open={open} />
+      <Menu open={open} onClose={close} path={path} />
     </>
   );
 }
