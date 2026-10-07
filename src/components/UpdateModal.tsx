@@ -1,9 +1,9 @@
 /**
- * The in-app update prompt: a slim strip floating above the mini player.
+ * The in-app update prompt: a concert ticket floating above the mini player.
  * Appears when a newer release is found, fills up as it downloads, and lets
  * the user install or put it off.
  *
- * A strip, not a sheet or a dialog: the page stays visible and usable around
+ * A ticket, not a sheet or a dialog: the page stays visible and usable around
  * it, so a new version is news rather than an interruption.
  *
  * A failure shows here only when a DOWNLOAD failed (see `attempted` in
@@ -15,7 +15,7 @@
 import React, {useMemo} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Animated, {FadeInDown, FadeOutDown} from 'react-native-reanimated';
-import {AlertTriangle, ArrowDownToLine, ChartColumn, X} from '../icons';
+import {ChartColumn, X} from '../icons';
 import {C, S} from '../theme';
 import {dismissUpdate, startUpdateInstall, useUpdate} from '../update';
 import {formatSize} from '../updateNotes';
@@ -31,8 +31,8 @@ const noticeSeen = createStore<boolean>(
   raw => raw === true,
 );
 
-/** The strip's height, and the room a page's list leaves for it. */
-const STRIP_H = 46;
+/** The ticket's height, and the room a page's list leaves for it. */
+const STRIP_H = 96;
 const STRIP_ROOM = STRIP_H + 14;
 const INK = '#000000';
 const LEMON = '#FFE14D';
@@ -63,9 +63,10 @@ export function useListEnd(): {paddingBottom: number} {
 }
 
 /**
- * The update, as one slim line docked above the mini player: yellow, a thick
- * black edge and a hard shadow, so it reads as news without covering the page.
- * The notes live in Settings; the strip says only what to do.
+ * The update, as a ticket docked above the mini player: an "ADMIT ONE" stub,
+ * then what it is, the version big, and Install. Yellow, a thick black edge
+ * and a hard shadow, so it reads as news without covering the page. The notes
+ * live in Settings; the ticket says only what to do.
  */
 export function UpdateModal({hidden = false}: {hidden?: boolean}) {
   const u = useUpdate();
@@ -80,11 +81,11 @@ export function UpdateModal({hidden = false}: {hidden?: boolean}) {
   const failed = phase === 'failed';
   const downloading = phase === 'downloading';
   const size = formatSize(info?.sizeBytes);
-  const title = failed
-    ? 'Update failed'
+  const kick = failed
+    ? 'UPDATE FAILED'
     : downloading
-    ? `Downloading v${info?.version ?? ''}`
-    : `v${info?.version} is ready`;
+    ? 'DOWNLOADING'
+    : 'NEW VERSION AVAILABLE';
 
   return (
     <Animated.View
@@ -92,44 +93,56 @@ export function UpdateModal({hidden = false}: {hidden?: boolean}) {
       exiting={FadeOutDown.duration(180)}
       style={styles.strip}
       accessibilityLiveRegion="polite">
-      {/* While downloading, the strip itself fills up. */}
+      {/* While downloading, the ticket itself fills up. */}
       {downloading && (
         <View
           style={[styles.fill, {width: `${Math.max(3, Math.min(100, pct))}%`}]}
         />
       )}
-      {failed ? (
-        <AlertTriangle size={18} color={INK} strokeWidth={2.4} />
-      ) : (
-        <ArrowDownToLine size={18} color={INK} strokeWidth={2.4} />
-      )}
-      <Text style={styles.stripTitle} numberOfLines={1}>
-        {title}
-        {!downloading && !failed && !!size && (
-          <Text style={styles.stripMeta}>{`  ${size}`}</Text>
-        )}
-      </Text>
-      {downloading ? (
-        <Text style={styles.stripPct}>{pct}%</Text>
-      ) : (
-        <>
-          <TouchableOpacity
-            style={styles.stripBtn}
-            onPress={startUpdateInstall}
-            accessibilityRole="button">
-            <Text style={styles.stripBtnText}>
-              {failed ? 'Retry' : 'Install'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={dismissUpdate}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Not now">
-            <X size={18} color={INK} strokeWidth={2.6} />
-          </TouchableOpacity>
-        </>
-      )}
+      <View style={styles.stub}>
+        <Text style={styles.stubText} numberOfLines={1}>
+          ADMIT ONE
+        </Text>
+      </View>
+      {/* The perforation: a dashed line, drawn as dashes — Android cannot
+          dash a single side of a border. */}
+      <View style={styles.perf}>
+        {Array.from({length: 7}, (_, i) => (
+          <View key={i} style={styles.dash} />
+        ))}
+      </View>
+      <View style={styles.body}>
+        <View style={styles.line}>
+          <Text style={styles.kick} numberOfLines={1}>
+            {kick}
+          </Text>
+          {!downloading && (
+            <TouchableOpacity
+              onPress={dismissUpdate}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Not now">
+              <X size={18} color={INK} strokeWidth={2.8} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <Text style={styles.version} numberOfLines={1}>
+          {`v${info?.version ?? ''}`}
+        </Text>
+        <View style={styles.line}>
+          <Text style={styles.meta}>{downloading ? `${pct}%` : size}</Text>
+          {!downloading && (
+            <TouchableOpacity
+              style={styles.stripBtn}
+              onPress={startUpdateInstall}
+              accessibilityRole="button">
+              <Text style={styles.stripBtnText}>
+                {failed ? 'Retry' : 'Install'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
     </Animated.View>
   );
 }
@@ -170,11 +183,7 @@ const styles = StyleSheet.create({
     bottom: BOTTOM_INSET + 10,
     height: STRIP_H,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingLeft: 12,
-    paddingRight: 12,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 2.5,
     borderColor: INK,
     backgroundColor: BUTTER,
@@ -191,9 +200,49 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: LEMON,
   },
-  stripTitle: {flex: 1, color: INK, fontSize: 14.5, fontWeight: '900'},
-  stripMeta: {color: INK, fontSize: 12, fontWeight: '700', opacity: 0.6},
-  stripPct: {color: INK, fontSize: 14, fontWeight: '900'},
+  stub: {
+    width: 30,
+    backgroundColor: LEMON,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Laid out flat at the ticket's height, then turned to read bottom-up.
+  stubText: {
+    width: STRIP_H - 10,
+    textAlign: 'center',
+    transform: [{rotate: '-90deg'}],
+    color: INK,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  perf: {
+    width: 2.5,
+    backgroundColor: LEMON,
+    justifyContent: 'space-evenly',
+  },
+  dash: {height: 6, backgroundColor: INK},
+  body: {flex: 1, paddingHorizontal: 12, justifyContent: 'center', gap: 3},
+  line: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  kick: {
+    flex: 1,
+    color: INK,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+  version: {
+    color: INK,
+    fontSize: 26,
+    lineHeight: 30,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  meta: {color: INK, fontSize: 12, fontWeight: '700', opacity: 0.7},
   stripBtn: {
     backgroundColor: INK,
     borderRadius: 7,
