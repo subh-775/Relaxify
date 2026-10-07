@@ -213,7 +213,7 @@ export function ArtistScreen({
           contentContainerStyle={[styles.body, listEnd]}>
           {/* The poster: the photo edge to edge, fading through its own
               colour into the page, with the name set over its foot. */}
-          <View style={{height: hero}}>
+          <View style={[styles.hero, {height: hero}]}>
             {profile?.image ? (
               <Animated.Image
                 source={{uri: profile.image}}
@@ -408,6 +408,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Clipped: the photo drifts down as the page scrolls, and unclipped it
+  // slid out under Follow and the list, unfaded, in a second shade.
+  hero: {overflow: 'hidden'},
   photo: {
     position: 'absolute',
     top: 0,
