@@ -48,8 +48,7 @@ import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
 import {importSourceName, isImportUrl} from '../spotifyImport';
 import {codeIn, openShared} from '../sharedPlaylists';
-import {readPlaylists} from '../playlists';
-import {playlistToCollection, type Collection} from '../collections';
+import {type Collection} from '../collections';
 import {toast} from '../toast';
 import {BRIGHT_PALS, blob} from '../brandArt';
 import Svg, {
@@ -271,12 +270,7 @@ export const SearchScreen = React.memo(function SearchScreen({
   const shareCode = spotify ? '' : codeIn(query);
   const openCode = () => {
     openShared(query)
-      .then(id => {
-        const p = readPlaylists().find(x => x.id === id);
-        if (p) {
-          onOpenCollection(playlistToCollection(p));
-        }
-      })
+      .then(onOpenCollection)
       .catch(e =>
         toast(
           e instanceof Error && !/^Jam /.test(e.message)

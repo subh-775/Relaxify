@@ -30,33 +30,27 @@ export type Playlist = {
    */
   updatedAt?: number;
   /**
-   * Followed from a friend's share code (sharedPlaylists.ts). While the
-   * owner shares it, it updates from them and is read-only here; once they
-   * stop (or delete it), `stopped` is set and it is an ordinary playlist
-   * with the last songs it had.
+   * Added from a friend's share link (sharedPlaylists.ts): which link, and
+   * whose. A snapshot, entirely yours: the owner's later changes never reach
+   * it and yours never reach them. `code` is what lets the same link show
+   * "In your library" instead of adding it twice.
    */
-  follow?: {
-    code: string;
-    /** The owner's name, as they share it. */
-    by: string;
-    /** The owner's version this copy holds. */
-    v: number;
-    /** Changed by the owner since it was last opened: the "New" tag. */
-    fresh?: boolean;
-    stopped?: boolean;
-  };
+  from?: {code: string; by: string};
 };
 
-/** Updated by its owner, not editable here. */
-export function isFollowed(p: Playlist | null | undefined): boolean {
-  return !!p?.follow && !p.follow.stopped;
+/** Stored before v1.2.36, a shared playlist was FOLLOWED: it kept updating
+ *  from its owner and could not be edited. Those become the snapshot of
+ *  today, the reader's own, with the link they came from remembered. */
+type Stored = Playlist & {follow?: {code: string; by: string}};
+/** Exported for the test. */
+export function fromStored({follow, ...p}: Stored): Playlist {
+  return follow && !p.from ? {...p, from: {code: follow.code, by: follow.by}} : p;
 }
 
-/** A change to `list`, except to a followed playlist, which is its owner's. */
-const editable = (id: string) => !isFollowed(store.get().find(p => p.id === id));
-
 const store = createStore<Playlist[]>('mp.playlists.v1', [], raw =>
-  asArray<Playlist>(raw).filter(p => p && typeof p.id === 'string'),
+  asArray<Stored>(raw)
+    .filter(p => p && typeof p.id === 'string')
+    .map(fromStored),
 );
 
 export const readPlaylists = store.get;
@@ -87,7 +81,7 @@ export function deletePlaylist(id: string): void {
 
 export function renamePlaylist(id: string, name: string): void {
   const clean = (name || '').trim();
-  if (!clean || !editable(id)) {
+  if (!clean) {
     return;
   }
   store.update(list =>
@@ -99,9 +93,6 @@ export function renamePlaylist(id: string, name: string): void {
 
 /** Pass null to clear, falling the cover back to the artwork mosaic. */
 export function setPlaylistImage(id: string, image: string | null): void {
-  if (!editable(id)) {
-    return;
-  }
   store.update(list =>
     list.map(p =>
       p.id === id
@@ -114,7 +105,7 @@ export function setPlaylistImage(id: string, image: string | null): void {
 /** Returns true if it was added, false if the song was already there. */
 export function addTrackToPlaylist(id: string, track: Track): boolean {
   const t = normalizeTrack(track);
-  if (!t || !editable(id)) {
+  if (!t) {
     return false;
   }
   logEvent('playlist_add', {
@@ -144,9 +135,6 @@ export function addTrackToPlaylist(id: string, track: Track): boolean {
  *  Spotify import, where N is up to 100. */
 export function addTracksToPlaylist(id: string, tracks: Track[]): number {
   let added = 0;
-  if (!editable(id)) {
-    return 0;
-  }
   store.update(list =>
     list.map(p => {
       if (p.id !== id) {
@@ -184,9 +172,6 @@ export function addTracksToPlaylist(id: string, tracks: Track[]): number {
 }
 
 export function removeTrackFromPlaylist(id: string, track: Track): void {
-  if (!editable(id)) {
-    return;
-  }
   const tid = getTrackId(normalizeTrack(track));
   store.update(list =>
     list.map(p =>
@@ -234,12 +219,20 @@ export const onPlaylistsChanged = (fn: () => void) => store.subscribe(fn);
 /** A shared playlist as it arrives from its owner. */
 export type SharedCopy = {name: string; by: string; v: number; tracks: Track[]};
 
-/** Follow a friend's playlist: a new playlist in your Library, or the one
- *  already following that code, brought up to date. Returns its id. */
-export function followPlaylist(code: string, s: SharedCopy): string {
-  const have = store.get().find(p => p.follow?.code === code);
+/** The playlist added from share link `code`, if it is in your Library. */
+export function playlistFromLink(
+  list: Playlist[],
+  code: string,
+): Playlist | undefined {
+  return list.find(p => p.from?.code === code);
+}
+
+/** "Add to library" on a friend's shared playlist: your own copy of the
+ *  songs it has now. The same link twice gives the one you already have.
+ *  Returns its id. */
+export function addSharedPlaylist(code: string, s: SharedCopy): string {
+  const have = playlistFromLink(store.get(), code);
   if (have) {
-    updateFollowed(code, s);
     return have.id;
   }
   const p: Playlist = {
@@ -248,61 +241,9 @@ export function followPlaylist(code: string, s: SharedCopy): string {
     tracks: s.tracks,
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    follow: {code, by: s.by, v: s.v, fresh: false},
+    from: {code, by: s.by},
   };
   store.update(list => [p, ...list]);
+  logEvent('playlist_added', {songs: s.tracks.length});
   return p.id;
-}
-
-/**
- * The owner's latest (`s`), or `null` when they stopped sharing. A changed
- * version replaces the songs and name and shows as New; stopping leaves the
- * songs as they were, now yours to edit.
- */
-export function updateFollowed(code: string, s: SharedCopy | null): void {
-  store.update(list =>
-    list.map(p => {
-      if (p.follow?.code !== code || p.follow.stopped) {
-        return p;
-      }
-      if (!s) {
-        return {...p, follow: {...p.follow, stopped: true, fresh: true}};
-      }
-      if (s.v === p.follow.v) {
-        return p;
-      }
-      return {
-        ...p,
-        name: s.name || p.name,
-        tracks: s.tracks,
-        updatedAt: Date.now(),
-        follow: {...p.follow, by: s.by, v: s.v, fresh: true},
-      };
-    }),
-  );
-}
-
-/** Opened: the New tag goes. */
-export function markPlaylistSeen(id: string): void {
-  const p = store.get().find(x => x.id === id);
-  if (p?.follow?.fresh) {
-    store.update(list =>
-      list.map(x =>
-        x.id === id && x.follow ? {...x, follow: {...x.follow, fresh: false}} : x,
-      ),
-    );
-  }
-}
-
-/** "Save a copy" of a followed playlist: your own, to change as you like. */
-export function copyPlaylist(id: string): Playlist | null {
-  const src = store.get().find(p => p.id === id);
-  const copy = src && createPlaylist(src.name);
-  if (!src || !copy) {
-    return null;
-  }
-  store.update(list =>
-    list.map(p => (p.id === copy.id ? {...p, tracks: src.tracks} : p)),
-  );
-  return {...copy, tracks: src.tracks};
 }

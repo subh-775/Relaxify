@@ -78,7 +78,7 @@ import {
   type HomeItem,
   type Track,
 } from './src/backend';
-import {downloadsCollection, playlistToCollection} from './src/collections';
+import {downloadsCollection} from './src/collections';
 import {overlayDownloadArtwork} from './src/downloads';
 import {
   playTrack,
@@ -93,7 +93,6 @@ import {type Collection} from './src/collections';
 import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
 import {toast} from './src/toast';
-import {readPlaylists} from './src/playlists';
 import {diag} from './src/diag';
 import {logEvent} from './src/analytics';
 
@@ -547,9 +546,13 @@ function Shell() {
       const code = url?.match(/^relaxify:\/\/p\/(\w{6})/)?.[1];
       if (code) {
         openShared(code)
-          .then(id => {
-            const p = readPlaylists().find(x => x.id === id);
-            p && openCollection(playlistToCollection(p));
+          .then(c => {
+            // Opened over Your Library, so Back from the playlist stays in
+            // the app (Library, then Home) instead of returning to the chat
+            // the link came from.
+            switchTab('library');
+            setPlayerOpen(false);
+            openCollection(c);
           })
           .catch(e => toast(e instanceof Error ? e.message : String(e)));
       }
@@ -557,7 +560,7 @@ function Shell() {
     Linking.getInitialURL().then(go, () => {});
     const sub = Linking.addEventListener('url', e => go(e.url));
     return () => sub.remove();
-  }, [openRecap, openCollection]);
+  }, [openRecap, openCollection, switchTab]);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path

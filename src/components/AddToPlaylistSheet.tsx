@@ -29,7 +29,6 @@ import {cleanText, getBestArtworkUrl} from '../tracks';
 import {
   addTrackToPlaylist,
   createPlaylist,
-  isFollowed,
   playlistsContaining,
   removeTrackFromPlaylist,
   usePlaylists,
@@ -127,10 +126,7 @@ function AddToPlaylistSheetView({
   // Pinned first, then filtered — so pinning still means "near the top" inside
   // a filtered result rather than only in the unfiltered list.
   const rows = useMemo(() => {
-    // A friend's playlist you follow is theirs to change: not a place to
-    // save a song.
-    const own = playlists.filter(p => !isFollowed(p));
-    const sorted = sortPinned(own, pins, p => rowId('playlist', p));
+    const sorted = sortPinned(playlists, pins, p => rowId('playlist', p));
     const q = query.trim().toLowerCase();
     return q ? sorted.filter(p => p.name.toLowerCase().includes(q)) : sorted;
   }, [playlists, pins, query]);
