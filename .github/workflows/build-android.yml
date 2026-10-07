@@ -257,6 +257,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-rc') && vars.DEVICE_TESTS != 'off'
     runs-on: ubuntu-latest
     continue-on-error: true
+    # Backstop for the 25-minute cap below: never hold a runner for hours.
+    timeout-minutes: 35
     permissions:
       contents: read
       id-token: write
@@ -275,10 +277,15 @@ jobs:
       # Spark plan: 5 real-device and 10 virtual-device runs a day. Three
       # phones friends actually use (Samsung, OnePlus, realme), plus Android
       # 15 and a 16 KB-page Android 16 phone, virtual.
+      # `gcloud ... run` waits for every phone with no limit of its own; one
+      # real device left Pending in Test Lab's queue kept v1.2.36-rc3's job
+      # running for hours. Capped at 25 minutes: past that the matrix is
+      # cancelled (it would keep spending the daily device quota) and the
+      # phones that finished are still summarised.
       - name: Robo test on five phones
         run: |
           set -o pipefail
-          gcloud firebase test android run \
+          timeout 25m gcloud firebase test android run \
             --project relaxify-observability \
             --type robo \
             --app Relaxify-RC.apk \
@@ -289,7 +296,17 @@ jobs:
             --device model=RE58C2,version=35,locale=en,orientation=portrait \
             --device model=MediumPhone.arm,version=35,locale=en,orientation=portrait \
             --device model=MediumPhone_ps16k.arm,version=36,locale=en,orientation=portrait \
-            2>&1 | tee testlab.txt
+            2>&1 | tee testlab.txt || {
+              code=$?
+              if [ "$code" = 124 ]; then
+                matrix="$(grep -oE 'matrix-[a-z0-9]+' testlab.txt | head -1)"
+                echo "::warning::Test Lab still had phones pending after 25 minutes; cancelled ${matrix:-the matrix}."
+                if [ -n "$matrix" ]; then
+                  gcloud firebase test android cancel "$matrix" --project relaxify-observability || true
+                fi
+              fi
+              exit "$code"
+            }
         continue-on-error: true
 
       - name: Summary
