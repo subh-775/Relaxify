@@ -65,6 +65,7 @@ import {
   State,
   setShuffle,
   shuffleInAfterCurrent,
+  shuffleUpcoming,
   togglePlay,
   useActiveTrack,
   usePlaybackOrigin,
@@ -434,6 +435,12 @@ export function CollectionScreen({
     if (playingHere || origin === collection.id) {
       await setShuffle(true).catch(() => {});
       toast('Shuffled what comes next');
+    } else if (collection.kind === 'downloads') {
+      // Downloads loops, so it starts on its own, from the top of a random
+      // order: slotted in after another song, that song would loop with it.
+      const mixed = shuffleUpcoming(tracks);
+      onPlay(mixed[0], mixed);
+      setTimeout(() => setShuffle(true).catch(() => {}), 600);
     } else if (
       await shuffleInAfterCurrent(tracks, collection.id).catch(() => false)
     ) {
@@ -443,7 +450,16 @@ export function CollectionScreen({
       // Give the queue a beat to build before shuffling its tail.
       setTimeout(() => setShuffle(true).catch(() => {}), 600);
     }
-  }, [onPlay, tracks, playingHere, shuffled, origin, collection.id, displayName]);
+  }, [
+    onPlay,
+    tracks,
+    playingHere,
+    shuffled,
+    origin,
+    collection.id,
+    collection.kind,
+    displayName,
+  ]);
 
   /** The green button: pause/resume when this collection is playing, start it
    *  otherwise — never a dead control. */

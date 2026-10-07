@@ -75,6 +75,7 @@ import {
   isShuffled,
   seekTo,
   setRepeat,
+  useRepeat,
   setShuffle,
   useShuffle,
   skipNext,
@@ -326,7 +327,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   /** Where the queue list is scrolled to, so the sheet knows when the pull
    *  belongs to it and not to the list. */
   const queueScrollY = useSharedValue(0);
-  const [repeat, setRepeatState] = useState<RepeatMode>(RepeatMode.Off);
+  const repeat = useRepeat();
   // From the player module, not local state — the playlist screen toggles the
   // same thing, and two copies of this flag is why the icon went stale.
   const shuffled = useShuffle();
@@ -887,7 +888,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
    */
   const toggleRepeat = useCallback(() => {
     const next = repeat === RepeatMode.Off ? RepeatMode.Track : RepeatMode.Off;
-    setRepeatState(next);
     setRepeat(next).catch(() => {});
   }, [repeat]);
 

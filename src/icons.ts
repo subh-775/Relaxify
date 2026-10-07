@@ -68,6 +68,7 @@ export {default as Speaker} from 'lucide-react-native/dist/esm/icons/speaker';
 export {default as Square} from 'lucide-react-native/dist/esm/icons/square';
 export {default as SquareX} from 'lucide-react-native/dist/esm/icons/square-x';
 export {default as Timer} from 'lucide-react-native/dist/esm/icons/timer';
+export {default as WifiOff} from 'lucide-react-native/dist/esm/icons/wifi-off';
 export {default as Trash2} from 'lucide-react-native/dist/esm/icons/trash-2';
 export {default as User} from 'lucide-react-native/dist/esm/icons/user';
 export {default as X} from 'lucide-react-native/dist/esm/icons/x';

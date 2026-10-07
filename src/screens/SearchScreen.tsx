@@ -46,6 +46,8 @@ import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
+import {OfflineScreen} from '../components/OfflineScreen';
+import {checkOnline, useOffline} from '../offline';
 import {importSourceName, isImportUrl} from '../spotifyImport';
 import {codeIn, openShared} from '../sharedPlaylists';
 import {type Collection} from '../collections';
@@ -152,6 +154,9 @@ export const SearchScreen = React.memo(function SearchScreen({
         return;
       }
       setResults(found);
+      if (!found.length) {
+        checkOnline().catch(() => {});
+      }
       // A pasted playlist/album URL is a destination, not a query — putting it
       // in Recent searches leaves an unreadable link in the list.
       if (!isImportUrl(text) && !codeIn(text)) {
@@ -174,6 +179,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       // the enrichment pass was the same iTunes matching that put "Phir Se Ud
       // Chala" artwork on a different song from the same album.
     } catch (e) {
+      checkOnline().catch(() => {});
       if (ticket === latest.current) {
         setError(e instanceof Error ? e.message : String(e));
         setResults([]);
@@ -256,8 +262,12 @@ export const SearchScreen = React.memo(function SearchScreen({
   // and they're cached server-side for 6h anyway — and again whenever the
   // languages change, or they stay in the old ones until a restart.
   useSettings(); // re-render on a language change
+  const offline = useOffline();
   const languages = homeLanguageParam();
   useEffect(() => {
+    if (offline) {
+      return;
+    }
     let live = true;
     // Wait for the engine first: this mounts during cold start, and firing at
     // t=0 just burns the one attempt on a backend that isn't listening yet.
@@ -270,7 +280,7 @@ export const SearchScreen = React.memo(function SearchScreen({
     return () => {
       live = false;
     };
-  }, [languages]);
+  }, [languages, offline]);
 
   const spotify = isImportUrl(query);
   // A friend's share code, or the whole message they sent.
@@ -305,36 +315,52 @@ export const SearchScreen = React.memo(function SearchScreen({
   // would otherwise leave a blank screen under the keyboard.
   const showBrowse = idle && !busy && !spotify && !showHistory;
 
+  // The header and the field, shared by the offline screen below.
+  const top = (
+    <>
+        <View style={styles.head}>
+          <MenuMark onPress={onOpenMenu} />
+          <Text style={styles.title}>Search</Text>
+        </View>
+
+        <View style={styles.field}>
+          <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
+          <View style={styles.inputBox}>
+            {!query && <SearchHints />}
+            <TextInput
+            ref={inputRef}
+            value={query}
+            onChangeText={setQuery}
+            accessibilityLabel="Search songs, artists, or paste a playlist link"
+            style={styles.input}
+            returnKeyType="search"
+            autoCorrect={false}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onSubmitEditing={() => runSearch(query)}
+            />
+          </View>
+          {!!query && (
+            <TouchableOpacity onPress={() => resetSearch(true)} hitSlop={10}>
+              <X size={19} color={C.bg} />
+            </TouchableOpacity>
+          )}
+        </View>
+    </>
+  );
+
+  if (offline) {
+    return (
+      <View style={styles.wrap}>
+        {top}
+        <OfflineScreen onOpenCollection={onOpenCollection} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.wrap}>
-      <View style={styles.head}>
-        <MenuMark onPress={onOpenMenu} />
-        <Text style={styles.title}>Search</Text>
-      </View>
-
-      <View style={styles.field}>
-        <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
-        <View style={styles.inputBox}>
-          {!query && <SearchHints />}
-          <TextInput
-          ref={inputRef}
-          value={query}
-          onChangeText={setQuery}
-          accessibilityLabel="Search songs, artists, or paste a playlist link"
-          style={styles.input}
-          returnKeyType="search"
-          autoCorrect={false}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onSubmitEditing={() => runSearch(query)}
-          />
-        </View>
-        {!!query && (
-          <TouchableOpacity onPress={() => resetSearch(true)} hitSlop={10}>
-            <X size={19} color={C.bg} />
-          </TouchableOpacity>
-        )}
-      </View>
+      {top}
 
       {spotify && (
         <TouchableOpacity
@@ -359,7 +385,7 @@ export const SearchScreen = React.memo(function SearchScreen({
             {`Open shared playlist ${shareCode}`}
           </Text>
           <Text style={styles.spotifySub} numberOfLines={1}>
-            A friend's playlist: it goes in Your Library and keeps up with theirs.
+            A friend's playlist: open it, and add a copy to Your Library.
           </Text>
         </TouchableOpacity>
       )}

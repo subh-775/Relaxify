@@ -57,6 +57,7 @@ import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
+import {DOWNLOADS_ID} from './collections';
 import {chosenCopy} from './songChoice';
 
 let ready = false;
@@ -645,8 +646,10 @@ export async function restoreSession(): Promise<boolean> {
   }
   try {
     queueSource = items.map(x => x.t);
-    // The collection it was playing from, so its coral highlight comes back.
+    // The collection it was playing from, so its coral highlight comes back
+    // (and Downloads its loop).
     setPlaybackOrigin(s.origin ?? '');
+    await loopIf(s.origin ?? '');
     // By the saved TRACK, not the bare index: dropping an unplayable entry
     // above shifts every later index by one.
     const idx = resumeIndex(
@@ -808,6 +811,7 @@ export async function playTrack(
 ): Promise<void> {
   await requireEngine();
   setPlaybackOrigin(originId);
+  await loopIf(originId);
   // Was a fourth parameter defaulting to exactly this, which nothing ever
   // passed. With originId inserted BEFORE it, playTrack(t, list, 320) would
   // have quietly taken 320 as a collection id and still used the default
@@ -1264,6 +1268,37 @@ function setShuffleFlag(on: boolean) {
   shuffleListeners.forEach(l => l());
 }
 
+/**
+ * Repeat, owned here rather than by the player screen: Downloads turns on
+ * repeat-all by itself, and the screen's button has to show it.
+ */
+let repeatMode: RepeatMode = RepeatMode.Off;
+const repeatListeners = new Set<() => void>();
+
+export function useRepeat(): RepeatMode {
+  return useSyncExternalStore(
+    l => {
+      repeatListeners.add(l);
+      return () => repeatListeners.delete(l);
+    },
+    () => repeatMode,
+  );
+}
+
+/**
+ * Downloads loop: songs 1 to n, then 1 again (or the shuffled order), and no
+ * radio picks — they need the internet, and Downloads is what you play
+ * without it. Any other queue turns the loop off again. Awaited by the
+ * callers, so a quick second tap can't leave the two disagreeing.
+ */
+async function loopIf(originId: string): Promise<void> {
+  if (originId === DOWNLOADS_ID) {
+    await setRepeat(RepeatMode.Queue);
+  } else if (repeatMode === RepeatMode.Queue) {
+    await setRepeat(RepeatMode.Off);
+  }
+}
+
 export function isShuffled(): boolean {
   return shuffleOn;
 }
@@ -1432,6 +1467,7 @@ export function shuffleInAfterCurrent(
     preShuffleUpcoming = order;
     setShuffleFlag(true);
     setPlaybackOrigin(originId);
+    await loopIf(originId);
     await refreshEngineMirror();
     return true;
   });
@@ -1489,6 +1525,10 @@ export async function setRepeat(mode: RepeatMode): Promise<void> {
     cancelCrossfade();
   }
   await TrackPlayer.setRepeatMode(mode);
+  if (repeatMode !== mode) {
+    repeatMode = mode;
+    repeatListeners.forEach(l => l());
+  }
 }
 
 /**
@@ -1655,7 +1695,8 @@ export async function topUpFromRadio(force = false): Promise<void> {
     buildingQueue ||
     (autoplayHeld && !force) ||
     !readSettings().autoplay ||
-    sleepMode() === 'endOfTrack'
+    sleepMode() === 'endOfTrack' ||
+    repeatMode === RepeatMode.Queue
   ) {
     return;
   }
