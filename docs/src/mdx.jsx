@@ -1,13 +1,12 @@
 /**
- * What MDX renders into. Pages are plain markdown with a few of the site's own
- * pieces (Banner, Row, Fold, Steps, GetApp, RecapFlip, ReleaseBadges) dropped
- * in where a paragraph would be duller than a card.
+ * What MDX renders into. Pages are plain Markdown with a few of the site's
+ * own blocks (Steps, Fold, Group, Callout, Moves, GetApp, ReleaseInfo).
  */
-import {Art, Banner, Fold, GetApp, Group, RecapFlip, ReleaseBadges, Row, Steps, href} from './brand.jsx';
+import {Callout, Fold, GetApp, Group, Move, Moves, ReleaseInfo, Steps, href} from './brand.jsx';
 import {External} from './icons.jsx';
 
 /** Links: in-site ones get the GitHub Pages base; outside ones open in a new
- *  tab and carry a small arrow icon so you know you're leaving. */
+ *  tab and carry a small arrow so you know you're leaving the site. */
 function Anchor({href: to = '', children, ...rest}) {
   const external = /^https?:/.test(to);
   if (!external && to.startsWith('/')) {
@@ -37,13 +36,12 @@ function Table(props) {
 export const mdxComponents = {
   a: Anchor,
   table: Table,
-  Art,
-  Banner,
-  Row,
+  Callout,
   Fold,
-  Group,
-  Steps,
   GetApp,
-  RecapFlip,
-  ReleaseBadges,
+  Group,
+  Move,
+  Moves,
+  ReleaseInfo,
+  Steps,
 };

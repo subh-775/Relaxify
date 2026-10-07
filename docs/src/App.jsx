@@ -1,13 +1,13 @@
 /**
- * The shell: routing, the top bar, the home page, and each page's frame (its
- * coloured card up top, the reading column, the next page's card at the foot).
+ * The shell: routing, the sidebar (a slide-in menu on phones), the home page,
+ * and each page's frame.
  *
  * A small path router rather than a library: the routes are a fixed list known
  * at build time (nav.js), and the build writes a real HTML file for each.
  */
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {FLAT, MOVED, PAGES, PAL, SITE} from './nav.js';
-import {Art, GetApp, Note, PageCard, Stack, href, nextOf} from './brand.jsx';
+import {FLAT, GET_PAGE, GROUPS, MOVED, SITE} from './nav.js';
+import {Callout, GetApp, Note, Playing, href, nextOf, prevOf} from './brand.jsx';
 import {mdxComponents} from './mdx.jsx';
 import {Github} from './icons.jsx';
 import '@fontsource-variable/plus-jakarta-sans';
@@ -26,6 +26,12 @@ const toPath = pathname => {
   return p.replace(/\/$/, '') || '/';
 };
 
+/** Pages that live outside this app (public/get, public/p) load for real. */
+const ownPage = pathname => {
+  const p = toPath(pathname);
+  return p === '/get' || p === '/p';
+};
+
 function useRouter() {
   const [path, setPath] = useState(() => toPath(window.location.pathname));
 
@@ -42,14 +48,12 @@ function useRouter() {
       if (el) {
         el.scrollIntoView({behavior: 'smooth'});
       } else {
-        // 'instant', spelled out: a new page is not somewhere you scrolled to.
         window.scrollTo({top: 0, left: 0, behavior: 'instant'});
       }
     });
   }, []);
 
-  // An old address from the previous site: swap it for the new one in place,
-  // so Back does not bounce through it.
+  // An old address: swap it for the new one in place, so Back skips it.
   useEffect(() => {
     const moved = MOVED[path];
     if (moved) {
@@ -69,7 +73,7 @@ function useRouter() {
         return;
       }
       const url = new URL(a.href, window.location.href);
-      if (url.origin !== window.location.origin || !url.pathname.startsWith(BASE || '/')) {
+      if (url.origin !== window.location.origin || !url.pathname.startsWith(BASE || '/') || ownPage(url.pathname)) {
         return;
       }
       e.preventDefault();
@@ -85,57 +89,36 @@ function useRouter() {
   return path;
 }
 
-/* ── the top bar ─────────────────────────────────────────────────────────── */
+/* ── the sidebar ─────────────────────────────────────────────────────────── */
 
-function TopBar({path}) {
-  const [open, setOpen] = useState(false);
-  const menuBtn = useRef(null);
-  const close = useCallback(() => {
-    setOpen(false);
-    menuBtn.current?.focus();
-  }, []);
+function SideNav({path}) {
   return (
-    <header className="top">
-      {/* On a phone the note opens the menu, exactly as it does in the app. */}
-      <button
-        ref={menuBtn}
-        type="button"
-        className="brand brand-menu"
-        onClick={() => setOpen(true)}
-        aria-label="Open the menu"
-        aria-expanded={open}>
-        <Note size={30} />
-        <span>Relaxify</span>
-      </button>
-      <a className="brand brand-link" href={href('/')} aria-label="Relaxify docs, home">
-        <Note size={30} />
-        <span>Relaxify</span>
+    <nav className="nav" aria-label="Pages">
+      <a className={path === '/' ? 'nav-item on' : 'nav-item'} href={href('/')} aria-current={path === '/' ? 'page' : undefined}>
+        Home
       </a>
-      <nav className="chips" aria-label="Pages">
-        {FLAT.map(p => (
-          <a
-            key={p.link}
-            href={href(p.link)}
-            className={path === p.link ? 'chip on' : 'chip'}
-            style={{'--c': PAL[p.pal].bg}}
-            aria-current={path === p.link ? 'page' : undefined}>
-            <i aria-hidden="true" />
-            {p.title}
-          </a>
-        ))}
-      </nav>
-      <a className="gh" href={SITE.repo} target="_blank" rel="noreferrer" aria-label="Relaxify on GitHub">
-        <Github size={18} />
-        <span>GitHub</span>
+      <a className="nav-item" href={href(GET_PAGE)}>
+        Get the app
       </a>
-      <Drawer open={open} onClose={close} path={path} />
-    </header>
+      {GROUPS.map(g => (
+        <div key={g.title} className="nav-group">
+          <span className="nav-title">{g.title}</span>
+          {g.pages.map(p => (
+            <a
+              key={p.link}
+              href={href(p.link)}
+              className={path === p.link ? 'nav-item on' : 'nav-item'}
+              aria-current={path === p.link ? 'page' : undefined}>
+              {p.title}
+            </a>
+          ))}
+        </div>
+      ))}
+    </nav>
   );
 }
 
-/** The app's side drawer, for phones: the note and name, the pages, then
- *  the download and GitHub. Closes on a link, the dim area, or Escape. */
-function Drawer({open, onClose, path}) {
+function Sidebar({path, open, onClose}) {
   const panel = useRef(null);
   useEffect(() => {
     if (!open) {
@@ -144,104 +127,116 @@ function Drawer({open, onClose, path}) {
     const onKey = e => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    panel.current?.querySelector('a')?.focus();
+    // The panel itself takes focus: Tab goes on to its links, and a tap
+    // does not leave a focus ring on the first one.
+    panel.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
   }, [open, onClose]);
-  // Following a link inside it lands on a new page: close behind it.
-  const first = useRef(true);
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    onClose();
-  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className={open ? 'drawer open' : 'drawer'}>
-      <div className="scrim" onClick={onClose} aria-hidden="true" />
-      <nav ref={panel} className="panel" aria-label="Menu">
-        <div className="drawer-brand">
-          <Note size={56} />
-          <span>
-            <b>Relaxify</b>
-            <small>How to use the app</small>
-          </span>
-        </div>
-        <a className={path === '/' ? 'drawer-item on' : 'drawer-item'} href={href('/')}>
-          <i aria-hidden="true" />
-          Home
+    <>
+      <div className={open ? 'scrim show' : 'scrim'} onClick={onClose} aria-hidden="true" />
+      <aside ref={panel} tabIndex={-1} className={open ? 'side open' : 'side'} aria-label="Menu">
+        <a className="side-brand" href={href('/')}>
+          <Note size={34} />
+          <span>Relaxify</span>
         </a>
-        {FLAT.map(p => (
-          <a
-            key={p.link}
-            className={path === p.link ? 'drawer-item on' : 'drawer-item'}
-            href={href(p.link)}
-            style={{'--c': PAL[p.pal].bg}}
-            aria-current={path === p.link ? 'page' : undefined}>
-            <i aria-hidden="true" />
-            {p.title}
+        <SideNav path={path} />
+        <div className="side-foot">
+          <GetApp small />
+          <a className="side-gh" href={SITE.repo} target="_blank" rel="noreferrer">
+            <Github size={16} />
+            Relaxify on GitHub
           </a>
-        ))}
-        <div className="drawer-foot">
-          <GetApp />
-          <a className="ghost" href={SITE.repo} target="_blank" rel="noreferrer">
-            <Github size={17} />
-            GitHub
-          </a>
-          <small>Free and open source, GPL-3.0</small>
         </div>
-      </nav>
-    </div>
+      </aside>
+    </>
+  );
+}
+
+/** Phones only: the bar with the menu button, the name and a way to download. */
+function TopBar({onMenu, open}) {
+  return (
+    <header className="bar">
+      <button type="button" className="menu" onClick={onMenu} aria-label="Open the menu" aria-expanded={open}>
+        <span />
+        <span />
+        <span />
+      </button>
+      <a className="bar-brand" href={href('/')}>
+        <Note size={26} />
+        Relaxify
+      </a>
+      <a className="bar-get" href={href(GET_PAGE)}>
+        Get the app
+      </a>
+    </header>
   );
 }
 
 /* ── home ────────────────────────────────────────────────────────────────── */
 
+const HIGHLIGHTS = [
+  ['One search, everywhere', 'Type a song once. Relaxify looks on JioSaavn, SoundCloud and YouTube and plays the best copy it finds.', '/play'],
+  ['Keeps going', "When your songs run out, it carries on with ones like the song you're hearing.", '/play#it-never-runs-out'],
+  ['Listen together', "Jam with friends: the same song at the same second, each on your own phone.", '/together'],
+  ['Bring your playlists', 'Paste a Spotify or YouTube playlist link and get the same playlist in Relaxify.', '/music#bring-your-playlists'],
+  ['Download songs', 'Real music files on your phone. They play without internet and stay if you remove the app.', '/music#downloads'],
+  ['Your week in music', 'Every Sunday, a Recap of what you played most, made on your phone.', '/music#your-recap'],
+];
+
 function Home() {
   return (
     <main className="home" id="main">
       <section className="hero">
-        <div className="hero-words">
-          <h1>
-            Music that
-            <br />
-            just plays.
-          </h1>
-          <p>
-            Relaxify is a free music app for Android. Search once and it looks
-            everywhere, plays what you picked, and keeps going with songs you'll
-            like. No account, no ads.
-          </p>
-          <div className="hero-actions">
-            <GetApp />
-            <a className="ghost" href={SITE.repo} target="_blank" rel="noreferrer">
-              <Github size={17} />
-              Star it on GitHub
-            </a>
-          </div>
+        <Playing />
+        <h1>Music that just plays.</h1>
+        <p className="lede">
+          Relaxify is a free music app for Android. Search once, press play, and it keeps the music going. No
+          account to make, no ads.
+        </p>
+        <div className="hero-actions">
+          <GetApp />
+          <a className="ghost" href={href('/start')}>
+            How to get started
+          </a>
         </div>
-        <Stack />
       </section>
 
-      <section className="all" aria-labelledby="all-title">
-        <h2 id="all-title" className="group-title">
-          Every page
-        </h2>
-        <div className="surface">
-          {PAGES.map(p => (
-            <a key={p.link} className="all-item" href={href(p.link)} style={{'--c': PAL[p.pal].bg}}>
-              <i aria-hidden="true" />
-              <span>
-                <b>{p.title}</b>
-                {p.card}
-              </span>
-              <small>{p.read}</small>
-            </a>
+      <section className="home-block" aria-labelledby="does">
+        <h2 id="does">What it does</h2>
+        <ul className="highlights">
+          {HIGHLIGHTS.map(([title, text, link]) => (
+            <li key={title}>
+              <a href={href(link)}>
+                <b>{title}</b>
+                <span>{text}</span>
+              </a>
+            </li>
           ))}
-        </div>
+        </ul>
+      </section>
+
+      <section className="home-block" aria-labelledby="know">
+        <h2 id="know">Good to know first</h2>
+        <ul className="facts">
+          <li>
+            <b>Works on Android 8 and newer.</b> It isn't on the Play Store, so you download it here and install it
+            yourself. <a href={href(GET_PAGE)}>See how</a>.
+          </li>
+          <li>
+            <b>It updates itself.</b> When a new version is out, the app tells you and installs it over the old one.
+          </li>
+          <li>
+            <b>Free and open.</b> Anyone can read how it's made, on GitHub.
+          </li>
+        </ul>
+        <Callout kind="important" title="Never uninstall to update">
+          Removing the app deletes your playlists, likes and history, and Android can't bring them back. Always
+          update from inside the app.
+        </Callout>
       </section>
     </main>
   );
@@ -251,38 +246,40 @@ function Home() {
 
 function Page({route, page}) {
   const Content = BY_ROUTE[route].default;
-  const p = PAL[page.pal];
   const next = nextOf(route);
+  const prev = prevOf(route);
   return (
     <main className="page" id="main">
-      {/* key: the card drops in again on every page change. */}
-      <header key={route} className="page-hero" style={{'--bg': p.bg, '--ink': p.ink}}>
-        {/* The note on Releases holds still; the other cards' art turns. */}
-        <span className={page.art === 'note' ? 'page-art' : 'page-art spin'}>
-          <PageArt page={page} />
-        </span>
-        <span className="page-words">
-          <span className="page-kicker">{page.card}</span>
-          <h1>{page.title}</h1>
-        </span>
-        <span className="page-read">{page.read ? `${page.read} read` : 'Live from GitHub'}</span>
+      <header className="page-head">
+        <h1>{page.title}</h1>
+        <p className="lede">{page.line}</p>
       </header>
 
       <article className="prose">
         <Content components={mdxComponents} />
       </article>
 
-      {next && (
-        <nav className="next" aria-label="Next page">
-          <span className="next-label">Next up</span>
-          <PageCard page={next} pill="Read it" />
-        </nav>
-      )}
+      <nav className="pager" aria-label="More pages">
+        {prev ? (
+          <a className="pager-link" href={href(prev.link)}>
+            <small>Previous</small>
+            {prev.title}
+          </a>
+        ) : (
+          <span />
+        )}
+        {next && (
+          <a className="pager-link next" href={href(next.link)}>
+            <small>Next</small>
+            {next.title}
+          </a>
+        )}
+      </nav>
 
       <p className="edit">
-        Something wrong or missing on this page?{' '}
+        Something wrong or missing here?{' '}
         <a href={`${SITE.editBase}${route}.mdx`} target="_blank" rel="noreferrer">
-          Suggest an edit on GitHub
+          Suggest a change on GitHub
         </a>
         .
       </p>
@@ -290,20 +287,15 @@ function Page({route, page}) {
   );
 }
 
-function PageArt({page}) {
-  // The page's card art, bigger; the Releases card wears the note itself.
-  return page.art === 'note' ? <Note size={150} /> : <Art kind={page.art} p={PAL[page.pal]} size={210} />;
-}
-
 function NotFound() {
   return (
     <main className="page" id="main">
-      <header className="page-hero" style={{'--bg': PAL.night.bg, '--ink': PAL.night.ink}}>
-        <h1>Nothing here.</h1>
-        <p>That page moved or never existed. Start from the home page.</p>
+      <header className="page-head">
+        <h1>This page isn't here.</h1>
+        <p className="lede">It may have moved. Everything is in the menu, or start from the home page.</p>
       </header>
-      <p className="edit">
-        <a href={href('/')}>Back to the home page</a>
+      <p>
+        <a href={href('/')}>Go to the home page</a>
       </p>
     </main>
   );
@@ -314,9 +306,14 @@ function NotFound() {
 export default function App() {
   const path = useRouter();
   const page = FLAT.find(p => p.link === path);
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+
+  // A new page closes the menu behind it.
+  useEffect(close, [path, close]);
 
   useEffect(() => {
-    document.title = page ? `Relaxify: ${page.title}` : 'Relaxify: music that just plays';
+    document.title = page ? `${page.title}: Relaxify` : 'Relaxify: music that just plays';
   }, [page]);
 
   return (
@@ -324,26 +321,33 @@ export default function App() {
       <a className="skip" href="#main">
         Skip to the page
       </a>
-      <TopBar path={path} />
-      {path === '/' ? <Home /> : page && BY_ROUTE[path] ? <Page route={path} page={page} /> : MOVED[path] ? null : <NotFound />}
-      <footer className="foot">
-        <span className="foot-brand">
-          <Note size={22} />
-          Relaxify
-        </span>
-        <span>
-          Free and open source under GPL-3.0. Music comes from JioSaavn, SoundCloud and YouTube; Relaxify doesn't host any.
-        </span>
-        <span className="foot-links">
-          <a href={SITE.repo} target="_blank" rel="noreferrer">
-            GitHub
-          </a>
-          <a href={SITE.issues} target="_blank" rel="noreferrer">
-            Report a problem
-          </a>
-          <a href={href('/releases')}>Releases</a>
-        </span>
-      </footer>
+      <div className="shell">
+        <Sidebar path={path} open={open} onClose={close} />
+        <div className="col">
+          <TopBar onMenu={() => setOpen(true)} open={open} />
+          {path === '/' ? (
+            <Home />
+          ) : page && BY_ROUTE[path] ? (
+            <Page route={path} page={page} />
+          ) : MOVED[path] ? null : (
+            <NotFound />
+          )}
+          <footer className="foot">
+            <span>
+              Relaxify is free and open source. It doesn't host any music: songs come from JioSaavn, SoundCloud and
+              YouTube.
+            </span>
+            <span className="foot-links">
+              <a href={SITE.repo} target="_blank" rel="noreferrer">
+                GitHub
+              </a>
+              <a href={SITE.issues} target="_blank" rel="noreferrer">
+                Report a problem
+              </a>
+            </span>
+          </footer>
+        </div>
+      </div>
     </>
   );
 }

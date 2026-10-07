@@ -4,65 +4,89 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Get Relaxify</title>
-<!-- The page every invite links to (the app's "Recommend Relaxify" and the
-     Recap's share). Static on purpose: WhatsApp reads these tags without
-     running any script. The button always downloads the newest release. -->
-<meta name="description" content="A free music app for Android. Tap to download the newest version.">
-<meta name="theme-color" content="#000000">
+<!-- The page every invite links to (the app's "Recommend Relaxify", the
+     Recap's share, a playlist link without the app). Static on purpose:
+     WhatsApp reads these tags without running any script. The button always
+     downloads the newest release. -->
+<meta name="description" content="Relaxify is a free music app for Android. Download the newest version.">
+<meta name="theme-color" content="#0f0c0d">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Get Relaxify">
-<meta property="og:description" content="A free music app for Android. Search once, play from JioSaavn, SoundCloud and YouTube. Tap to download the newest version.">
+<meta property="og:description" content="A free music app for Android. Search once, press play, and it keeps the music going. No account, no ads.">
 <meta property="og:image" content="https://subh-775.github.io/Relaxify/logo.png">
 <meta property="og:url" content="https://subh-775.github.io/Relaxify/get/">
 <link rel="icon" type="image/svg+xml" href="../logo.svg">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap">
 <style>
   :root {
     color-scheme: dark;
-    --bg: #000;
-    --surface: #121212;
-    --text: #f4f5f7;
-    --body: #c9ccd3;
-    --sub: #9096a2;
-    --ember: #ff5a6e;
-    --ember-grad: linear-gradient(135deg, #ffb38a, #ff5a6e 55%, #c2185b);
+    --bg: #0f0c0d;
+    --panel: #1b1618;
+    --line: rgba(255, 236, 240, 0.09);
+    --text: #f6f1f2;
+    --body: #d4cacd;
+    --muted: #9b9094;
+    --coral: #ff5a6e;
+    --coral-hover: #ff7385;
+    --coral-ink: #1c0609;
+    --coral-soft: rgba(255, 90, 110, 0.12);
     --font: "Plus Jakarta Sans", system-ui, -apple-system, Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
-  main { max-width: 440px; margin: 0 auto; padding: max(48px, env(safe-area-inset-top)) 20px 48px; display: grid; gap: 28px; }
-  .mark { width: 84px; height: 84px; }
-  h1 { font-size: 44px; line-height: 1; font-weight: 800; letter-spacing: -1.8px; margin: 0; }
-  .lede { font-size: 17px; line-height: 1.55; color: var(--body); margin: 10px 0 0; }
-  .btn { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 58px; border-radius: 999px; background: var(--ember-grad); color: #000; font-weight: 800; font-size: 17px; text-decoration: none; }
-  .btn:focus-visible, a:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
-  .meta { font-size: 13.5px; color: var(--sub); text-align: center; margin-top: 10px; font-variant-numeric: tabular-nums; }
-  ol { margin: 0; padding: 18px 20px 18px 40px; background: var(--surface); border-radius: 16px; display: grid; gap: 10px; color: var(--body); font-size: 15px; line-height: 1.5; }
-  ol li::marker { color: var(--ember); font-weight: 800; }
-  .foot { font-size: 14px; color: var(--sub); line-height: 1.6; margin: 0; }
-  .foot a { color: var(--text); }
+  html, body { margin: 0; background: var(--bg); color: var(--body); font: 400 17px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
+  a { color: var(--coral); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--coral); outline-offset: 3px; border-radius: 8px; }
+  main { max-width: 520px; margin: 0 auto; padding: max(40px, env(safe-area-inset-top)) 20px 48px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-weight: 800; font-size: 19px; text-decoration: none; }
+  .brand svg { width: 34px; height: 34px; }
+  h1 { color: var(--text); font-size: clamp(40px, 11vw, 56px); line-height: 1; letter-spacing: -0.04em; font-weight: 800; margin: 40px 0 0; }
+  .lede { font-size: 18px; margin: 16px 0 0; }
+  .get { display: flex; align-items: center; justify-content: center; min-height: 58px; margin-top: 28px; border-radius: 999px; background: var(--coral); color: var(--coral-ink); font-weight: 800; font-size: 17.5px; text-decoration: none; }
+  .get:hover { background: var(--coral-hover); color: var(--coral-ink); }
+  .meta { color: var(--muted); font-size: 14px; text-align: center; margin: 10px 0 0; font-variant-numeric: tabular-nums; }
+  h2 { color: var(--text); font-size: 21px; letter-spacing: -0.3px; margin: 44px 0 6px; }
+  ol { list-style: none; counter-reset: step; margin: 16px 0 0; padding: 0; }
+  ol li { counter-increment: step; position: relative; padding: 0 0 20px 50px; }
+  ol li::before { content: counter(step); position: absolute; left: 0; top: -1px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--coral-soft); color: var(--coral); font-weight: 800; font-size: 15px; }
+  b { color: var(--text); font-weight: 700; }
+  .note { margin-top: 6px; padding: 16px 18px; border-radius: 14px; background: var(--panel); font-size: 15.5px; }
+  .note b:first-child { display: block; margin-bottom: 2px; }
+  .foot { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 15px; display: flex; flex-wrap: wrap; gap: 8px 22px; }
 </style>
 </head>
 <body>
 <main>
-  <div>
-    <svg class="mark" aria-hidden="true" viewBox="0 0 100 100"><defs><linearGradient id="mb" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#C0606C"/><stop offset=".5" stop-color="#A12C48"/><stop offset="1" stop-color="#6E1030"/></linearGradient><linearGradient id="mf" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FF9AA0"/><stop offset=".5" stop-color="#FF5A6E"/><stop offset="1" stop-color="#E2266A"/></linearGradient></defs><g transform="translate(-6.96 -3.78) scale(0.7022)"><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#mb)"/><path d="M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z" fill="#fff" opacity=".3"/></g><g transform="translate(4.89 -2.03) scale(1.0721)"><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#mf)"/><path d="M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z" fill="#fff" opacity=".3"/></g></svg>
-  </div>
-  <div>
-    <h1>Relaxify</h1>
-    <p class="lede">A free music app for Android. Search once, play from JioSaavn, SoundCloud and YouTube, and listen together with Jam.</p>
-  </div>
-  <div>
-    <a class="btn" id="dl" href="https://github.com/subh-775/Relaxify/releases/latest/download/Relaxify.apk">Download for Android</a>
-    <div class="meta" id="meta">Always the newest version</div>
-  </div>
+  <a class="brand" href="../">
+    <svg viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="mb" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#C0606C"/><stop offset=".5" stop-color="#A12C48"/><stop offset="1" stop-color="#6E1030"/></linearGradient><linearGradient id="mf" x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stop-color="#FF9AA0"/><stop offset=".5" stop-color="#FF5A6E"/><stop offset="1" stop-color="#E2266A"/></linearGradient></defs><g transform="translate(-6.96 -3.78) scale(0.7022)"><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#mb)"/></g><g transform="translate(4.89 -2.03) scale(1.0721)"><path d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z" fill="url(#mf)"/></g></svg>
+    Relaxify
+  </a>
+
+  <h1>Get Relaxify</h1>
+  <p class="lede">Free music for your Android phone. Search once, press play, and it keeps the music going. No account, no ads.</p>
+
+  <a class="get" href="https://github.com/subh-775/Relaxify/releases/latest/download/Relaxify.apk">Download for Android</a>
+  <p class="meta" id="meta">Always the newest version</p>
+
+  <h2>Installing takes a minute</h2>
   <ol>
-    <li>Tap Download, then open the file when it finishes.</li>
-    <li>If Android asks, allow installs from your browser.</li>
-    <li>Open Relaxify and pick the languages you listen in.</li>
+    <li><b>Tap Download.</b> The file is saved to your phone.</li>
+    <li><b>Open the file</b> from the notification, or from your Downloads folder.</li>
+    <li><b>Tap Install.</b> The first time, Android asks to allow installs from your browser: turn it on, go back, and tap Install.</li>
+    <li><b>Open Relaxify</b> and choose the languages you listen in.</li>
   </ol>
-  <p class="foot">Already have it? New versions arrive inside the app. Stuck? <a href="../">How to use Relaxify</a>.</p>
+  <div class="note">
+    <b>Android says the app is from an unknown developer?</b>
+    That's because Relaxify isn't on the Play Store. Tap <b>More details</b>, then <b>Install anyway</b>.
+  </div>
+
+  <h2>Already have it?</h2>
+  <p>You don't need this page. Relaxify tells you when a new version is out and updates itself, keeping your playlists and likes. Please don't uninstall it to update: that deletes them.</p>
+
+  <p class="foot">
+    <a href="../start">How to use Relaxify</a>
+    <a href="../help">Questions and fixes</a>
+  </p>
 </main>
 <script>
   // The version and size, when GitHub answers. The button works without it.
@@ -70,9 +94,8 @@
     .then(r => (r.ok ? r.json() : Promise.reject()))
     .then(rel => {
       const apk = (rel.assets || []).find(a => a.name === 'Relaxify.apk');
-      const mb = apk ? ` · ${Math.round(apk.size / 1048576)} MB` : '';
-      document.getElementById('meta').textContent =
-        `${rel.tag_name}${mb} · always the newest version`;
+      const size = apk ? `, ${Math.round(apk.size / 1048576)} MB` : '';
+      document.getElementById('meta').textContent = `Version ${rel.tag_name.replace(/^v/, '')}${size}, the newest`;
     })
     .catch(() => {});
 </script>

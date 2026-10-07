@@ -1,67 +1,82 @@
-Tap a question to open it. Still stuck? **[Report a problem](https://github.com/subh-775/Relaxify/issues)** on GitHub, or use **Report a problem** in the app's Settings, which fills in your version and phone for you.
+Tap a question to see the answer. Still stuck? **[Report a problem](https://github.com/subh-775/Relaxify/issues)** on GitHub, or use **Settings → About and support → Report a problem** in the app, which adds your app version and phone model for you.
 
-<Group title="Playing">
-<Fold q="A song skipped by itself">
-  Before skipping, the app tries the song twice more: once with a fresh link, then by a slower route. It skips only when every copy it found fails, which happens with preview-only uploads or songs locked to some countries. The app tells you which song it skipped. Search for it again and pick a row with a different source label.
+<Group title="Installing and updating">
+<Fold q="Android won't let me install it">
+  Android only installs apps from outside the Play Store when you allow it. When it asks, turn on **Allow from this source** for your browser or Files app, then go back and tap **Install**. If it warns that the app is from an unknown developer, tap **More details**, then **Install anyway**. Relaxify is free and its code is public on GitHub.
 </Fold>
 
-<Fold q="The music stops when I swipe the app away">
-  That's on purpose: swiping Relaxify out of your recent apps means "close it", so the music stops and its notification goes. To keep listening, press **Home** or **Back** instead; the music carries on in the background.
+<Fold q="How do I update without losing anything?">
+  From inside the app. When a new version is out, a dot appears on the menu; **Settings → About and support → Check for updates** downloads it and installs it over the old one, keeping your playlists, likes and downloads. Never uninstall first: that deletes your playlists and likes for good. To stop the app checking, turn off **Settings → About and support → Automatic updates**.
 </Fold>
 
+<Fold q="Which version do I have?">
+  **Settings → About and support** shows it, as **App version**. [What's new](/releases) shows the newest one.
+</Fold>
+</Group>
+
+<Group title="Playing music">
 <Fold q="The music stops when I leave the app">
   Your phone's battery saver closed it. Open your phone's **Settings → Apps → Relaxify → Battery** and choose **Unrestricted** (some phones call it "Don't optimise" or "Allow background activity").
 </Fold>
 
-<Fold q='A note said "Weak signal"'>
-  Your **Streaming quality** is on **Auto** and songs kept pausing to load, so the next ones stream at a lower quality to keep playing smoothly. It steps back up by itself after five smooth minutes. To always get one quality, pick it in **Settings → Streaming quality**. [More](/sound#quality-and-your-data)
+<Fold q="The music stops when I swipe the app away">
+  That's on purpose: swiping Relaxify away from your recent apps means "close it". To keep listening, press your phone's **Home** or **Back** button instead.
 </Fold>
 
-<Fold q="A song went quiet, but the time kept going">
-  The connection dropped for a moment. The play button shows a spinner while the song is loading, and after 10 seconds the app reconnects and carries on. If you're offline, it stops and says so; press play once you're back.
+<Fold q="Songs keep stopping to load">
+  The internet connection is too slow for the quality you chose. Set **Settings → Streaming quality** to **Auto**: when your signal is weak it plays a little lower for a while instead of stopping. On mobile data, **Data saver** helps too. [Sound quality](/sound#sound-quality)
+</Fold>
+
+<Fold q="A song skipped by itself">
+  Before skipping, Relaxify tries other copies of the song. It skips only when none of them will play, which happens with songs that are only previews or not available in your country. A short note says which song it skipped. Search for it again and pick one with a different source label.
+</Fold>
+
+<Fold q="The wrong version of a song plays">
+  Tap the small source label under the song name in the player and choose the right copy. Relaxify remembers your choice everywhere. [Wrong song?](/play#wrong-song-pick-another-copy)
 </Fold>
 
 <Fold q="Crossfade doesn't fade">
-  Check that **Settings → Crossfade** is above 0, that you're letting songs end by themselves (skipping never fades), and that the "end of song" sleep timer isn't on.
+  Check that **Settings → Crossfade** is above zero, and let songs end by themselves: skipping never fades. The "end of song" sleep timer also stops it.
 </Fold>
 </Group>
 
-<Group title="Finding and keeping music">
-<Fold q="Search is slow, or shows nothing">
-  No results at all almost always means no internet: search needs a connection, downloads don't. If one source is slow, it's left out so the rest aren't held up; search again and it usually shows.
-</Fold>
-
-<Fold q="A downloaded song doesn't show as downloaded">
-  Downloads are matched by their title and artist. If you edited those in another app, the match is lost. Download the song again.
+<Group title="Finding and sharing">
+<Fold q="Search shows nothing">
+  Search needs the internet, so this almost always means you're offline. Downloaded songs still play without it.
 </Fold>
 
 <Fold q="A playlist import is stuck">
-  Tap **✕** on the Home card to stop it, then **Save** keeps the songs found so far as a playlist, or **Discard** throws them away. If the card says the playlist is private, make it public in Spotify or YouTube, or tap **Another link**. **Try again** starts the whole import over from the first song.
+  Tap **✕** on the Home card. **Save** keeps the songs found so far as a playlist; **Discard** throws them away. If the card says the playlist is private, make it public in Spotify or YouTube first. **Try again** starts over.
 </Fold>
 
-<Fold q="A friend's code won't open">
-  Check the six characters: codes never use O, I, 0 or 1, so a character that looks like one of those is something else. If it says no playlist has that code, your friend may have stopped sharing it; ask them to tap **Share** again for a fresh code.
+<Fold q="A friend's playlist link won't open">
+  Make sure you have the newest Relaxify. If the link opens the browser instead of the app, tap **Open in Relaxify** on that page. If it says there's no playlist, your friend may have stopped sharing it; ask them to share it again. You can also type the six-character code from their message: in Your Library, tap the ticket icon. Codes never use the letters O or I, or the numbers 0 or 1.
 </Fold>
 
-<Fold q="My friend and I are slightly out of step in a Jam">
-  Usually one of you is on Bluetooth, which adds a delay no app can see. Try the phone speakers or wired headphones. See [Together](/together).
+<Fold q="My friend and I are a little out of step in a Jam">
+  Usually one of you is using Bluetooth headphones or a speaker, which adds a delay no app can see. Try the phone speakers or wired headphones. [Listen together](/together)
 </Fold>
 </Group>
 
-<Group title="Updates and your data">
-<Fold q="How do updates work?">
-  The app checks GitHub when it starts and whenever you come back to it. When there's a new version, a green dot appears on the menu. **Settings → Check for updates** downloads it, checks the file arrived whole, and hands it to Android to install over the old one. Never uninstall first: that deletes your playlists and likes. **Settings → Automatic updates** turns the checks off.
-</Fold>
-
+<Group title="Your data">
 <Fold q="What does the app collect?">
-  To help improve the app, it sends usage statistics to Google (Firebase): songs played and for how long, searches, likes, playlists and downloads, settings you change, errors and crashes, the app version, your phone model and your rough location (country and city, from your internet address). It's tied to an anonymous ID for your phone, never your name, account or contacts. Your **Recap** is worked out on your phone and sends nothing. During a **Jam**, the song, its position, the shared queue and the names you enter are shared through a database until the Jam ends. A playlist you **share** keeps its name, its songs and your shared name there until you stop sharing it.
+  To see what works and fix what doesn't, Relaxify sends usage statistics to Google's app statistics service (Firebase): songs played and for how long, searches, likes, playlists and downloads, settings you change, errors and crashes, the app version, your phone model, and your rough location (city and country, worked out from your internet connection). It's linked to an anonymous ID for your phone, never your name, number or contacts.
+
+  Your Recap is made on your phone and sends nothing. During a Jam, the song, where it is and the names people enter are shared until the Jam ends. A playlist you share keeps its name, songs and the name you share it under until you stop sharing.
 </Fold>
 
 <Fold q="Where is everything in Settings?">
-  **Playback**: autoplay, normalize volume, headphone memory, resume when headphones connect, crossfade, equalizer. **Sound**: streaming quality, data saver. **Your music**: Home languages. **Sources**: YouTube on or off. **Storage**: what's using space, download folder, removing all downloads, clearing the cache, and clearing it automatically once it passes a size you pick. **Appearance**: source and quality labels on songs. **About**: version, updates, what we collect, **Terms of Use**, **Privacy** and licences. **Reset all settings** puts everything back, and keeps your likes, playlists and downloads.
+  - **Playback**: Autoplay, Normalize volume, Headphone memory, Resume when headphones connect, Crossfade, Equalizer.
+  - **Sound**: Streaming quality and Data saver.
+  - **Your music**: Home languages and Sources (turn YouTube on or off).
+  - **Storage**: what's using space, your download folder, and clearing space.
+  - **Appearance**: show or hide the source and quality labels on songs.
+  - **About**: your version, updates, what we collect, and help.
+
+  **Reset all settings** puts every setting back as it was, and keeps your likes, playlists and downloads.
 </Fold>
 
-<Fold q="Where does the music come from? Is this allowed?">
-  Relaxify doesn't host any music. It plays what JioSaavn, SoundCloud and YouTube already make public, the same way their own websites do, and it's for personal listening. Relaxify is free and open source under the **GPL-3.0** licence; the code is on [GitHub](https://github.com/subh-775/Relaxify).
+<Fold q="Where does the music come from? Is it allowed?">
+  Relaxify doesn't store any music. It plays what JioSaavn, SoundCloud and YouTube already offer to everyone, the way their own websites do, for personal listening. Relaxify is free and open source; anyone can read its code on [GitHub](https://github.com/subh-775/Relaxify).
 </Fold>
 </Group>
