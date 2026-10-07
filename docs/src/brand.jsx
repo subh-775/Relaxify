@@ -10,30 +10,40 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 /** An in-site link, with the GitHub Pages base in front. */
 export const href = path => `${BASE}${path}`;
 
-/* ── the Ember note (Logo.tsx) ────────────────────────────────────────────── */
+/* ── the mark: two notes (Logo.tsx) ───────────────────────────────────────── */
+
+const NOTE =
+  'M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z';
+const SHINE = 'M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z';
+const BACK = 'translate(-6.96 -3.78) scale(0.7022)';
+const FRONT = 'translate(4.89 -2.03) scale(1.0721)';
 
 export function Note({size = 28, color}) {
   const id = `note${useId().replace(/:/g, '')}`;
-  const fill = color ?? `url(#${id})`;
+  const note = which => (
+    <g transform={which === 'b' ? BACK : FRONT}>
+      <path d={NOTE} fill={color ?? `url(#${id}${which})`} opacity={color && which === 'b' ? 0.55 : 1} />
+      {!color && <path d={SHINE} fill="#fff" opacity=".3" />}
+    </g>
+  );
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
       {!color && (
         <defs>
-          <linearGradient id={id} x1="0.1" y1="0" x2="0.9" y2="1">
-            <stop offset="0" stopColor="#FFB38A" />
+          <linearGradient id={`${id}b`} x1="0.1" y1="0" x2="0.9" y2="1">
+            <stop offset="0" stopColor="#C0606C" />
+            <stop offset="0.5" stopColor="#A12C48" />
+            <stop offset="1" stopColor="#6E1030" />
+          </linearGradient>
+          <linearGradient id={`${id}f`} x1="0.1" y1="0" x2="0.9" y2="1">
+            <stop offset="0" stopColor="#FF9AA0" />
             <stop offset="0.5" stopColor="#FF5A6E" />
-            <stop offset="1" stopColor="#C2185B" />
+            <stop offset="1" stopColor="#E2266A" />
           </linearGradient>
         </defs>
       )}
-      <path
-        d="M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z"
-        fill={fill}
-      />
-      {!color && <path d="M60 36 C72 42 75 55 72 66 C69 57 64 48 60 45 Z" fill="#000" opacity=".38" />}
-      {!color && (
-        <path d="M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z" fill="#fff" opacity=".28" />
-      )}
+      {note('b')}
+      {note('f')}
     </svg>
   );
 }
