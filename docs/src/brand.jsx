@@ -171,19 +171,36 @@ export function Burst({color, className = '', points = 12, spin}) {
 
 /* ── live release numbers, read once per visit ───────────────────────────── */
 
+/** Every release, a page of 100 at a time (GitHub's limit per request).
+ *  null when GitHub doesn't answer. */
+async function allReleases() {
+  const out = [];
+  for (let page = 1; page < 20; page++) {
+    const r = await fetch(`${SITE.api}/releases?per_page=100&page=${page}`);
+    if (!r.ok) {
+      return out.length ? out : null;
+    }
+    const batch = await r.json();
+    out.push(...batch);
+    if (batch.length < 100) {
+      break;
+    }
+  }
+  return out;
+}
+
 let releases = null;
 function readReleases() {
   releases =
     releases ||
-    fetch(`${SITE.api}/releases?per_page=100`)
-      .then(r => (r.ok ? r.json() : null))
+    allReleases()
       .then(all => {
         if (!Array.isArray(all)) {
           return null;
         }
-        // Real releases only: test builds (pre-releases) are not "Relaxify".
-        const real = all.filter(r => !r.draft && !r.prerelease);
-        const latest = real[0];
+        const published = all.filter(r => !r.draft);
+        // The newest version people get: never a test build.
+        const latest = published.find(r => !r.prerelease);
         if (!latest) {
           return null;
         }
@@ -193,10 +210,10 @@ function readReleases() {
           date: new Date(latest.published_at).toLocaleDateString('en-IN', {day: 'numeric', month: 'short', year: 'numeric'}),
           size: apk ? `${Math.round(apk.size / 1048576)} MB` : null,
           url: latest.html_url,
-          downloads: real.reduce(
-            (sum, r) => sum + (r.assets || []).filter(a => a.name.endsWith('.apk')).reduce((s, a) => s + (a.download_count || 0), 0),
-            0,
-          ),
+          // Every file of every release, the same count as the README's
+          // Downloads badge (shields.io github/downloads/total), so the two
+          // never disagree.
+          downloads: published.reduce((sum, r) => sum + (r.assets || []).reduce((s, a) => s + (a.download_count || 0), 0), 0),
         };
       })
       .catch(() => null);
@@ -275,10 +292,6 @@ export function LiveRelease() {
           <span className="l">Downloads, all versions</span>
         </div>
       </div>
-      <p className="livebadge">
-        <i aria-hidden="true" />
-        Live from GitHub, every time you open this page
-      </p>
       {info && (
         <p>
           <a href={info.url} target="_blank" rel="noreferrer">
@@ -299,10 +312,8 @@ export function GetApp({label = 'Download', meta = true}) {
         <DownloadIcon />
         {label}
       </a>
-      {meta && (
-        <span className="get-meta">
-          {info ? `Version ${info.version}${info.size ? `, ${info.size}` : ''}, the newest` : 'Always the newest version'}
-        </span>
+      {meta && info && (
+        <span className="get-meta">{`Version ${info.version}${info.size ? `, ${info.size}` : ''}`}</span>
       )}
     </span>
   );
@@ -318,59 +329,96 @@ export function DownloadIcon() {
 
 /* ── the Home deck ───────────────────────────────────────────────────────── */
 
-/** The pages as a stack of Recap cards: drag the top one away to see the
- *  next, tap Open to read it. Arrow keys work too. */
+/** The pages as a stack of Recap cards. Tap the top card (or swipe it) for
+ *  the next one, swipe the other way to go back, Open to read it. Arrow keys,
+ *  Enter and Space work too. */
 export function Deck() {
   const cards = PAGES.filter(p => p.link !== '/releases');
   const [order, setOrder] = useState(() => cards.map((_, i) => i));
   const els = useRef([]);
   const deck = useRef(null);
   const drag = useRef({on: false, x: 0, dx: 0});
+  const busy = useRef(false);
+  const last = cards.length - 1;
 
-  const layout = (o, animate) => {
-    o.forEach((idx, pos) => {
-      const props = {
-        x: 0,
-        y: pos * 10,
-        scale: 1 - pos * 0.05,
-        rotation: pos ? (pos % 2 ? 3 : -3) : 0,
-        zIndex: 10 - pos,
-        autoAlpha: pos > 2 ? 0 : 1,
-      };
-      if (animate && !reduceMotion()) {
-        gsap.to(els.current[idx], {...props, duration: 0.45, ease: 'back.out(1.6)'});
-      } else {
-        gsap.set(els.current[idx], props);
-      }
-    });
-  };
+  // A card's place in the stack: straight, a little lower and smaller the
+  // further back. No tilt, so nothing swings as cards move up a place.
+  const at = pos => ({
+    x: 0,
+    y: pos * 12,
+    scale: 1 - pos * 0.05,
+    rotation: 0,
+    zIndex: 10 - pos,
+    autoAlpha: pos > 2 ? 0 : 1,
+  });
+  const glide = {duration: 0.42, ease: 'power3.out', overwrite: 'auto'};
 
+  // In a context, and reverted on cleanup: React runs this twice in
+  // development, and a second deal-in that starts from the first one's
+  // half-way state leaves the cards stuck see-through and overlapping.
   useLayoutEffect(() => {
-    layout(order, false);
-    if (!reduceMotion()) {
-      gsap.from(els.current, {y: 120, rotation: 12, autoAlpha: 0, stagger: 0.07, duration: 0.7, ease: 'back.out(1.4)', delay: 0.4});
-    }
+    const ctx = gsap.context(() => {
+      if (reduceMotion()) {
+        order.forEach((idx, pos) => gsap.set(els.current[idx], at(pos)));
+        return;
+      }
+      // Each card from below to its exact place: fromTo, so a second run can
+      // never end see-through (see Home's headline).
+      order.forEach((idx, pos) =>
+        gsap.fromTo(
+          els.current[idx],
+          {...at(pos), y: at(pos).y + 80, autoAlpha: 0},
+          {...at(pos), duration: 0.6, ease: 'power3.out', delay: 0.3 + pos * 0.06},
+        ),
+      );
+    }, deck);
+    return () => ctx.revert();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** -1: the top card leaves and the next comes up. +1: the last card
+   *  comes back on top. One movement: the leaving card and the rest of the
+   *  stack move at the same time. */
   const turn = dir => {
-    const top = els.current[order[0]];
-    const next = dir < 0 ? [...order.slice(1), order[0]] : [order[order.length - 1], ...order.slice(0, -1)];
-    gsap.to(top, {
-      x: dir * 420,
-      rotation: dir * 24,
-      duration: reduceMotion() ? 0 : 0.3,
-      ease: 'power2.in',
-      onComplete: () => {
-        gsap.set(top, {x: 0});
-        setOrder(next);
-        layout(next, true);
-      },
-    });
+    if (busy.current) {
+      return;
+    }
+    busy.current = true;
+    const quick = reduceMotion();
+    const w = deck.current.clientWidth;
+    const next = dir < 0 ? [...order.slice(1), order[0]] : [order[last], ...order.slice(0, -1)];
+    const done = () => {
+      busy.current = false;
+      setOrder(next);
+    };
+    if (dir < 0) {
+      const top = els.current[order[0]];
+      gsap.to(top, {
+        x: -w * 1.15,
+        rotation: -8,
+        autoAlpha: 0,
+        duration: quick ? 0 : 0.34,
+        ease: 'power2.in',
+        overwrite: 'auto',
+        onComplete: () => {
+          gsap.set(top, at(last)); // quietly back at the bottom of the stack
+          done();
+        },
+      });
+      next.slice(0, -1).forEach((idx, pos) => gsap.to(els.current[idx], {...at(pos), ...glide, duration: quick ? 0 : glide.duration}));
+    } else {
+      const back = els.current[order[last]];
+      gsap.set(back, {x: w * 1.15, y: 0, scale: 1, rotation: 8, zIndex: 11, autoAlpha: 0});
+      gsap.to(back, {...at(0), zIndex: 11, ...glide, duration: quick ? 0 : glide.duration, onComplete: () => {
+        gsap.set(back, {zIndex: 10});
+        done();
+      }});
+      next.slice(1).forEach((idx, i) => gsap.to(els.current[idx], {...at(i + 1), ...glide, duration: quick ? 0 : glide.duration}));
+    }
   };
 
   const down = e => {
-    if (e.target.closest('a')) {
+    if (e.target.closest('a') || busy.current) {
       return;
     }
     drag.current = {on: true, x: e.clientX, dx: 0};
@@ -381,7 +429,7 @@ export function Deck() {
       return;
     }
     drag.current.dx = e.clientX - drag.current.x;
-    gsap.set(els.current[order[0]], {x: drag.current.dx, rotation: drag.current.dx / 14});
+    gsap.set(els.current[order[0]], {x: drag.current.dx, rotation: drag.current.dx / 20});
   };
   const up = () => {
     if (!drag.current.on) {
@@ -389,10 +437,12 @@ export function Deck() {
     }
     drag.current.on = false;
     const {dx} = drag.current;
-    if (Math.abs(dx) > deck.current.clientWidth / 3) {
-      turn(Math.sign(dx));
+    if (Math.abs(dx) < 6) {
+      turn(-1); // a tap: the next card
+    } else if (Math.abs(dx) > deck.current.clientWidth / 4) {
+      turn(dx < 0 ? -1 : 1);
     } else {
-      gsap.to(els.current[order[0]], {x: 0, rotation: 0, duration: 0.4, ease: 'back.out(2)'});
+      gsap.to(els.current[order[0]], {x: 0, rotation: 0, duration: 0.35, ease: 'power3.out'});
     }
   };
 
@@ -407,10 +457,16 @@ export function Deck() {
         onPointerCancel={up}
         tabIndex={0}
         role="group"
-        aria-label="Pages. Drag the cards, or use the arrow keys."
+        aria-label="Pages. Tap or swipe the cards, or use the arrow keys."
         onKeyDown={e => {
-          if (e.key === 'ArrowLeft') turn(-1);
-          if (e.key === 'ArrowRight') turn(1);
+          // Enter and Space only on the deck itself: on Open they open.
+          if (e.key === 'ArrowLeft' || (e.target === deck.current && (e.key === 'Enter' || e.key === ' '))) {
+            e.preventDefault();
+            turn(-1);
+          }
+          if (e.key === 'ArrowRight') {
+            turn(1);
+          }
         }}>
         {cards.map((p, i) => (
           <div
@@ -434,7 +490,7 @@ export function Deck() {
           <i key={p.link} className={order[0] === i ? 'on' : ''} />
         ))}
       </div>
-      <p className="hint">Swipe the cards 👆</p>
+      <p className="hint">Tap or swipe the cards</p>
     </div>
   );
 }
@@ -451,14 +507,9 @@ export function Moves({children}) {
   return <div className="moves">{children}</div>;
 }
 
-export function Move({how, emoji, children}) {
+export function Move({how, children}) {
   return (
     <div className="move reveal">
-      {emoji && (
-        <span className="g" aria-hidden="true">
-          {emoji}
-        </span>
-      )}
       <span>
         <b>{how}</b>
         <span>{children}</span>
@@ -471,7 +522,7 @@ export function Move({how, emoji, children}) {
 export function Callout({kind = 'tip', title, children}) {
   return (
     <aside className={`callout ${kind} reveal`}>
-      <b>{title || (kind === 'important' ? 'Heads up' : 'Pro tip')}</b>
+      <b>{title || (kind === 'important' ? 'Heads up' : 'Tip')}</b>
       <div>{children}</div>
     </aside>
   );

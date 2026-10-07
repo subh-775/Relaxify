@@ -383,8 +383,12 @@ main {
   font-size: 14.5px;
   line-height: 1.45;
 }
-.stick .em {
-  font-size: 26px;
+.glyph {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
   flex: none;
 }
 .stick b {
@@ -563,16 +567,6 @@ main {
 .move a {
   color: var(--ink);
   font-weight: 800;
-}
-.move .g {
-  width: 46px;
-  height: 46px;
-  border-radius: 15px;
-  background: rgba(17, 16, 20, 0.12);
-  display: grid;
-  place-items: center;
-  font-size: 23px;
-  flex: none;
 }
 .steps > li:nth-child(6n + 1),
 .move:nth-child(6n + 1) {

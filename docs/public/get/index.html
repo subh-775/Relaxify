@@ -8,7 +8,7 @@
      Recap's share, a playlist link without the app). Static on purpose:
      WhatsApp reads these tags without running any script. The button always
      downloads the newest release. -->
-<meta name="description" content="Relaxify is a free music app for Android. Download the newest version.">
+<meta name="description" content="Relaxify is a free music app for Android. Download it here.">
 <meta name="theme-color" content="#0f0c0d">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Get Relaxify">
@@ -88,19 +88,19 @@
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>
         Download
       </a>
-      <p class="meta" id="meta">Always the newest version</p>
+      <p class="meta" id="meta"></p>
     </div>
 
     <div>
-      <h2>Installing takes a minute ⏱️</h2>
+      <h2>Installing takes a minute</h2>
       <ol>
         <li><b>Tap Download</b>The file saves to your phone.</li>
         <li><b>Open the file</b>From the notification, or your Downloads.</li>
         <li><b>Tap Install</b>First time, allow installs from your browser. Go back, tap Install.</li>
-        <li><b>Pick your languages</b>Home fills up with your kind of music. Done! 🎉</li>
+        <li><b>Pick your languages</b>Home fills up with your kind of music. Done.</li>
       </ol>
-      <div class="tip"><b>"Unknown developer" warning? 🤔</b>That's just because Relaxify isn't on the Play Store. Tap <b style="display:inline">More details</b>, then <b style="display:inline">Install anyway</b>.</div>
-      <div class="warn"><b>Already have it? 🔁</b>You're good: the app updates itself and keeps your playlists. Never uninstall to update, that wipes them.</div>
+      <div class="tip"><b>"Unknown developer" warning?</b>That's just because Relaxify isn't on the Play Store. Tap <b style="display:inline">More details</b>, then <b style="display:inline">Install anyway</b>.</div>
+      <div class="warn"><b>Already have it?</b>When a new update appears, you'll be notified in the app. Never uninstall to update, that wipes your playlists.</div>
       <p class="foot"><a href="../start">How to use Relaxify</a><a href="../help">Help</a></p>
     </div>
   </div>
@@ -112,7 +112,7 @@
     .then(rel => {
       const apk = (rel.assets || []).find(a => a.name === 'Relaxify.apk');
       document.getElementById('meta').textContent =
-        `Version ${rel.tag_name.replace(/^v/, '')}${apk ? `, ${Math.round(apk.size / 1048576)} MB` : ''}, the newest`;
+        `Version ${rel.tag_name.replace(/^v/, '')}${apk ? `, ${Math.round(apk.size / 1048576)} MB` : ''}`;
     })
     .catch(() => {});
 </script>

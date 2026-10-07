@@ -157,6 +157,17 @@ function Menu({open, onClose, path}) {
 
 /* ── home ────────────────────────────────────────────────────────────────── */
 
+/** A small line icon on a palette-coloured tile. */
+function Glyph({color, d}) {
+  return (
+    <span className="glyph" style={{background: color}} aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#111014" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d={d} />
+      </svg>
+    </span>
+  );
+}
+
 function Home() {
   const h = useRef(null);
   useLayoutEffect(() => {
@@ -164,7 +175,14 @@ function Home() {
       return;
     }
     const ctx = gsap.context(() => {
-      gsap.from('.w', {y: 40, rotation: 6, autoAlpha: 0, stagger: 0.08, duration: 0.6, ease: 'back.out(1.8)', delay: 0.15});
+      // fromTo, never from: a from() started twice (React does that in
+      // development) takes the first run's half-way state as its end, and
+      // the words stay faded for good. Both ends spelled out cannot.
+      gsap.fromTo(
+        '.w',
+        {y: 40, rotation: 6, autoAlpha: 0},
+        {y: 0, rotation: 0, autoAlpha: 1, stagger: 0.08, duration: 0.6, ease: 'back.out(1.8)', delay: 0.15},
+      );
     }, h);
     return () => ctx.revert();
   }, []);
@@ -181,7 +199,7 @@ function Home() {
               </span>
             ))}
           </h1>
-          <p className="lede">Free on Android. Search once, tap play, vibes on repeat. No account, no ads. 🎧</p>
+          <p className="lede">Free on Android. Search once, tap play, vibes on repeat. No account, no ads.</p>
         </section>
         <Deck />
       </div>
@@ -189,27 +207,27 @@ function Home() {
       <section className="quick">
         <h2 className="reveal">Quick ones</h2>
         <div className="stick reveal">
-          <span className="em" aria-hidden="true">⚡</span>
+          <Glyph color={PAL.lime.bg} d="M13 2 4 14h7l-1 8 9-12h-7z" />
           <span>
             <b>Installs in a minute</b>
-            It's not on the Play Store, so you grab the file yourself. Super easy. <a href={href(GET_PAGE)}>Show me</a>
+            It's not on the Play Store, so you install the file yourself. <a href={href(GET_PAGE)}>Show me</a>
           </span>
         </div>
         <div className="stick reveal">
-          <span className="em" aria-hidden="true">🔁</span>
+          <Glyph color={PAL.sky.bg} d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" />
           <span>
-            <b>Updates itself</b>
-            New version out? The app tells you and updates in place.
+            <b>Updates in the app</b>
+            When a new update appears, you'll be notified in the app.
           </span>
         </div>
         <div className="stick reveal">
-          <span className="em" aria-hidden="true">💸</span>
+          <Glyph color={PAL.orange.bg} d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z" />
           <span>
             <b>Free, for real</b>
-            No account, no ads, no paywall. Anyone can read how it's made.
+            No account, no ads, no paywall.
           </span>
         </div>
-        <Callout kind="important" title="🚫 Never uninstall to update">
+        <Callout kind="important" title="Never uninstall to update">
           That wipes your playlists and likes for good. Always update from inside the app.
         </Callout>
       </section>

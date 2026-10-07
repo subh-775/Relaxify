@@ -42,7 +42,7 @@ export const PAGES = [
   {link: '/together', pal: 'lav', title: 'Together', kicker: 'Same song, same second', card: 'Jam with friends, share playlists.'},
   {link: '/sound', pal: 'orange', title: 'Sound', kicker: 'Make it sound yours', card: 'Equalizer, quality, data saver.'},
   {link: '/help', pal: 'pink', title: 'Help', kicker: "Something off? Let's fix it", card: 'Quick answers, no stress.', mood: 'huh'},
-  {link: '/releases', pal: 'night', title: "What's new", kicker: 'Straight from GitHub, always fresh', card: 'The newest version, live.'},
+  {link: '/releases', pal: 'night', title: "What's new", kicker: 'The newest version', card: 'Version, date and downloads.'},
 ];
 
 /** The download page lives outside the app shell (public/get), so links to
