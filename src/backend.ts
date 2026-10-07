@@ -9,6 +9,7 @@
  */
 import {NativeModules} from 'react-native';
 import {toast} from './toast';
+import {getBestArtworkUrl} from './tracks';
 
 const {port, token, version} = (NativeModules.Backend ?? {}) as {
   port?: number;
@@ -585,7 +586,7 @@ export async function startDownload(
         artist: track.artist,
         album: track.album,
         duration_ms: track.duration_ms,
-        artwork_url: track.artwork_url,
+        artwork_url: getBestArtworkUrl(track),
       },
       // The backend clamps to 64..320 anyway; clamping here keeps the value
       // we report to the user honest.

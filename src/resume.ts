@@ -23,6 +23,8 @@ export type ResumeState = {
   queue: Track[];
   index: number;
   savedAt: number;
+  /** playbackOrigin (player.ts): the collection the queue was started from. */
+  origin?: string;
 };
 
 let lastWrite = 0;
@@ -95,7 +97,13 @@ export function resumeIndex(
  * moments are never lost.
  */
 export function saveResume(
-  state: {track: Track | null; position: number; queue: Track[]; index: number},
+  state: {
+    track: Track | null;
+    position: number;
+    queue: Track[];
+    index: number;
+    origin?: string;
+  },
   force = false,
 ): void {
   if (!state.track) {
@@ -113,6 +121,7 @@ export function saveResume(
     queue: win.queue,
     index: win.index,
     savedAt: now,
+    origin: state.origin || undefined,
   };
   AsyncStorage.setItem(KEY, JSON.stringify(payload)).catch(() => {
     // Storage full / unavailable — resume is a convenience, never fatal.

@@ -29,7 +29,7 @@ jest.mock('react-native-track-player', () => ({
 }));
 
 // NB: this import must stay below the mocks above — jest hoists jest.mock().
-import {restoreOrder, shuffleUpcoming} from '../src/player';
+import {alignUpcoming, restoreOrder, shuffleUpcoming} from '../src/player';
 
 const row = (qid: string) => ({_qid: qid, title: qid});
 
@@ -98,4 +98,17 @@ test('shuffle actually reorders a list of any size', () => {
       .join(),
   ).filter(o => o !== original);
   expect(moved.length).toBeGreaterThan(20);
+});
+
+test('the source list follows the engine after a shuffle', () => {
+  // Song 0 plays; 1..3 are upcoming, and song "x" is queued twice.
+  const source = ['s0', 's1', 'x', 'x2'];
+  const before = [row('q1'), row('q2'), row('q3')];
+  const after = [row('q3'), row('q1'), row('q2')];
+  expect(alignUpcoming(source, 0, before, after)).toEqual([
+    's0',
+    'x2',
+    's1',
+    'x',
+  ]);
 });

@@ -53,6 +53,7 @@ import {
   watchForegroundUpdates,
 } from './src/update';
 import {watchCacheLimit} from './src/cacheLimit';
+import {repairCovers} from './src/coverRepair';
 import {
   TrackActionSheet,
   type SheetContext,
@@ -267,8 +268,11 @@ function Shell() {
     const stopCacheLimit = watchCacheLimit();
     // Shared playlists: friends' ones you follow refresh, yours push changes.
     const stopSharingSync = startSharing();
+    // Old songs still showing a wrong iTunes cover get their real one.
+    const covers = setTimeout(() => repairCovers().catch(() => {}), 20000);
     return () => {
       clearTimeout(u);
+      clearTimeout(covers);
       stopCacheLimit();
       stopSharingSync();
     };

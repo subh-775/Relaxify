@@ -1552,6 +1552,13 @@ def get_lyrics():
 # ─── Discovery / profiles ─────────────────────────────────────────────────────
 @app.get("/api/artwork")
 def get_artwork():
+    # A JioSaavn song's own cover, by its song link (the app's cover repair).
+    song_url = _arg("song_url")
+    if song_url:
+        try:
+            return jsonify({"artwork_url": _source_client("jiosaavn").get_song_image(song_url) or ""})
+        except Exception as e:
+            return jsonify({"artwork_url": "", "error": str(e)})
     try:
         results = _source_client("itunes").search(
             f"{_arg('title')} {_arg('artist')}".strip(), limit=1)

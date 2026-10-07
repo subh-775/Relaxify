@@ -581,6 +581,7 @@ async function setupPlayerOnce(): Promise<boolean> {
                 position: 0,
                 queue: queueSource,
                 index: idx,
+                origin: playbackOrigin,
               },
               true,
             );
@@ -644,6 +645,8 @@ export async function restoreSession(): Promise<boolean> {
   }
   try {
     queueSource = items.map(x => x.t);
+    // The collection it was playing from, so its coral highlight comes back.
+    setPlaybackOrigin(s.origin ?? '');
     // By the saved TRACK, not the bare index: dropping an unplayable entry
     // above shifts every later index by one.
     const idx = resumeIndex(
@@ -771,7 +774,9 @@ function toQueueItem(track: Track, bitrate: number) {
       source === 'jiosaavn' ? {Referer: 'https://www.jiosaavn.com/'} : undefined,
     title: track.title,
     artist: track.artist,
-    artwork: track.artwork_url,
+    // Not the baked artwork_url: songs saved by older builds carry an iTunes
+    // cover there that the current order no longer picks.
+    artwork: getBestArtworkUrl(track),
     duration: track.duration_ms ? track.duration_ms / 1000 : undefined,
   };
 }
@@ -1302,6 +1307,30 @@ export function restoreOrder<T>(snapshot: T[], liveUpcoming: T[]): T[] {
   return snapshot.filter(t => qid(t) !== undefined && live.has(qid(t)));
 }
 
+/**
+ * The source list re-ordered to follow the engine after a shuffle.
+ *
+ * Shuffle reorders the ENGINE queue, and the source list is read by index
+ * against it — the resume note above all. Left in the old order, the saved
+ * index pointed at a different song, so a restart reopened on the wrong one.
+ * Matched by `_qid`, not by title, so a song queued twice keeps both rows.
+ *
+ * Exported for the test.
+ */
+export function alignUpcoming<S, R>(
+  source: S[],
+  index: number,
+  before: R[],
+  after: R[],
+): S[] {
+  const qid = (r: R) => (r as {_qid?: unknown})._qid;
+  const byQid = new Map(before.map((r, i) => [qid(r), source[index + 1 + i]]));
+  const upcoming = after
+    .map(r => byQid.get(qid(r)))
+    .filter((t): t is S => t !== undefined);
+  return [...source.slice(0, index + 1), ...upcoming];
+}
+
 /** Fisher-Yates, and it must not return the identity for a short list — a
  *  shuffle that visibly changes nothing reads as a broken button. */
 export function shuffleUpcoming<T>(rest: T[]): T[] {
@@ -1337,8 +1366,10 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
       return shuffleOn; // nothing ahead to reorder
     }
     preShuffleUpcoming = rest; // remember so OFF can restore it
+    const mixed = shuffleUpcoming(rest);
     await TrackPlayer.removeUpcomingTracks();
-    await TrackPlayer.add(shuffleUpcoming(rest));
+    await TrackPlayer.add(mixed);
+    queueSource = alignUpcoming(queueSource, index, rest, mixed);
     setShuffleFlag(true);
   } else {
     if (preShuffleUpcoming) {
@@ -1346,6 +1377,7 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
       if (restored.length) {
         await TrackPlayer.removeUpcomingTracks();
         await TrackPlayer.add(restored);
+        queueSource = alignUpcoming(queueSource, index, rest, restored);
       }
       preShuffleUpcoming = null;
     }
@@ -1386,9 +1418,17 @@ export function shuffleInAfterCurrent(
       return false;
     }
     const order = items.map(x => x.q as RNTPTrack);
+    const mixed = shuffleUpcoming(order);
     await TrackPlayer.removeUpcomingTracks();
-    await TrackPlayer.add(shuffleUpcoming(order));
-    queueSource = [...queueSource, ...items.map(x => x.t)];
+    await TrackPlayer.add(mixed);
+    // Everything after the playing song is now `items`, in `mixed` order —
+    // the old upcoming tail is gone from the engine, so it goes here too.
+    queueSource = alignUpcoming(
+      [...queueSource.slice(0, index + 1), ...items.map(x => x.t)],
+      index,
+      order,
+      mixed,
+    );
     preShuffleUpcoming = order;
     setShuffleFlag(true);
     setPlaybackOrigin(originId);
@@ -1566,7 +1606,10 @@ async function saveSession(force = false): Promise<void> {
   ]);
   const src = sourceTrackFor(active ?? null);
   if (src) {
-    saveResume({track: src, position, queue: queueSource, index: idx ?? 0}, force);
+    saveResume(
+      {track: src, position, queue: queueSource, index: idx ?? 0, origin: playbackOrigin},
+      force,
+    );
   }
 }
 
@@ -2074,7 +2117,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
           );
           if (src) {
             saveResume(
-              {track: src, position, queue: queueSource, index: idx},
+              {track: src, position, queue: queueSource, index: idx, origin: playbackOrigin},
               true,
             );
           }
@@ -2134,7 +2177,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
       }
       const src = sourceTrackFor(active);
       if (src) {
-        saveResume({track: src, position, queue: queueSource, index: idx});
+        saveResume({track: src, position, queue: queueSource, index: idx, origin: playbackOrigin});
       }
     } catch {}
   }, 1000);

@@ -32,8 +32,16 @@ const TEXT_REPLACEMENTS: Array<[RegExp, string]> = [
   [/â€“|â€”/g, '-'],
 ];
 
-/** Ordered best-to-worst artwork keys. */
+/**
+ * Ordered best-to-worst artwork keys.
+ *
+ * The playing source's own cover leads, as in the backend's get_best_artwork.
+ * The numeric sizes are iTunes's, from a separate fuzzy lookup that sometimes
+ * matched another song — and while they led, every such miss showed the wrong
+ * cover, old imports most of all.
+ */
 const ARTWORK_PRIORITY = [
+  'source:jiosaavn',
   '1200',
   '1000',
   '600',
@@ -41,7 +49,6 @@ const ARTWORK_PRIORITY = [
   'xl',
   '300',
   'large',
-  'source:jiosaavn',
   'source:youtube',
   'source:soundcloud',
   'enriched',

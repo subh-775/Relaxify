@@ -63,6 +63,9 @@ export function setOnCellular(v: boolean): void {
   cellular = v;
 }
 
+/** Data saver is on AND the phone is on mobile data: hold background fetches. */
+export const savingData = () => settingsStore.get().dataSaver && cellular;
+
 export const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
   showSourceBadge: true,
@@ -127,6 +130,13 @@ export function toggleLike(t: Track): boolean {
   likesStore.set(had ? list.filter(x => getTrackId(x) !== k) : [t, ...list]);
   logEvent(had ? 'song_unliked' : 'song_liked', songParams(t));
   return !had;
+}
+
+export const readLikes = likesStore.get;
+
+/** Rewrite liked songs in place (coverRepair.ts); order and ids unchanged. */
+export function mapLikes(fn: (t: Track) => Track): void {
+  likesStore.update(list => list.map(fn));
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
