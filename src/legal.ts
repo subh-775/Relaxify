@@ -27,8 +27,8 @@ export const JAM_NOTE =
 /** And when you share a playlist. */
 export const SHARE_NOTE =
   'When you share a playlist, its name, its songs and the name you share it ' +
-  'under are kept in our database for anyone who has its code, until you ' +
-  'stop sharing it or delete it.';
+  'under are kept in our database for anyone who has its link, until you ' +
+  'delete the playlist.';
 
 /** The music services Relaxify plays from, credited wherever the terms are. */
 export const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;

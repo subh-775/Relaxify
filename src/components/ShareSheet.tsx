@@ -1,11 +1,12 @@
 /**
- * Share a playlist of yours: a code and a ready-made message for friends.
+ * Share a playlist of yours: who it is from, and Send.
  *
  * Opening it shares the playlist the first time (sharedPlaylists.ts makes
- * the code and sends the songs); after that it shows the same code. Friends
+ * the code and sends the songs); after that it reuses the same link. Friends
  * who open the link see it as it is now and can add a copy to their library,
- * which is then theirs: later changes don't travel either way. "Stop sharing"
- * makes the link stop working; copies already added stay.
+ * which is then theirs: later changes don't travel either way. No code on
+ * screen and no "Stop sharing": the message carries the link, and deleting
+ * the playlist is what stops it.
  */
 import React, {useEffect, useState} from 'react';
 import {
@@ -21,24 +22,19 @@ import {C, S, T} from '../theme';
 import {readPlaylists, type Playlist} from '../playlists';
 import {phoneName, savedName} from '../jam';
 import {useStoreValue} from '../storage';
-import {
-  shareCodeOf,
-  sharePlaylist,
-  stopSharing,
-} from '../sharedPlaylists';
-import {toast} from '../toast';
+import {shareCodeOf, sharePlaylist} from '../sharedPlaylists';
 import {playlistLink} from '../links';
 import {Sheet} from './Sheet';
 
-/** What a friend receives. The code is also typed in Library's ticket box,
- *  and the whole message can be pasted into Search. */
+/** What a friend receives. The whole message can be pasted into Search,
+ *  which finds the code inside it. */
 export function shareMessage(name: string, code: string): string {
   // The link opens the playlist in Relaxify, or offers the app to someone
-  // without it. The code stays for typing it in by hand.
+  // without it.
   return (
     `Listen to "${name}" with me on Relaxify 🎧\n${playlistLink(code)}\n\n` +
-    'No app yet? The link gets it for you. Already have it? Library, tap ' +
-    `the ticket and enter ${code}.`
+    'No app yet? The link gets it for you. Already have it? Paste this ' +
+    'message in Search.'
   );
 }
 
@@ -97,16 +93,6 @@ export function ShareSheet({
     }
   };
 
-  const stop = () => {
-    if (!playlist) {
-      return;
-    }
-    stopSharing(playlist.id)
-      .then(() => toast('Stopped sharing. Friends keep their copy.'))
-      .catch(() => toast('Could not stop sharing. Check your connection.'));
-    onClose();
-  };
-
   return (
     <Sheet open={!!playlist} onClose={close} style={styles.sheet}>
       <Text style={styles.title} numberOfLines={1}>
@@ -117,15 +103,7 @@ export function ShareSheet({
         that their copy is theirs, and your changes stay yours.
       </Text>
 
-      {error ? (
-        <Text style={styles.error}>{error}</Text>
-      ) : code ? (
-        <Text style={styles.code} selectable accessibilityLabel={`Code ${code.split('').join(' ')}`}>
-          {code}
-        </Text>
-      ) : (
-        <ActivityIndicator style={styles.wait} color={C.sub} />
-      )}
+      {!!error && <Text style={styles.error}>{error}</Text>}
 
       <View style={styles.nameRow}>
         <Text style={styles.nameLabel}>Shared by</Text>
@@ -146,13 +124,12 @@ export function ShareSheet({
           disabled={!code}
           activeOpacity={0.8}
           onPress={send}>
-          <Text style={styles.btnSolidText}>Send…</Text>
+          {code || error ? (
+            <Text style={styles.btnSolidText}>Send…</Text>
+          ) : (
+            <ActivityIndicator color={C.bg} />
+          )}
         </TouchableOpacity>
-        {!!code && (
-          <TouchableOpacity style={styles.btn} activeOpacity={0.8} onPress={stop}>
-            <Text style={styles.btnText}>Stop sharing</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </Sheet>
   );
@@ -169,17 +146,6 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   sub: {...T.sub, color: C.sub, paddingHorizontal: S.gutter, paddingTop: 4},
-  code: {
-    color: C.text,
-    fontSize: 40,
-    fontWeight: '800',
-    letterSpacing: 6,
-    textAlign: 'center',
-    paddingTop: 18,
-    paddingBottom: 6,
-    fontVariant: ['tabular-nums'],
-  },
-  wait: {paddingVertical: 26},
   error: {
     color: C.danger,
     fontSize: 14,
@@ -192,7 +158,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     marginHorizontal: S.gutter,
-    marginTop: 8,
+    marginTop: 18,
   },
   nameLabel: {...T.sub, color: C.sub},
   nameInput: {
@@ -212,14 +178,13 @@ const styles = StyleSheet.create({
     paddingBottom: 18,
   },
   btn: {
+    flex: 1,
+    alignItems: 'center',
     borderRadius: 999,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.28)',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   btnSolid: {backgroundColor: C.text, borderColor: C.text},
-  btnText: {color: C.text, fontSize: 14, fontWeight: '800'},
   btnSolidText: {color: C.bg, fontSize: 14, fontWeight: '800'},
   off: {opacity: 0.4},
 });
