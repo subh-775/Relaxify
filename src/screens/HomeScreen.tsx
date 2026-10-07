@@ -39,6 +39,7 @@ import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
 import {checkOnline, useOffline} from '../offline';
 import {OfflineScreen} from '../components/OfflineScreen';
+import {LanguageDial} from '../components/LanguageDial';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -403,7 +404,15 @@ export const HomeScreen = React.memo(function HomeScreen({
           <FlatList
             data={rows}
             keyExtractor={row => row.title}
-            renderItem={({item}) => <Row row={item} onPick={onPickTrack} />}
+            renderItem={({item}) => (
+              <>
+                <Row row={item} onPick={onPickTrack} />
+                {/* The language dial between Charts and Top playlists. */}
+                {item.title.trim().toLowerCase() === 'charts' && (
+                  <LanguageDial />
+                )}
+              </>
+            )}
             contentContainerStyle={[styles.scroll, listEnd]}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
