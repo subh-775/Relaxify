@@ -1322,7 +1322,25 @@ def get_lyrics():
         cleaned = re.sub(r'\s+(?:feat\.|ft\.).*$', '', cleaned, flags=re.IGNORECASE)
         return cleaned.strip()
 
-    def _fetch():
+    def _youtube_split(text: str, credit: str):
+        """A YouTube upload titled "Artist - Song", credited to a channel.
+
+        Searched as it stands, "Ritviz - Dha" by "Sony Music India" matches
+        nothing. Returns (song, artist) to try first, or None when the title
+        has no dash. Whichever side reads as the credited artist is the artist;
+        with neither, the YouTube convention says it is the left."""
+        parts = re.split(r"\s+[-–—]\s+", _clean_for_search(text), maxsplit=1)
+        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+            return None
+        left, right = parts[0].strip(), parts[1].strip()
+        who = _clean_for_search(credit).lower()
+        if who and fuzz.token_set_ratio(who, right.lower()) >= 80:
+            return left, credit
+        if who and fuzz.token_set_ratio(who, left.lower()) >= 80:
+            return right, credit
+        return right, left
+
+    def _fetch(title, artist, budget):
         headers = {"User-Agent": "Fix_Spotify/1.0 (music player)"}
         clean_title = _clean_for_search(title)
         clean_artist = _clean_for_search(artist)
@@ -1330,8 +1348,8 @@ def get_lyrics():
         # A total miss can otherwise stack many slow calls; on a mobile network
         # those add up fast. Bound the whole lookup.
         start = time.monotonic()
-        deadline = start + 20      # hard cap for the entire lookup
-        ll_deadline = start + 12   # favour lrclib (our only SYNCED source)
+        deadline = start + budget             # hard cap for the entire lookup
+        ll_deadline = start + budget * 0.6    # favour lrclib (our only SYNCED source)
 
         def _http_get(url, *, timeout, **kw):
             left = deadline - time.monotonic()
@@ -1537,7 +1555,13 @@ def get_lyrics():
         return {"plain": "", "synced": [], "source": None}
 
     try:
-        result = _fetch()
+        # Both attempts together stay inside the app's 30s request timeout.
+        result = None
+        split = _youtube_split(title, artist)
+        if split:
+            result = _fetch(split[0], split[1], 9)
+        if not (result and result.get("source")):
+            result = _fetch(title, artist, 18 if split else 20)
         # Cache only real hits, so a transient miss can retry later.
         if result and result.get("source"):
             with _lyrics_cache_lock:

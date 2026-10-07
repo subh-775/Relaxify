@@ -66,6 +66,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {C} from '../theme';
 import {getLyrics, type Lyrics, type Track} from '../backend';
+import {logEvent} from '../analytics';
 import {enqueueDownload, useIsDownloaded} from '../downloads';
 import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from '../components/Marquee';
@@ -1488,7 +1489,9 @@ function TapZone({onDoubleTap}: {onDoubleTap: () => void}) {
 const LINE_H = 44;
 
 /** Session-lifetime lyrics cache. Keyed on title|artist; capped so a long
- *  session can't hold hundreds of lyric sheets. */
+ *  session can't hold hundreds of lyric sheets. Hits only: a miss is often a
+ *  slow network or a source that was down, and remembering it hid the lyrics
+ *  for the rest of the session. */
 const lyricsCache = new Map<string, Lyrics>();
 
 function trimCache(map: Map<string, unknown>, max = 40): void {
@@ -1548,8 +1551,18 @@ function useLyrics(
     setLyrics(null);
     getLyrics(title, artist, durationMs)
       .then(l => {
-        lyricsCache.set(cacheKey, l);
-        trimCache(lyricsCache);
+        const result = l.synced?.length ? 'synced' : l.plain ? 'plain' : 'none';
+        // Which songs miss, and from where — the only way to see coverage.
+        logEvent('lyrics_result', {
+          title,
+          artist,
+          result,
+          lyrics_source: l.source ?? '',
+        });
+        if (result !== 'none') {
+          lyricsCache.set(cacheKey, l);
+          trimCache(lyricsCache);
+        }
         if (alive) {
           setLyrics(l);
         }
@@ -1729,11 +1742,16 @@ const LyricsPane = React.memo(function LyricsPane({
               {line.text || '♪'}
             </Text>
           ))
-        : (lyrics?.plain || '').split('\n').map((line, i) => (
-            <Text key={i} style={styles.lyricPlain}>
-              {line || ' '}
-            </Text>
-          ))}
+        : [
+            <Text key="untimed" style={styles.lyricUntimed}>
+              Lyrics not timed
+            </Text>,
+            ...(lyrics?.plain || '').split('\n').map((line, i) => (
+              <Text key={i} style={styles.lyricPlain}>
+                {line || ' '}
+              </Text>
+            )),
+          ]}
     </ScrollView>
   );
 });
@@ -2006,4 +2024,16 @@ const styles = StyleSheet.create({
   },
   lyricLineOn: {color: C.text},
   lyricPlain: {fontSize: 16, lineHeight: 26, color: 'rgba(255,255,255,0.8)'},
+  lyricUntimed: {
+    alignSelf: 'flex-start',
+    marginBottom: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    color: C.faint,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
