@@ -40,6 +40,7 @@ import {homeLanguageParam, useSettings} from '../store';
 import {checkOnline, useOffline} from '../offline';
 import {OfflineScreen} from '../components/OfflineScreen';
 import {LanguageDial} from '../components/LanguageDial';
+import {FollowedShelf} from '../components/FollowedShelf';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -407,6 +408,10 @@ export const HomeScreen = React.memo(function HomeScreen({
             renderItem={({item}) => (
               <>
                 <Row row={item} onPick={onPickTrack} />
+                {/* Your artists' newest, between New releases and Charts. */}
+                {item.title.trim().toLowerCase() === 'new releases' && (
+                  <FollowedShelf onPick={onPickTrack} />
+                )}
                 {/* The language dial between Charts and Top playlists. */}
                 {item.title.trim().toLowerCase() === 'charts' && (
                   <LanguageDial />

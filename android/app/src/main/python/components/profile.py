@@ -1066,6 +1066,71 @@ def _parse_albums(raw_albums):
     return out
 
 
+def _artist_releases(name, this_year):
+    """One followed artist's newest releases (JioSaavn's own "latest release"
+    first, then singles and albums by year) and their own playlist."""
+    key = ("releases", (name or "").strip().lower())
+    with _cache_lock:
+        if key in _cache:
+            return _cache[key]
+    d = _fetch_jiosaavn_artist(name)
+    releases, seen = [], set()
+    for group, latest in (("latest_release", True), ("singles", False), ("topAlbums", False)):
+        items = d.get(group)
+        if isinstance(items, dict):
+            items = items.get("albums") or []
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict) or not it.get("perma_url") or it.get("id") in seen:
+                continue
+            # Theirs, not a compilation they appear on ("Best Hindi Love
+            # Songs" by Various Artists sits in an artist's album list too).
+            am = (it.get("more_info") or {}).get("artistMap") or {}
+            if not any(_score_artist(name, a.get("name", "")) >= 85
+                       for a in am.get("primary_artists") or []):
+                continue
+            seen.add(it.get("id"))
+            year = int(it["year"]) if str(it.get("year", "")).isdigit() else 0
+            releases.append({
+                "type": "album",
+                "title": _clean(it.get("title")),
+                "subtitle": f"{name} · {'single' if group == 'singles' else 'album'}",
+                "image": it.get("image", ""),
+                "perma_url": it["perma_url"],
+                "artist": name,
+                "year": year,
+                "new": latest or year >= this_year,
+            })
+    releases.sort(key=lambda r: (r["new"], r["year"]), reverse=True)
+    playlists = [{
+        "type": "playlist",
+        "title": _clean(pl.get("title")),
+        "subtitle": "Their own playlist",
+        "image": pl.get("image", ""),
+        "perma_url": pl["perma_url"],
+        "artist": name,
+    } for pl in (d.get("dedicated_artist_playlist") or [])[:1]
+        if isinstance(pl, dict) and pl.get("perma_url")]
+    result = {"releases": releases[:2], "playlists": playlists}
+    if d:
+        with _cache_lock:
+            _cache[key] = result
+    return result
+
+
+def get_followed_releases(names, this_year):
+    """Home's "From artists you follow": newest first, two per artist, at
+    most 12; then up to 4 of the artists' own playlists."""
+    names = [n for n in names if n][:10]
+    if not names:
+        return {"releases": [], "playlists": []}
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        per = list(ex.map(lambda n: _artist_releases(n, this_year), names))
+    releases = sorted((r for p in per for r in p["releases"]),
+                      key=lambda r: (r["new"], r["year"]), reverse=True)
+    return {"releases": releases[:12],
+            "playlists": [pl for p in per for pl in p["playlists"]][:4]}
+
+
 def get_artist(name):
     """Cached artist profile (see _build_artist)."""
     key = ("artist", (name or "").strip().lower())
