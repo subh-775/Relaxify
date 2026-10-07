@@ -202,6 +202,23 @@ jobs:
           path: ${{ steps.stage.outputs.apk }}
           if-no-files-found: error
 
+      # A main release carries hand-written notes: it is pushed as an
+      # ANNOTATED tag whose message is the notes (made with
+      # `git tag -a --cleanup=verbatim -F notes.md`, so Markdown headings are
+      # not stripped as comments). checkout can leave the tag lightweight, so
+      # the tag object is fetched first. A lightweight tag (every rc) has no
+      # message and keeps GitHub's generated notes alone.
+      - name: Release notes from the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > release-notes.md
+          else
+            : > release-notes.md
+          fi
+          wc -c release-notes.md
+
       - name: Attach to release (tag builds)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -220,6 +237,8 @@ jobs:
           # GitHub writes it from the commits since the last tag, which is at
           # least true and specific; a hand-written body still overrides it.
           generate_release_notes: true
+          # The tag's notes, when it has any, go above the generated part.
+          body_path: release-notes.md
           # vX.Y.Z-anything is a PRE-release: built and downloadable for
           # on-device testing, but never "latest" — and /releases/latest, the
           # only thing the in-app updater reads, skips pre-releases. So a test
