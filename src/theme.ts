@@ -18,6 +18,9 @@ export const C = {
   /** Destructive only: a true red, so a warning never reads as "on" next to
    *  the coral accent. Big actions fill with it (white text); icons wear it. */
   danger: '#FF3B30',
+  /** Blush: the full player's controls — a softer coral than `accent`, so
+   *  the controls read as Relaxify while "on" states keep the strong one. */
+  tone: '#FF8D9A',
   border: 'rgba(255,255,255,0.08)',
 };
 

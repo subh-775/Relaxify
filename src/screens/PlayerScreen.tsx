@@ -1005,7 +1005,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               hitSlop={14}
               style={styles.iconBtn}
               accessibilityLabel="More for this song">
-              <MoreVertical size={22} color={C.text} />
+              <MoreVertical size={22} color={C.tone} />
             </TouchableOpacity>
           </Animated.View>
         </GestureDetector>
@@ -1226,7 +1226,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               onPress={() => skipPrevious()}
               hitSlop={10}
               style={styles.tBtn}>
-              <SkipBack size={34} color={C.text} fill={C.text} />
+              <SkipBack size={34} color={C.tone} fill={C.tone} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1251,7 +1251,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               onPress={() => skipNext()}
               hitSlop={10}
               style={styles.tBtn}>
-              <SkipForward size={34} color={C.text} fill={C.text} />
+              <SkipForward size={34} color={C.tone} fill={C.tone} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1299,7 +1299,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   {fastRate ? (
                     <Text style={styles.rateBadge}>{rateLabel(rate)}</Text>
                   ) : (
-                    <Gauge size={21} color={C.text} strokeWidth={2} />
+                    <Gauge size={21} color={C.tone} strokeWidth={2} />
                   )}
                 </TouchableOpacity>
 
@@ -1319,7 +1319,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   style={styles.queueBtn}>
                   <Timer
                     size={21}
-                    color={sleepArmed ? C.accent : C.text}
+                    color={sleepArmed ? C.accent : C.tone}
                     strokeWidth={2}
                   />
                 </TouchableOpacity>
@@ -1331,7 +1331,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Open the queue"
                   style={styles.queueBtn}>
-                  <QueueGlyph size={22} color={C.text} />
+                  <QueueGlyph size={22} color={C.tone} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1452,12 +1452,12 @@ function PaneSwitch({
         pointerEvents="none"
       />
       <View style={styles.seg} pointerEvents="none">
-        <Disc3 size={16} color={songOn ? C.bg : C.sub} strokeWidth={2.2} />
+        <Disc3 size={16} color={songOn ? C.bg : C.tone} strokeWidth={2.2} />
       </View>
       <View style={styles.seg} pointerEvents="none">
         <Quote
           size={16}
-          color={lyricsOn ? C.bg : lyricsDead ? C.faint : C.sub}
+          color={lyricsOn ? C.bg : lyricsDead ? C.faint : C.tone}
           strokeWidth={2.2}
         />
       </View>
@@ -1865,7 +1865,7 @@ const styles = StyleSheet.create({
     width: SEG_W,
     height: 30,
     borderRadius: 999,
-    backgroundColor: C.text,
+    backgroundColor: C.tone,
   },
   bottomRow: {
     flexDirection: 'row',
@@ -2006,7 +2006,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: C.text,
+    backgroundColor: C.tone,
     alignItems: 'center',
     justifyContent: 'center',
   },

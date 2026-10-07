@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
   },
-  fill: {height: '100%', backgroundColor: C.text, borderRadius: 2},
+  fill: {height: '100%', backgroundColor: C.tone, borderRadius: 2},
   thumb: {
     position: 'absolute',
     // Half the thumb's width, so it sits centred on the playhead.
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     width: 13,
     height: 13,
     borderRadius: 6.5,
-    backgroundColor: C.text,
+    backgroundColor: C.tone,
     shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 3,
@@ -259,8 +259,8 @@ const styles = StyleSheet.create({
     // C.text at 700 with the opacity knocked back, rather than C.sub at 400:
     // the numbers read as part of the bar instead of a caption under it, and
     // the knock-back is what stops them competing with the title above.
-    color: C.text,
-    opacity: 0.72,
+    color: C.tone,
+    opacity: 0.85,
     fontSize: 11.5,
     fontWeight: '700',
     width: 46,
