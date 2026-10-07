@@ -330,6 +330,7 @@ export async function getAlbum(
   name: string,
   artist = '',
   songUrl = '',
+  albumId = '',
 ): Promise<Collection> {
   // Hand-built for the same Hermes reason as getLyrics — the stub
   // URLSearchParams broke every album-by-name open (artist page albums).
@@ -338,6 +339,11 @@ export async function getAlbum(
   )}`;
   if (songUrl) {
     q += `&song_url=${encodeURIComponent(songUrl)}`;
+  }
+  // Exact: by name, a film soundtrack (most of an Indian artist's albums)
+  // matched nothing and opened empty.
+  if (albumId) {
+    q += `&album_id=${encodeURIComponent(albumId)}`;
   }
   const data = await apiGet<Partial<Collection>>(`/album?${q}`);
   return {
@@ -519,7 +525,13 @@ export type ArtistProfile = {
   followers?: number | null;
   listeners?: number | null;
   top_songs: Track[];
-  albums: Array<{name: string; image?: string; year?: string | number}>;
+  albums: Array<{
+    name: string;
+    image?: string;
+    year?: string | number;
+    /** JioSaavn's id; absent on an iTunes-only album. */
+    album_id?: string;
+  }>;
   error?: string;
 };
 

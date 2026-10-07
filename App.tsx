@@ -326,7 +326,12 @@ function Shell() {
    *  Seed tracks (what we already hold) show instantly; the fetch replaces
    *  them when it lands, so the screen is never empty and never stale. */
   const openAlbumByName = useCallback(
-    async (albumName: string, artistName: string, seed: Track[] = []) => {
+    async (
+      albumName: string,
+      artistName: string,
+      seed: Track[] = [],
+      albumId = '',
+    ) => {
       setCollection({
         id: `album:${albumName}`,
         kind: 'album',
@@ -338,7 +343,14 @@ function Shell() {
       setCollectionZ(++zRef.current);
       setCollectionLoading(true);
       try {
-        const data = await getAlbum(albumName, artistName);
+        const data = await getAlbum(albumName, artistName, '', albumId);
+        if (!data.tracks.length && !seed.length) {
+          // Nothing to show: close it rather than leave an empty page open.
+          setCollection(prev =>
+            prev && prev.id === `album:${albumName}` ? null : prev,
+          );
+          toast('That one has no playable songs right now.');
+        }
         if (data.tracks.length) {
           setCollection(prev =>
             prev && prev.id === `album:${albumName}`
@@ -835,7 +847,7 @@ function Shell() {
                   toggleFollow(n, img) ? `Following ${n}` : `Unfollowed ${n}`,
                 )
               }
-              onOpenAlbum={openAlbumByName}
+              onOpenAlbum={(n, a, id) => openAlbumByName(n, a, [], id)}
             />
           </View>
         )}

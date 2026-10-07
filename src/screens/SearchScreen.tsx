@@ -43,7 +43,7 @@ import {BOTTOM_INSET} from '../layout';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
-import {homeLanguageParam} from '../store';
+import {homeLanguageParam, useSettings} from '../store';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
 import {importSourceName, isImportUrl} from '../spotifyImport';
@@ -252,18 +252,25 @@ export const SearchScreen = React.memo(function SearchScreen({
     }
   }, [visible, resetSearch]);
 
-  // Browse tiles load once, lazily — nobody needs them until the field is idle,
-  // and they're cached server-side for 6h anyway.
+  // Browse tiles load lazily — nobody needs them until the field is idle,
+  // and they're cached server-side for 6h anyway — and again whenever the
+  // languages change, or they stay in the old ones until a restart.
+  useSettings(); // re-render on a language change
+  const languages = homeLanguageParam();
   useEffect(() => {
+    let live = true;
     // Wait for the engine first: this mounts during cold start, and firing at
     // t=0 just burns the one attempt on a backend that isn't listening yet.
     waitForBackend()
-      .then(ok => (ok ? getGenres(homeLanguageParam()) : []))
-      .then(setGenres)
+      .then(ok => (ok ? getGenres(languages) : []))
+      .then(g => live && setGenres(g))
       .catch(() => {
         // Browsing is a bonus; searching still works without it.
       });
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [languages]);
 
   const spotify = isImportUrl(query);
   // A friend's share code, or the whole message they sent.

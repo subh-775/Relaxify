@@ -67,7 +67,7 @@ export function ArtistScreen({
   onClose: () => void;
   onPlay: (track: Track, context: Track[]) => void;
   onMenu: (track: Track) => void;
-  onOpenAlbum: (albumName: string, artistName: string) => void;
+  onOpenAlbum: (albumName: string, artistName: string, albumId?: string) => void;
   onToggleFollow: (name: string, image?: string) => void;
 }) {
   const cachedProfile = profileCache.get(name.toLowerCase()) ?? null;
@@ -308,14 +308,14 @@ export function ArtistScreen({
               <FlatList
                 horizontal
                 data={albums}
-                keyExtractor={a => a.name}
+                keyExtractor={a => a.album_id || a.name}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.albums}
                 renderItem={({item}) => (
                   <TouchableOpacity
                     style={styles.album}
                     activeOpacity={0.75}
-                    onPress={() => onOpenAlbum(item.name, title)}>
+                    onPress={() => onOpenAlbum(item.name, title, item.album_id)}>
                     {item.image ? (
                       <Image
                         source={{uri: item.image}}

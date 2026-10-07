@@ -1163,10 +1163,14 @@ def _build_artist(name):
     albums = _parse_albums(js_alb)
     # Always merge iTunes' clean discography (fetched in parallel above → no
     # extra latency): richer covers + Western releases JioSaavn misses.
-    seen = {a["name"].lower() for a in albums}
+    # Keyed without iTunes's " - EP" / " - Single" suffix: "Ved - EP" is the
+    # JioSaavn "Ved" again, and only the JioSaavn copy opens by its id.
+    def _album_key(n):
+        return re.sub(r"\s*-\s*(ep|single)$", "", (n or "").strip().lower())
+    seen = {_album_key(a["name"]) for a in albums}
     for a in itunes_albums:
-        if a["name"].lower() not in seen:
-            seen.add(a["name"].lower())
+        if _album_key(a["name"]) not in seen:
+            seen.add(_album_key(a["name"]))
             albums.append(a)
 
     # ── merged header metadata (best of each source) ────────────
