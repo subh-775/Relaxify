@@ -143,7 +143,9 @@ full list and their licences.
 
 Relaxify is free software, licensed under the
 [GNU General Public License v3.0](LICENSE). Copyright and third-party notices
-are in [NOTICE](NOTICE).
+are in [NOTICE](NOTICE), with the licence's additional terms: keep the credits,
+and a modified version needs its own name, logo and app ID — "Relaxify" and its
+logo are not licensed for other builds.
 
 ## Disclaimer
 
