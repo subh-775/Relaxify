@@ -20,8 +20,32 @@
         },
         "now": {
           ".validate": "newData.hasChildren(['track', 'pos', 'playing', 'at', 'by', 'seq'])",
-          "track": {".validate": "newData.hasChild('title')"},
-          "next": {".validate": "newData.hasChild('title')"},
+          "track": {
+            ".validate": "newData.hasChild('title')",
+            "title": {".validate": "newData.isString() && newData.val().length <= 500"},
+            "artist": {".validate": "newData.isString() && newData.val().length <= 500"},
+            "album": {".validate": "newData.isString() && newData.val().length <= 500"},
+            "$f": {
+              ".validate": "$f.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+              "$k": {
+                ".validate": "$k.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+                "$k2": {".validate": "$k2.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean())"}
+              }
+            }
+          },
+          "next": {
+            ".validate": "newData.hasChild('title')",
+            "title": {".validate": "newData.isString() && newData.val().length <= 500"},
+            "artist": {".validate": "newData.isString() && newData.val().length <= 500"},
+            "album": {".validate": "newData.isString() && newData.val().length <= 500"},
+            "$f": {
+              ".validate": "$f.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+              "$k": {
+                ".validate": "$k.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+                "$k2": {".validate": "$k2.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean())"}
+              }
+            }
+          },
           "pos": {".validate": "newData.isNumber()"},
           "playing": {".validate": "newData.isBoolean()"},
           "at": {".validate": "newData.isNumber()"},
@@ -32,7 +56,19 @@
         "queue": {
           "$key": {
             ".validate": "newData.hasChildren(['track', 'by'])",
-            "track": {".validate": "newData.hasChild('title')"},
+            "track": {
+              ".validate": "newData.hasChild('title')",
+              "title": {".validate": "newData.isString() && newData.val().length <= 500"},
+              "artist": {".validate": "newData.isString() && newData.val().length <= 500"},
+              "album": {".validate": "newData.isString() && newData.val().length <= 500"},
+              "$f": {
+                ".validate": "$f.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+                "$k": {
+                  ".validate": "$k.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+                  "$k2": {".validate": "$k2.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean())"}
+                }
+              }
+            },
             "by": {".validate": "newData.isString() && newData.val().length <= 24"},
             "$other": {".validate": false}
           }
@@ -59,7 +95,19 @@
           "by": {".validate": "newData.isString() && newData.val().length <= 24"},
           "v": {".validate": "newData.isNumber()"},
           "tracks": {
-            "$i": {".validate": "$i.matches(/^[0-9]{1,3}$/) && newData.child('title').isString()"}
+            "$i": {
+              ".validate": "$i.matches(/^[0-9]{1,3}$/) && newData.child('title').isString()",
+              "title": {".validate": "newData.isString() && newData.val().length <= 500"},
+              "artist": {".validate": "newData.isString() && newData.val().length <= 500"},
+              "album": {".validate": "newData.isString() && newData.val().length <= 500"},
+              "$f": {
+                ".validate": "$f.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+                "$k": {
+                  ".validate": "$k.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean() || newData.hasChildren())",
+                  "$k2": {".validate": "$k2.length <= 64 && ((newData.isString() && newData.val().length <= 2000) || newData.isNumber() || newData.isBoolean())"}
+                }
+              }
+            }
           },
           "$other": {".validate": false}
         },
