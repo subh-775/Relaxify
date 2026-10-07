@@ -3,8 +3,8 @@
  * pasted message opens the playlist (a search word does not), every change
  * the owner sends carries a NEW proof (the rules refuse a stored one), what
  * travels has nothing from the phone's disk, a taken code is retried, a
- * follower's copy is theirs to read but not to edit while it is shared, and
- * stopping leaves it with them as an ordinary playlist.
+ * link only previews until "Add to library", the same link never adds twice,
+ * the copy is entirely the friend's, and old follows become such copies.
  */
 import {beforeEach, expect, jest, test} from '@jest/globals';
 
@@ -33,15 +33,16 @@ jest.mock('../src/jam', () => {
 
 import type {Track} from '../src/backend';
 import {
+  addSharedPlaylist,
   addTrackToPlaylist,
   createPlaylist,
-  isFollowed,
+  fromStored,
+  playlistFromLink,
   readPlaylists,
 } from '../src/playlists';
 import {
   codeIn,
   openShared,
-  refreshFollowed,
   sharePlaylist,
   slimTrack,
   stopSharing,
@@ -110,31 +111,34 @@ test('sharing sends a new proof every time, and retries a taken code', async () 
   expect(stop.proof.startsWith(`${first.key}:`)).toBe(true);
 });
 
-test('a followed playlist is read-only while shared, and stays when it stops', async () => {
+test('a link previews; Add to library keeps one copy that is yours', async () => {
   mockCall.mockResolvedValueOnce({name: 'Indie', by: 'Riya', v: 1, tracks: [song('Ilahi')]});
-  const id = await openShared('Relaxify ... enter K7QX2M.');
-  const followed = () => readPlaylists().find(p => p.id === id)!;
-  expect(followed().follow).toMatchObject({code: 'K7QX2M', by: 'Riya', fresh: false});
-  expect(isFollowed(followed())).toBe(true);
-  expect(addTrackToPlaylist(id, song('Safarnama'))).toBe(false);
+  const before = readPlaylists().length;
+  const c = await openShared('Relaxify https://x/p/?c=K7QX2M');
+  expect(c).toMatchObject({kind: 'shared', name: 'Indie', shared: {code: 'K7QX2M'}});
+  expect(readPlaylists()).toHaveLength(before); // opening saves nothing
 
-  // The owner adds a song: it arrives quietly, marked New.
-  mockCall.mockResolvedValueOnce({
+  const id = addSharedPlaylist('K7QX2M', c.shared!.copy);
+  expect(addSharedPlaylist('K7QX2M', c.shared!.copy)).toBe(id); // the same link twice
+  expect(readPlaylists()).toHaveLength(before + 1);
+  expect(playlistFromLink(readPlaylists(), 'K7QX2M')?.id).toBe(id);
+
+  // Entirely theirs: editable, and nothing ever refreshes it from the owner.
+  expect(addTrackToPlaylist(id, song('Safarnama'))).toBe(true);
+  expect(readPlaylists().find(p => p.id === id)?.from).toEqual({code: 'K7QX2M', by: 'Riya'});
+});
+
+test('a playlist followed before v1.2.36 becomes the reader’s own copy', () => {
+  const old = {
+    id: 'pl_1',
     name: 'Indie',
-    by: 'Riya',
-    v: 2,
-    tracks: [song('Ilahi'), song('Safarnama')],
-  });
-  await refreshFollowed();
-  expect(followed().tracks).toHaveLength(2);
-  expect(followed().follow?.fresh).toBe(true);
-
-  // The owner stops: the songs stay, and the playlist is yours now.
-  mockCall.mockResolvedValueOnce(null);
-  await refreshFollowed();
-  expect(followed().follow?.stopped).toBe(true);
-  expect(followed().tracks).toHaveLength(2);
-  expect(addTrackToPlaylist(id, song('Tum Hi Ho'))).toBe(true);
+    tracks: [],
+    createdAt: 1,
+    follow: {code: 'K7QX2M', by: 'Riya', v: 3, fresh: true},
+  };
+  const now = fromStored(old);
+  expect(now).not.toHaveProperty('follow');
+  expect(now.from).toEqual({code: 'K7QX2M', by: 'Riya'});
 });
 
 test('a wrong code says so', async () => {

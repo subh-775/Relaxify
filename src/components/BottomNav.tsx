@@ -41,7 +41,7 @@ export function BottomNav({
             <Icon
               size={23}
               strokeWidth={on ? 2.6 : 1.8}
-              color={on ? C.brand : C.faint}
+              color={on ? C.text : C.faint}
             />
             <Text style={[styles.label, on && styles.labelOn]}>{label}</Text>
           </TouchableOpacity>
@@ -68,5 +68,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: C.faint,
   },
-  labelOn: {color: C.brand, fontWeight: '700'},
+  // White when on: the tab you are in is plain, not branded.
+  labelOn: {color: C.text, fontWeight: '700'},
 });

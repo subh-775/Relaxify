@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import {C, S, T} from '../theme';
 import {openShared} from '../sharedPlaylists';
+import type {Collection} from '../collections';
 import {Sheet} from './Sheet';
 
 export function OpenSharedSheet({
@@ -25,7 +26,8 @@ export function OpenSharedSheet({
   open: boolean;
   onClose: () => void;
   /** The followed playlist's id, now in the Library. */
-  onOpened: (playlistId: string) => void;
+  /** The playlist to preview (not saved until "Add to library"). */
+  onOpened: (c: Collection) => void;
 }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,9 +44,9 @@ export function OpenSharedSheet({
     setBusy(true);
     setError('');
     openShared(text)
-      .then(id => {
+      .then(c => {
         onClose();
-        onOpened(id);
+        onOpened(c);
       })
       .catch(e =>
         setError(

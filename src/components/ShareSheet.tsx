@@ -3,8 +3,9 @@
  *
  * Opening it shares the playlist the first time (sharedPlaylists.ts makes
  * the code and sends the songs); after that it shows the same code. Friends
- * who open it follow the playlist: your changes reach them, and only you can
- * make them. "Stop sharing" leaves them their copy.
+ * who open the link see it as it is now and can add a copy to their library,
+ * which is then theirs: later changes don't travel either way. "Stop sharing"
+ * makes the link stop working; copies already added stay.
  */
 import React, {useEffect, useState} from 'react';
 import {
@@ -112,8 +113,8 @@ export function ShareSheet({
         {`Share ${playlist?.name ?? ''}`}
       </Text>
       <Text style={styles.sub}>
-        Friends who open it follow it: they see the songs you add or remove.
-        Only you can change it.
+        Friends get it as it is now and can add it to their library. After
+        that their copy is theirs, and your changes stay yours.
       </Text>
 
       {error ? (

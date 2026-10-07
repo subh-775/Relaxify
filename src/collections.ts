@@ -15,7 +15,7 @@ import {createStore, asArray, useStoreValue} from './storage';
 import {normalizeTracks} from './tracks';
 import type {Track} from './backend';
 import {logEvent} from './analytics';
-import {type Playlist, usePlaylists} from './playlists';
+import {type Playlist, type SharedCopy, usePlaylists} from './playlists';
 
 export type CollectionKind =
   | 'album'
@@ -23,7 +23,8 @@ export type CollectionKind =
   | 'userPlaylist' // one the user made — or imported from Spotify
   | 'liked'
   | 'downloads'
-  | 'artist';
+  | 'artist'
+  | 'shared'; // a friend's shared playlist, opened from its link, not saved
 
 export type Collection = {
   id: string;
@@ -37,8 +38,11 @@ export type Collection = {
   /** When this collection last changed — see Playlist.updatedAt. Undefined on
    *  the two fixtures (Liked, Downloads), which never sort by it. */
   updatedAt?: number;
-  /** A friend's playlist you follow (see Playlist.follow). */
-  follow?: {by: string; fresh?: boolean; stopped?: boolean};
+  /** kind 'shared': the link's code and the playlist as its owner sent it,
+   *  which "Add to library" saves. */
+  shared?: {code: string; copy: SharedCopy};
+  /** A playlist of yours added from a friend's link: whose it was. */
+  from?: {by: string};
 };
 
 /** What the row under the title says, matching the library's own vocabulary. */
@@ -52,13 +56,10 @@ export function collectionSubtitle(c: Collection): string {
       return c.artist ? `Album · ${c.artist}` : `Album · ${count}`;
     case 'artist':
       return 'Artist';
+    case 'shared':
+      return `Shared by ${c.shared?.copy.by || 'a friend'} · ${count}`;
     default:
-      if (c.follow) {
-        return c.follow.stopped
-          ? `Playlist · ${count} · no longer shared`
-          : `Shared by ${c.follow.by} · ${count}`;
-      }
-      return `Playlist · ${count}`;
+      return c.from ? `From ${c.from.by} · ${count}` : `Playlist · ${count}`;
   }
 }
 
@@ -126,7 +127,7 @@ export function playlistToCollection(p: Playlist): Collection {
     // so an upgraded library keeps its old order instead of collapsing to one
     // undefined heap at the bottom.
     updatedAt: p.updatedAt ?? p.createdAt,
-    follow: p.follow,
+    from: p.from,
   };
 }
 

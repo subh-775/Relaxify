@@ -1,5 +1,6 @@
 /**
- * Shared playlists: send a friend a code, and they follow your playlist.
+ * Shared playlists: send a friend a link (or its code), and they get the
+ * playlist as it is now.
  *
  * In the Jam database (firebase/database.rules.json), under shared/{code}:
  *   data  = {name, by, v, tracks}   readable by anyone who has the code
@@ -13,14 +14,14 @@
  * and nothing lists them, as with a Jam.
  *
  * Owner: sharing makes the code and pushes the playlist; every later change
- * to it is pushed (debounced); deleting it or "Stop sharing" empties `data`,
- * and followers keep what they had as their own playlist.
+ * to it is pushed (debounced), so the link always shows it as it is now;
+ * deleting it or "Stop sharing" empties `data`.
  *
- * Follower: a code opens the playlist into the Library (playlists.ts
- * followPlaylist). It refreshes after the app opens and when it comes back
- * to the front: a new version replaces it quietly and shows as New.
+ * Friend: a link opens a preview (openShared), playable but not saved. "Add
+ * to library" keeps a snapshot that is entirely theirs (playlists.ts
+ * addSharedPlaylist): no updates either way. The same link again shows that
+ * it is already in their library.
  */
-import {AppState} from 'react-native';
 import type {Track} from './backend';
 import {
   call,
@@ -32,13 +33,12 @@ import {
 } from './jam';
 import {createStore, useStoreValue} from './storage';
 import {
-  followPlaylist,
   onPlaylistsChanged,
   readPlaylists,
-  updateFollowed,
   type Playlist,
   type SharedCopy,
 } from './playlists';
+import type {Collection} from './collections';
 import {logEvent} from './analytics';
 
 /** What the owner's phone keeps per shared playlist: its code and secret. */
@@ -157,7 +157,7 @@ export async function sharePlaylist(p: Playlist): Promise<string> {
   throw new Error('Could not make a code. Try again.');
 }
 
-/** Send the playlist's current songs to the people following it. */
+/** Send the playlist's current songs, for whoever opens the link next. */
 async function push(playlistId: string): Promise<void> {
   const s = shares.get()[playlistId];
   const p = readPlaylists().find(x => x.id === playlistId);
@@ -165,7 +165,7 @@ async function push(playlistId: string): Promise<void> {
     return;
   }
   if (!p) {
-    // Deleted: followers keep their copy.
+    // Deleted: copies people added stay theirs.
     await stopSharing(playlistId);
     return;
   }
@@ -177,7 +177,7 @@ async function push(playlistId: string): Promise<void> {
   shares.set({...shares.get(), [playlistId]: {...s, v}});
 }
 
-/** Stop sharing: followers keep what they have, as their own playlist. */
+/** Stop sharing: the link stops working; copies people added stay theirs. */
 export async function stopSharing(playlistId: string): Promise<void> {
   const s = shares.get()[playlistId];
   if (!s) {
@@ -239,10 +239,11 @@ function asCopy(raw: unknown): SharedCopy | null {
 }
 
 /**
- * Open a friend's code into your Library. Resolves to the playlist's id, or
- * rejects with words to show.
+ * Open a friend's link or code: the playlist as its owner has it now, as a
+ * collection to preview and play. Nothing is saved until "Add to library".
+ * Rejects with words to show.
  */
-export async function openShared(raw: string): Promise<string> {
+export async function openShared(raw: string): Promise<Collection> {
   const code = codeIn(raw) || normalizeCode(raw);
   if (!validCode(code)) {
     throw new Error('That code has six letters and numbers, like K7QX2M');
@@ -251,37 +252,21 @@ export async function openShared(raw: string): Promise<string> {
   if (!copy) {
     throw new Error('No shared playlist has that code');
   }
-  logEvent('playlist_followed', {songs: copy.tracks.length});
-  return followPlaylist(code, copy);
-}
-
-/** Bring every followed playlist up to date. Quiet: a failure waits for the
- *  next time. */
-export async function refreshFollowed(): Promise<void> {
-  const codes = readPlaylists()
-    .filter(p => p.follow && !p.follow.stopped)
-    .map(p => p.follow!.code);
-  await Promise.all(
-    codes.map(code =>
-      call(`shared/${code}/data`)
-        .then(raw => updateFollowed(code, asCopy(raw)))
-        .catch(() => {}),
-    ),
-  );
+  logEvent('playlist_opened', {songs: copy.tracks.length});
+  return {
+    id: `shared:${code}`,
+    kind: 'shared',
+    name: copy.name || 'Shared playlist',
+    tracks: copy.tracks,
+    shared: {code, copy},
+  };
 }
 
 /**
- * Start both sides: followed playlists refresh now and whenever the app
- * comes back to the front; your shared playlists push their changes.
- * Returns a stop function.
+ * The owner's side: your shared playlists push their changes, so the link
+ * shows them as they are now. Returns a stop function.
  */
 export function startSharing(): () => void {
-  refreshFollowed().catch(() => {});
-  const fg = AppState.addEventListener('change', s => {
-    if (s === 'active') {
-      refreshFollowed().catch(() => {});
-    }
-  });
   // Push only what changed: the store notifies on every playlist edit.
   const last = new Map<string, Playlist | undefined>();
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -308,7 +293,6 @@ export function startSharing(): () => void {
     }
   });
   return () => {
-    fg.remove();
     off();
     timers.forEach(t => clearTimeout(t));
   };

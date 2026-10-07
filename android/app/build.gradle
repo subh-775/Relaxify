@@ -230,8 +230,11 @@ dependencies {
     // YouTube resolution. Android has no JS runtime to solve YouTube's signature
     // challenge, so yt-dlp can't do YouTube here; NewPipeExtractor does it
     // natively (bundled Rhino). Called from Python via YouTubeNP.kt. GPLv3, same
-    // as this project. Pinned to the version Fix-Spotify runs in production.
-    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.3'
+    // as this project. v0.26.5: v0.26.4 fixed YouTube playlist continuations
+    // (#1518), the paging our YouTube playlist import uses past the first page;
+    // the only runtime dependency change since v0.26.3 is protobuf-javalite
+    // 4.35.0 -> 4.35.1.
+    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.5'
 
     // Dominant-colour extraction from album art, for the player tint. This is
     // the platform's own answer to the problem (it ships in every Material

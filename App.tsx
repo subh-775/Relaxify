@@ -78,7 +78,7 @@ import {
   type HomeItem,
   type Track,
 } from './src/backend';
-import {downloadsCollection, playlistToCollection} from './src/collections';
+import {downloadsCollection} from './src/collections';
 import {overlayDownloadArtwork} from './src/downloads';
 import {
   playTrack,
@@ -93,7 +93,6 @@ import {type Collection} from './src/collections';
 import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
 import {toast} from './src/toast';
-import {readPlaylists} from './src/playlists';
 import {diag} from './src/diag';
 import {logEvent} from './src/analytics';
 
@@ -168,9 +167,19 @@ function Shell() {
   const welcomed = useWelcomed();
   const engineDone = useRef(false);
   const homeDone = useRef(false);
+  const lifting = useRef(false);
   const liftSplash = useCallback(() => {
-    if (engineDone.current && homeDone.current) {
-      setBooted(true);
+    if (engineDone.current && homeDone.current && !lifting.current) {
+      lifting.current = true;
+      // Everything is in place; now let the JS thread finish what that set
+      // off (rows rendering, covers decoding, the restored queue's events)
+      // before Home is handed over. A swipe in the first seconds used to
+      // land in the middle of it and stick.
+      const t0 = Date.now();
+      whenQuiet(SPLASH_QUIET_CAP_MS).then(() => {
+        logEvent('splash_wait', {ms: Date.now() - t0});
+        setBooted(true);
+      });
     }
   }, []);
   const onHomeReady = useCallback(() => {
@@ -547,9 +556,13 @@ function Shell() {
       const code = url?.match(/^relaxify:\/\/p\/(\w{6})/)?.[1];
       if (code) {
         openShared(code)
-          .then(id => {
-            const p = readPlaylists().find(x => x.id === id);
-            p && openCollection(playlistToCollection(p));
+          .then(c => {
+            // Opened over Your Library, so Back from the playlist stays in
+            // the app (Library, then Home) instead of returning to the chat
+            // the link came from.
+            switchTab('library');
+            setPlayerOpen(false);
+            openCollection(c);
           })
           .catch(e => toast(e instanceof Error ? e.message : String(e)));
       }
@@ -557,7 +570,7 @@ function Shell() {
     Linking.getInitialURL().then(go, () => {});
     const sub = Linking.addEventListener('url', e => go(e.url));
     return () => sub.remove();
-  }, [openRecap, openCollection]);
+  }, [openRecap, openCollection, switchTab]);
 
   /**
    * Opening by TAP: mount the panel closed, then run it open. The drag path
@@ -993,6 +1006,33 @@ function askForNotifications(): void {
     PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
   ).catch(() => {
     /* the dialog is a courtesy — never let it break the boot path */
+  });
+}
+
+/** The longest the splash waits for the JS thread to go quiet. */
+const SPLASH_QUIET_CAP_MS = 2500;
+
+/**
+ * Resolves once the JS thread has been idle for a moment: three 100 ms ticks
+ * in a row that each fired within 40 ms of when they were due. A busy thread
+ * runs timers late, so lateness is the measure. Never waits past `cap`.
+ */
+function whenQuiet(cap: number): Promise<void> {
+  return new Promise(resolve => {
+    const end = Date.now() + cap;
+    let calm = 0;
+    let due = Date.now() + 100;
+    const tick = () => {
+      const late = Date.now() - due;
+      calm = late < 40 ? calm + 1 : 0;
+      if (calm >= 3 || Date.now() >= end) {
+        resolve();
+        return;
+      }
+      due = Date.now() + 100;
+      setTimeout(tick, 100);
+    };
+    setTimeout(tick, 100);
   });
 }
 

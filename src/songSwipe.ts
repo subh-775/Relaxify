@@ -37,6 +37,7 @@ import {
 import type {Track as RNTPTrack} from 'react-native-track-player';
 import {getBestArtworkUrl} from './tracks';
 import {
+  onQueueChanged,
   peekAdjacentTrack,
   skipNext,
   skipPrevious,
@@ -47,11 +48,13 @@ import {logEvent} from './analytics';
 /** Distance, or a flick, that commits a swipe. */
 const COMMIT_PX = 64;
 const FLICK = 700;
-/** Never stay parked on the neighbour longer than this after the glide, even
- *  if the real cover never reports loaded (a broken image, no artwork). */
-const LAND_TIMEOUT_MS = 700;
+/** After the glide, how long the swap waits for the real cover to say it has
+ *  loaded. Short: the neighbour drawn in the middle already decoded the same
+ *  picture, so the real cover comes from memory, and waiting longer only kept
+ *  the next swipe blocked (rc2 measured 0.7 s timeouts on a Redmi). */
+const LAND_TIMEOUT_MS = 150;
 /** The longest a committed swipe may hold the cover, glide included. */
-const LAND_GUARD_MS = 2500;
+const LAND_GUARD_MS = 1500;
 
 export type Neighbour = {dir: 1 | -1; track: RNTPTrack; art: string};
 export type Sides = {prev: Neighbour | null; next: Neighbour | null};
@@ -125,6 +128,11 @@ export function useSongSwipe({
      *  wait for the JS thread, which is the suspect in the first-swipe stall. */
     at: number;
     jsLag: number;
+    /** When the glide ended, the new song was published, the cover loaded:
+     *  which of the three a slow landing waited for. */
+    glidedAt?: number;
+    keyAt?: number;
+    coverAt?: number;
     timer?: ReturnType<typeof setTimeout>;
     /** The backstop: however the landing went, it ends by this. */
     guard?: ReturnType<typeof setTimeout>;
@@ -149,6 +157,10 @@ export function useSongSwipe({
   }, []);
 
   useEffect(refresh, [activeKey, refresh]);
+  // A shuffle, a Play next or a radio top-up changes the songs either side
+  // without changing this one; the drawn neighbours must follow, or a swipe
+  // shows the song that USED to be next for a moment.
+  useEffect(() => onQueueChanged(refresh), [refresh]);
 
   const settle = useCallback((how: 'landed' | 'timeout' | 'guard') => {
     const l = landing.current;
@@ -161,11 +173,16 @@ export function useSongSwipe({
     // `swipe_land`: lift-to-commit (js_lag) and commit-to-swap (ms), and how
     // the swap came about. A slow first swipe with a big js_lag is the JS
     // thread; a big ms with a small js_lag is the cover or the engine.
+    const since = (t?: number) => (t ? t - l.at : -1);
     logEvent('swipe_land', {
       ms: Date.now() - l.at,
       js_lag: l.jsLag,
+      glide_ms: since(l.glidedAt),
+      publish_ms: since(l.keyAt),
+      cover_ms: since(l.coverAt),
       end: how,
-      first: swipeCount++ === 0 ? 1 : 0,
+      // A string: rc2's numeric 0/1 came through GA as blank.
+      first: swipeCount++ === 0 ? 'yes' : 'no',
     });
     // The offset in one UI-thread step; the neighbours are re-read only
     // after, once they are both back off screen.
@@ -179,6 +196,12 @@ export function useSongSwipe({
 
   const tryLand = useCallback(() => {
     const l = landing.current;
+    if (l && !l.keyAt && activeKeyRef.current === l.key) {
+      l.keyAt = Date.now();
+    }
+    if (l && !l.coverAt && l.art && loadedArt.current === l.art) {
+      l.coverAt = Date.now();
+    }
     if (
       l?.glided &&
       activeKeyRef.current === l.key &&
@@ -205,6 +228,7 @@ export function useSongSwipe({
       return;
     }
     l.glided = true;
+    l.glidedAt = Date.now();
     l.timer = setTimeout(() => settle('timeout'), LAND_TIMEOUT_MS);
     tryLand();
   }, [settle, tryLand]);

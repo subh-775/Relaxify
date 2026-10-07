@@ -35,14 +35,12 @@ import {useLikes} from '../store';
 import {useFollowedArtists} from '../artists';
 import {
   collectionSubtitle,
-  playlistToCollection,
   useLibrary,
   type Collection,
 } from '../collections';
 import {
   createPlaylist,
   deletePlaylist,
-  readPlaylists,
   renamePlaylist,
   setPlaylistImage,
 } from '../playlists';
@@ -132,15 +130,6 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const [confirmDelete, setConfirmDelete] = useState<Collection | null>(null);
   /** The ticket: open a friend's shared playlist by its code. */
   const [opening, setOpening] = useState(false);
-  const openFollowed = useCallback(
-    (id: string) => {
-      const p = readPlaylists().find(x => x.id === id);
-      if (p) {
-        onOpen(playlistToCollection(p));
-      }
-    },
-    [onOpen],
-  );
   const [renaming, setRenaming] = useState<Collection | null>(null);
   const [renameText, setRenameText] = useState('');
   /** The library search: open, and what is typed in it. */
@@ -486,12 +475,6 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                         <PinGlyph size={12} color={DOWNLOAD_TINT} />
                       </View>
                     )}
-                    {/* The owner changed it since it was last opened. */}
-                    {'follow' in item &&
-                      !!item.follow?.fresh &&
-                      !item.follow.stopped && (
-                      <Text style={styles.newTag}>NEW</Text>
-                    )}
                     <Text style={styles.rowSub} numberOfLines={1}>
                       {collectionSubtitle(item)}
                     </Text>
@@ -532,21 +515,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                 </Text>
               </TouchableOpacity>
             )}
-            {menuFor.kind === 'userPlaylist' &&
-              menuFor.follow &&
-              !menuFor.follow.stopped && (
-                <TouchableOpacity
-                  style={styles.sheetRow}
-                  activeOpacity={0.7}
-                  onPress={() => doDelete(menuFor)}>
-                  <Trash2 size={20} color={C.danger} />
-                  <Text style={[styles.sheetLabel, styles.sheetDanger]}>
-                    Remove from your Library
-                  </Text>
-                </TouchableOpacity>
-              )}
-            {menuFor.kind === 'userPlaylist' &&
-              !(menuFor.follow && !menuFor.follow.stopped) && (
+            {menuFor.kind === 'userPlaylist' && (
               <>
                 <TouchableOpacity
                   style={styles.sheetRow}
@@ -584,7 +553,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
       <OpenSharedSheet
         open={opening}
         onClose={() => setOpening(false)}
-        onOpened={openFollowed}
+        onOpened={onOpen}
       />
 
       <ConfirmModal
@@ -777,18 +746,6 @@ const styles = StyleSheet.create({
   metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 3},
   pin: {marginRight: 5, transform: [{rotate: '45deg'}]},
   rowSub: {...T.sub, color: C.sub, flex: 1},
-  newTag: {
-    color: '#fff',
-    backgroundColor: '#FF5A6E',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.4,
-    borderRadius: 4,
-    overflow: 'hidden',
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    marginRight: 6,
-  },
   empty: {
     color: C.faint,
     textAlign: 'center',

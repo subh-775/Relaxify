@@ -549,6 +549,10 @@ async function setupPlayerOnce(): Promise<boolean> {
               ...songParams(last),
               seconds: Math.round(e.lastPosition || 0),
               completed: dur > 0 && e.lastPosition >= dur - 5 ? 1 : 0,
+              // The same as text: GA keeps a number in a text dimension as
+              // blank, so `completed` could never be read. The report reads
+              // this one (relaxify-report: songs played to the end).
+              finished: dur > 0 && e.lastPosition >= dur - 5 ? 'yes' : 'no',
               // Not a skip: the song moved on by itself. With `completed` 0
               // that is a song cut short, which is worth seeing with the
               // speed and crossfade it happened at.

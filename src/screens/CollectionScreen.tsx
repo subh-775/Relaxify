@@ -26,12 +26,14 @@ import {
   CheckSquare,
   CheckSquare2,
   ChevronLeft,
+  CircleCheck,
   Heart,
   ImagePlus,
   MoreVertical,
   Pause,
   Pencil,
   Play,
+  Plus,
   Search as SearchIcon,
   Share2,
   Shuffle,
@@ -71,10 +73,9 @@ import {
 } from '../player';
 import {useLikes} from '../store';
 import {
-  copyPlaylist,
+  addSharedPlaylist,
   deletePlaylist,
-  isFollowed,
-  markPlaylistSeen,
+  playlistFromLink,
   renamePlaylist,
   setPlaylistImage,
   usePlaylists,
@@ -227,19 +228,18 @@ export function CollectionScreen({
     ? playlists.find(p => p.id === playlistId)
     : undefined;
   const displayName = livePlaylist?.name ?? collection.name;
-  // A friend's playlist you follow: theirs to change, yours to play, download
-  // and copy. Once they stop sharing it, it is an ordinary playlist of yours.
-  const followed = isFollowed(livePlaylist);
-  const follow = livePlaylist?.follow;
-  useEffect(() => {
-    if (follow?.fresh) {
-      markPlaylistSeen(playlistId);
+  // A friend's playlist opened from its link: playable here, kept only by
+  // "Add to library", which saves a copy that is entirely yours. The same
+  // link again finds that copy and says so, rather than adding it twice.
+  const shared = collection.kind === 'shared' ? collection.shared : undefined;
+  const added = shared ? playlistFromLink(playlists, shared.code) : undefined;
+  const addShared = useCallback(() => {
+    if (shared) {
+      addSharedPlaylist(shared.code, shared.copy);
+      toast(`Added ${shared.copy.name || 'it'} to your library`);
     }
-  }, [follow?.fresh, playlistId]);
-  const saveCopy = useCallback(() => {
-    const copy = copyPlaylist(playlistId);
-    toast(copy ? `Saved a copy: ${copy.name}` : 'Could not copy it');
-  }, [playlistId]);
+  }, [shared]);
+  const sharedBy = shared?.copy.by || livePlaylist?.from?.by;
   const shownCollection = useMemo(
     () =>
       livePlaylist
@@ -298,7 +298,7 @@ export function CollectionScreen({
   const canSelect = collection.kind === 'downloads';
   // Only a playlist of the user's can offer "remove from this playlist".
   const playlistFrom =
-    collection.kind === 'userPlaylist' && !followed
+    collection.kind === 'userPlaylist'
       ? {
           playlistId: collection.id.replace(/^pl:/, ''),
           playlistName: collection.name,
@@ -540,7 +540,7 @@ export function CollectionScreen({
                 <SearchIcon size={21} color={C.text} />
               </TouchableOpacity>
             )}
-            {isOwnPlaylist && !followed && livePlaylist && (
+            {isOwnPlaylist && livePlaylist && (
               <TouchableOpacity
                 onPress={() => setSharing(true)}
                 hitSlop={12}
@@ -592,11 +592,9 @@ export function CollectionScreen({
                     {collection.artist}
                   </Text>
                 )}
-                {!!follow && (
+                {!!sharedBy && (
                   <Text style={styles.by} numberOfLines={1}>
-                    {follow.stopped
-                      ? `No longer shared by ${follow.by}`
-                      : `Shared by ${follow.by}`}
+                    {shared ? `Shared by ${sharedBy}` : `From ${sharedBy}`}
                   </Text>
                 )}
                 <Text style={styles.sub}>
@@ -686,7 +684,8 @@ export function CollectionScreen({
                   )}
                   {(collection.kind === 'album' ||
                     collection.kind === 'userPlaylist' ||
-                    collection.kind === 'sourcePlaylist') && (
+                    collection.kind === 'sourcePlaylist' ||
+                    collection.kind === 'shared') && (
                     <TouchableOpacity
                       activeOpacity={0.7}
                       hitSlop={10}
@@ -700,15 +699,24 @@ export function CollectionScreen({
                       />
                     </TouchableOpacity>
                   )}
-                  {followed && (
-                    <TouchableOpacity
-                      style={styles.sortPill}
-                      activeOpacity={0.75}
-                      onPress={saveCopy}
-                      accessibilityRole="button">
-                      <Text style={styles.sortText}>Save a copy</Text>
-                    </TouchableOpacity>
-                  )}
+                  {shared &&
+                    (added ? (
+                      <View style={styles.sortPill}>
+                        <CircleCheck size={16} color={C.accent} strokeWidth={2.4} />
+                        <Text style={styles.sortText}>In your library</Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.sortPill, styles.addPill]}
+                        activeOpacity={0.8}
+                        onPress={addShared}
+                        accessibilityRole="button">
+                        <Plus size={16} color={C.bg} strokeWidth={2.6} />
+                        <Text style={[styles.sortText, styles.addText]}>
+                          Add to library
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                   <View style={styles.fill} />
                   <TouchableOpacity
                     style={styles.sortPill}
@@ -816,33 +824,6 @@ export function CollectionScreen({
           <Text style={styles.sheetTitle} numberOfLines={1}>
             {displayName}
           </Text>
-          {followed ? (
-            <>
-              <TouchableOpacity
-                style={styles.sheetRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setMenuOpen(false);
-                  saveCopy();
-                }}>
-                <Pencil size={20} color={C.sub} />
-                <Text style={styles.sheetLabel}>Save a copy to change</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.sheetRow}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setMenuOpen(false);
-                  setConfirmDelete(true);
-                }}>
-                <Trash2 size={20} color={C.danger} />
-                <Text style={[styles.sheetLabel, styles.sheetDanger]}>
-                  Remove from your Library
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
           <TouchableOpacity
             style={styles.sheetRow}
             activeOpacity={0.7}
@@ -873,8 +854,6 @@ export function CollectionScreen({
               Delete playlist
             </Text>
           </TouchableOpacity>
-            </>
-          )}
         </View>
       </Sheet>
 
@@ -1006,6 +985,8 @@ const styles = StyleSheet.create({
     marginRight: -8,
   },
   sortText: {color: C.text, fontSize: 12.5, fontWeight: '700'},
+  addPill: {backgroundColor: C.text},
+  addText: {color: C.bg},
   findRow: {
     flex: 1,
     flexDirection: 'row',
