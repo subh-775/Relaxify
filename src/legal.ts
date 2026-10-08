@@ -14,8 +14,9 @@
  *  switch; this is the disclosure. */
 export const COLLECTED_ITEMS =
   'songs played and how long you listened, searches, likes, playlists and ' +
-  'downloads, settings you change, errors, the app version, your phone model ' +
-  'and your approximate location (country and city)';
+  'downloads, which features you use, whether lyrics were found for a song, ' +
+  'settings you change, errors, the app version, your phone model and your ' +
+  'approximate location (country and city)';
 export const COLLECTED_PROMISE =
   'They are linked to an anonymous ID for this phone, never to your name, ' +
   'account or contacts.';
@@ -27,13 +28,14 @@ export const JAM_NOTE =
 /** And when you share a playlist. */
 export const SHARE_NOTE =
   'When you share a playlist, its name, its songs and the name you share it ' +
-  'under are kept in our database for anyone who has its link, until you ' +
-  'delete the playlist.';
+  "under (your phone's name, unless you type another) are kept in our " +
+  "database for anyone who has its link, and the link's page shows the " +
+  "playlist's name, until you delete the playlist.";
 
 /** The music services Relaxify plays from, credited wherever the terms are. */
 export const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
 
-export const LEGAL_UPDATED = '30 September 2026';
+export const LEGAL_UPDATED = '8 October 2026';
 
 export type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
@@ -162,9 +164,10 @@ export const PRIVACY: LegalDoc = {
     {
       heading: '4. What stays on your phone',
       paras: [
-        'Your likes, playlists (except those you share), downloads, search ' +
-          'history, settings and your **Recap** are kept only on your phone. The Recap is worked out on ' +
-          'the phone and sends nothing.',
+        'Your likes, playlists (except those you share), the artists you ' +
+          'follow, downloads, search history, settings and your **Recap** are ' +
+          'kept only on your phone. The Recap is worked out on the phone and ' +
+          'sends nothing.',
       ],
     },
     {
@@ -187,13 +190,16 @@ export const PRIVACY: LegalDoc = {
       list: [
         '**JioSaavn**, **SoundCloud** and **YouTube**, for search and ' +
           'playback (YouTube when switched on in Settings, and for songs ' +
-          'imported from it);',
+          'imported from it); JioSaavn also for new releases from the artists ' +
+          'you follow and the right cover for songs you saved;',
         '**Spotify** or **YouTube**, when you import a playlist link from it;',
         '**LRCLIB**, for lyrics;',
         '**MusicBrainz**, **Cover Art Archive**, **Deezer**, **Apple iTunes**, ' +
           '**TheAudioDB** and **Last.fm**, for song details, artist photos ' +
           'and artwork;',
-        '**GitHub**, to check for and download updates.',
+        '**GitHub**, to check for and download updates;',
+        '**Google** and **Cloudflare**, only to check whether the phone is ' +
+          'online when something fails to load.',
       ],
     },
     {
