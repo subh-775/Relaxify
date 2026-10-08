@@ -1,6 +1,6 @@
 /**
- * The tuner keeps your last two stations: the one you tune to leads, the one
- * you were on follows, and landing on the second swaps them.
+ * Home's tuner: two boxes, a first and a second language, each set from the
+ * dial. Picking the other box's language swaps them; never the same twice.
  */
 import {expect, jest, test} from '@jest/globals';
 
@@ -9,21 +9,22 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: () => Promise.resolve(),
 }));
 jest.mock('../src/analytics', () => ({logEvent: () => {}}));
-jest.mock('../src/toast', () => ({toast: () => {}}));
 
-import {retune} from '../src/store';
+import {setSlot} from '../src/store';
 
-test('a new language leads and the old one becomes the second', () => {
-  expect(retune(['hindi'], 'punjabi')).toEqual(['punjabi', 'hindi']);
-  expect(retune(['hindi', 'english'], 'tamil')).toEqual(['tamil', 'hindi']);
+test('each box sets its own language', () => {
+  expect(setSlot(['hindi', 'english'], 0, 'tamil')).toEqual(['tamil', 'english']);
+  expect(setSlot(['hindi', 'english'], 1, 'tamil')).toEqual(['hindi', 'tamil']);
+  expect(setSlot(['hindi'], 1, 'punjabi')).toEqual(['hindi', 'punjabi']);
 });
 
-test('landing on the second swaps them; the first changes nothing', () => {
-  expect(retune(['hindi', 'english'], 'english')).toEqual(['english', 'hindi']);
-  expect(retune(['hindi', 'english'], 'hindi')).toEqual(['hindi', 'english']);
+test("picking the other box's language swaps them", () => {
+  expect(setSlot(['hindi', 'english'], 0, 'english')).toEqual(['english', 'hindi']);
+  expect(setSlot(['hindi', 'english'], 1, 'hindi')).toEqual(['english', 'hindi']);
 });
 
-test('never more than two, and an empty start takes one', () => {
-  expect(retune([], 'hindi')).toEqual(['hindi']);
-  expect(retune(['a', 'b'], 'c').length).toBe(2);
+test('nothing changes when nothing would', () => {
+  expect(setSlot(['hindi', 'english'], 0, 'hindi')).toEqual(['hindi', 'english']);
+  // The first language on an empty second box: not twice.
+  expect(setSlot(['hindi'], 1, 'hindi')).toEqual(['hindi']);
 });

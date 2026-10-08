@@ -16,11 +16,14 @@ import {
 import {C, S, T} from '../theme';
 import {useFollowedArtists} from '../artists';
 import {
+  getAlbum,
   getFollowedReleases,
   waitForBackend,
   type FollowedItem,
-  type HomeItem,
+  type Track,
 } from '../backend';
+import {toast} from '../toast';
+import {normalizeTracks} from '../tracks';
 import {asArray, createStore, useStoreValue} from '../storage';
 import {upgradeArtwork} from '../tracks';
 import {useOffline} from '../offline';
@@ -38,7 +41,13 @@ const last = createStore<{names: string; items: FollowedItem[]}>(
   },
 );
 
-export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
+export function FollowedShelf({
+  onPlay,
+  onOpenAlbum,
+}: {
+  onPlay: (t: Track) => void;
+  onOpenAlbum?: (name: string, artist: string, albumId: string) => void;
+}) {
   const followed = useFollowedArtists();
   const offline = useOffline();
   const names = followed.map(a => a.name).join('|');
@@ -78,6 +87,30 @@ export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
     };
   }, [names, offline]);
 
+  /**
+   * A release is an album page on JioSaavn, which the playlist lookup cannot
+   * read: opened that way, every card said "no playable songs". By its id it
+   * opens. A single (most of them) just plays, with similar songs after it.
+   */
+  const open = (item: FollowedItem) => {
+    const id = item.album_id ?? '';
+    const title = item.title || '';
+    if (item.songs !== 1 && onOpenAlbum && id) {
+      onOpenAlbum(title, item.artist, id);
+      return;
+    }
+    getAlbum(title, item.artist, '', id)
+      .then(a => {
+        const [first] = normalizeTracks(a.tracks);
+        if (first) {
+          onPlay(first);
+        } else {
+          toast('That one has no playable songs right now.');
+        }
+      })
+      .catch(() => toast("Couldn't open that. Try again in a moment."));
+  };
+
   if (!names || !data?.length) {
     return null;
   }
@@ -98,7 +131,7 @@ export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
           <TouchableOpacity
             style={styles.rel}
             activeOpacity={0.75}
-            onPress={() => onPick(item)}>
+            onPress={() => open(item)}>
             <View>
               {item.image ? (
                 <Image

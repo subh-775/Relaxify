@@ -1090,12 +1090,18 @@ def _artist_releases(name, this_year):
                 continue
             seen.add(it.get("id"))
             year = int(it["year"]) if str(it.get("year", "")).isdigit() else 0
+            count = str((it.get("more_info") or {}).get("song_count", ""))
+            count = int(count) if count.isdigit() else 0
             releases.append({
                 "type": "album",
                 "title": _clean(it.get("title")),
                 "subtitle": f"{name} · {'single' if group == 'singles' else 'album'}",
                 "image": it.get("image", ""),
                 "perma_url": it["perma_url"],
+                # Opened by id (its link is an album page, which the playlist
+                # lookup cannot read); one song plays straight away.
+                "album_id": str(it.get("id", "")),
+                "songs": count,
                 "artist": name,
                 "year": year,
                 "new": latest or year >= this_year,

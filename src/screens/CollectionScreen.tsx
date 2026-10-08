@@ -32,9 +32,11 @@ import {
   ImagePlus,
   MoreVertical,
   Pause,
+  Link,
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   Search as SearchIcon,
   Share2,
   Shuffle,
@@ -76,12 +78,16 @@ import {
 import {useLikes} from '../store';
 import {
   addSharedPlaylist,
+  addTracksToPlaylist,
   deletePlaylist,
   playlistFromLink,
   renamePlaylist,
+  setImportedFrom,
   setPlaylistImage,
   usePlaylists,
 } from '../playlists';
+import {importSourceName, isImportUrl, useLastImport} from '../spotifyImport';
+import {syncImport} from '../backend';
 import {sharePlaylist} from '../sharedPlaylists';
 import {shareMessage} from '../links';
 import {getLocalLibrary} from '../backend';
@@ -138,6 +144,10 @@ export function CollectionScreen({
   // playlist is editable from inside as well as from its row.
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  /** Sync with the original: running, and the "which playlist" prompt. */
+  const [syncing, setSyncing] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [linkText, setLinkText] = useState('');
   const [renameText, setRenameText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -231,6 +241,57 @@ export function CollectionScreen({
     ? playlists.find(p => p.id === playlistId)
     : undefined;
   const displayName = livePlaylist?.name ?? collection.name;
+
+  // The original this playlist was imported from. Imports made before Sync
+  // existed remember no link, except the most recent one, which the import
+  // card still knows.
+  const lastImport = useLastImport();
+  const syncFrom =
+    livePlaylist?.importedFrom ??
+    (lastImport?.playlistId === playlistId && lastImport.url
+      ? {url: lastImport.url, keys: []}
+      : undefined);
+
+  /** Sync: the songs new on the original, added here. Never removes one, so
+   *  a song taken out of this playlist stays out (its key is remembered). */
+  const runSync = useCallback(
+    async (from: {url: string; keys: string[]}) => {
+      if (!livePlaylist || syncing) {
+        return;
+      }
+      setSyncing(true);
+      try {
+        const res = await syncImport(from.url, from.keys, livePlaylist.tracks);
+        const added = addTracksToPlaylist(livePlaylist.id, res.tracks);
+        setImportedFrom(livePlaylist.id, {url: from.url, keys: res.keys});
+        const notFound = res.missing
+          ? ` ${res.missing} new ${res.missing === 1 ? 'song was' : 'songs were'} not found.`
+          : '';
+        toast(
+          added
+            ? `Added ${added} new ${added === 1 ? 'song' : 'songs'}.${notFound}`
+            : `Already up to date.${notFound}`,
+        );
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'Could not sync this playlist.');
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [livePlaylist, syncing],
+  );
+
+  const submitLink = useCallback(() => {
+    const url = linkText.trim();
+    if (!livePlaylist || !isImportUrl(url)) {
+      toast('Paste a Spotify or YouTube playlist link.');
+      return;
+    }
+    setLinking(false);
+    setLinkText('');
+    setImportedFrom(livePlaylist.id, {url, keys: []});
+    runSync({url, keys: []});
+  }, [linkText, livePlaylist, runSync]);
 
   /** Share: straight to the phone's share options with the playlist's name
    *  and link. The first time makes the link (sharedPlaylists.ts), which
@@ -580,6 +641,21 @@ export function CollectionScreen({
                 <SearchIcon size={21} color={C.text} />
               </TouchableOpacity>
             )}
+            {isOwnPlaylist && livePlaylist && syncFrom && (
+              <TouchableOpacity
+                onPress={() => runSync(syncFrom)}
+                disabled={syncing}
+                hitSlop={12}
+                style={styles.barBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Sync with the ${importSourceName(syncFrom.url)} playlist`}>
+                {syncing ? (
+                  <ActivityIndicator size="small" color={C.text} />
+                ) : (
+                  <RefreshCw size={21} color={C.text} />
+                )}
+              </TouchableOpacity>
+            )}
             {isOwnPlaylist && livePlaylist && (
               <TouchableOpacity
                 onPress={share}
@@ -887,6 +963,20 @@ export function CollectionScreen({
             <ImagePlus size={20} color={C.sub} />
             <Text style={styles.sheetLabel}>Change cover</Text>
           </TouchableOpacity>
+          {!syncFrom && (
+            <TouchableOpacity
+              style={styles.sheetRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                setMenuOpen(false);
+                setLinking(true);
+              }}>
+              <Link size={20} color={C.sub} />
+              <Text style={styles.sheetLabel}>
+                Sync with a Spotify or YouTube playlist
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.sheetRow}
             activeOpacity={0.7}
@@ -940,6 +1030,52 @@ export function CollectionScreen({
                     !renameText.trim() && styles.dialogDisabled,
                   ]}>
                   Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* The original to sync with, asked once for a playlist imported before
+          Sync existed; the same dialog shape as Rename. */}
+      <Modal
+        visible={linking}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setLinking(false)}>
+        <View style={styles.dialogScrim}>
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>Sync with its original</Text>
+            <TextInput
+              value={linkText}
+              onChangeText={setLinkText}
+              placeholder="Spotify or YouTube playlist link"
+              placeholderTextColor={C.faint}
+              style={styles.input}
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={submitLink}
+            />
+            <View style={styles.dialogRow}>
+              <TouchableOpacity
+                onPress={() => setLinking(false)}
+                style={styles.dialogBtn}>
+                <Text style={styles.dialogCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={submitLink}
+                disabled={!linkText.trim()}
+                style={styles.dialogBtn}>
+                <Text
+                  style={[
+                    styles.dialogOk,
+                    !linkText.trim() && styles.dialogDisabled,
+                  ]}>
+                  Sync
                 </Text>
               </TouchableOpacity>
             </View>

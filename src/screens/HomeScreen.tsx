@@ -110,6 +110,8 @@ type Props = {
   onImportSpotify?: (url: string) => void;
   /** Open a playlist or album, from the Continue and import cards. */
   onOpenCollection?: (c: Collection) => void;
+  /** Open an album by name, artist and JioSaavn id (From artists you love). */
+  onOpenAlbum?: (name: string, artist: string, albumId: string) => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
    *  greeting takes new colours then. */
@@ -157,6 +159,7 @@ export const HomeScreen = React.memo(function HomeScreen({
   onOpenJam,
   onImportSpotify,
   onOpenCollection,
+  onOpenAlbum,
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
@@ -410,7 +413,10 @@ export const HomeScreen = React.memo(function HomeScreen({
                 <Row row={item} onPick={onPickTrack} />
                 {/* Your artists' newest, between New releases and Charts. */}
                 {item.title.trim().toLowerCase() === 'new releases' && (
-                  <FollowedShelf onPick={onPickTrack} />
+                  <FollowedShelf
+                    onPlay={onPlayTrack}
+                    onOpenAlbum={onOpenAlbum}
+                  />
                 )}
                 {/* The language dial between Charts and Top playlists. */}
                 {item.title.trim().toLowerCase() === 'charts' && (

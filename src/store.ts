@@ -92,10 +92,24 @@ export const DEFAULT_SETTINGS: Settings = {
 /** At most this many Home languages: more and Home turns into a blur. */
 export const MAX_LANGUAGES = 2;
 
-/** Home's tuner: the pair after tuning to `lang`. It leads and the one you
- *  were on follows, so landing on the second swaps them. */
-export function retune(pair: string[], lang: string): string[] {
-  return lang === pair[0] ? pair : [lang, pair[0]].filter(Boolean);
+/**
+ * Home's tuner: the pair after setting box `slot` (0 = the first language,
+ * 1 = the second) to `lang`. Picking the language the other box holds swaps
+ * the two, so a language never appears twice; picking the first language for
+ * an empty second box changes nothing.
+ */
+export function setSlot(pair: string[], slot: 0 | 1, lang: string): string[] {
+  const [a, b] = pair;
+  if (slot === 0) {
+    if (lang === a) {
+      return pair;
+    }
+    return lang === b ? [b, a] : [lang, b].filter(Boolean);
+  }
+  if (lang === b || (lang === a && !b)) {
+    return pair;
+  }
+  return lang === a ? [b, a] : [a, lang];
 }
 /** The sizes "Clear cache automatically" steps through, in MB; 0 = off. */
 export const CACHE_STEPS = [0, 10, 20, 50, 100, 200, 500];

@@ -191,7 +191,7 @@ export const PRIVACY: LegalDoc = {
           'playback (YouTube when switched on in Settings, and for songs ' +
           'imported from it); JioSaavn also for new releases from the artists ' +
           'you follow and the right cover for songs you saved;',
-        '**Spotify** or **YouTube**, when you import a playlist link from it;',
+        '**Spotify** or **YouTube**, when you import a playlist link from it or sync with it;',
         '**LRCLIB**, for lyrics;',
         '**MusicBrainz**, **Cover Art Archive**, **Deezer**, **Apple iTunes**, ' +
           '**TheAudioDB** and **Last.fm**, for song details, artist photos ' +

@@ -765,6 +765,7 @@ function Shell() {
             onOpenJam={openJam}
             onImportSpotify={setImportUrl}
             onOpenCollection={openFromLibrary}
+            onOpenAlbum={(n, a, id) => openAlbumByName(n, a, [], id)}
             visible={tab === 'home'}
           />
         </View>

@@ -1851,7 +1851,14 @@ def _import_snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
             # Each song as it is checked, in the order the checks finish, so
             # the import screen can fill in live instead of all at the end.
             "checked": list(job.get("checked", [])),
+            # Every song of the original list, for Sync to tell new from old.
+            "keys": list(job.get("keys", [])),
         }
+
+
+def _source_key(item: Dict[str, Any]) -> str:
+    """One song of the ORIGINAL list (Spotify / YouTube), as Sync remembers it."""
+    return f"{_clean_text(item.get('title')) or ''}|{_clean_text(item.get('artist')) or ''}".lower()
 
 
 def _find(item: Dict[str, Any], youtube: bool) -> Optional[Dict[str, Any]]:
@@ -1887,6 +1894,7 @@ def _run_import(kind: str, ref: str, job: Dict[str, Any]) -> None:
         job["image"] = meta.get("image", "")
         job["total"] = len(items)
         job["source"] = kind if youtube else "spotify"
+        job["keys"] = [_source_key(it) for it in items]
 
     matched: List[Optional[Dict[str, Any]]] = [None] * len(items)
     with ThreadPoolExecutor(max_workers=6) as ex:
@@ -1928,6 +1936,76 @@ def _run_import(kind: str, ref: str, job: Dict[str, Any]) -> None:
                           for i, t in enumerate(matched) if not t]
         job["matched"] = len(job["tracks"])
         job["finished"] = True
+
+
+def _import_ref(url: str):
+    """(kind, ref) for a playlist link, as the import reads it, or an error."""
+    kind, ref = parse_spotify_url(url)
+    if kind:
+        return kind, ref, None
+    yt_list = parse_youtube_list(url)
+    if not yt_list:
+        return None, None, "Not a playlist link"
+    if yt_list in _PRIVATE_YT_LISTS:
+        return None, None, "Private playlist: your own likes and Watch later need a Google login"
+    return "youtube", url, None
+
+
+def _already_have(item: Dict[str, Any], have: List[Dict[str, str]]) -> bool:
+    """A playlist imported before Sync existed remembers no original list:
+    an original song counts as already there when a song in the playlist has
+    its title and shares an artist (titles differ between services a little)."""
+    t = (item.get("title") or "").lower()
+    a = (item.get("artist") or "").lower()
+    for h in have:
+        if fuzz.token_set_ratio(t, (h.get("title") or "").lower()) >= 88 and (
+                not a or fuzz.token_set_ratio(a, (h.get("artist") or "").lower()) >= 60):
+            return True
+    return False
+
+
+@app.post("/api/import/sync")
+def import_sync():
+    """Sync an imported playlist with its original. Body: {url, keys, have}.
+
+    `keys` are the original's songs as last seen (empty for a playlist
+    imported before Sync); `have` is the playlist's songs now. Reads the
+    original again, matches ONLY the songs that are new on it, and returns
+    them with the original's current keys. Nothing is ever removed: a song you
+    took out stays out, because its key is still known."""
+    body = _body()
+    url = str(body.get("url") or "").strip()
+    known = set(body.get("keys") or [])
+    have = [h for h in (body.get("have") or []) if isinstance(h, dict)]
+    kind, ref, err = _import_ref(url)
+    if err:
+        return jsonify({"error": err}), 400
+    youtube = kind == "youtube"
+    try:
+        meta = _youtube_tracklist(ref) if youtube else _spotify_tracklist(kind, ref)
+    except Exception as e:
+        return jsonify({"error": f"Could not read that playlist: {e}"})
+    if not meta or meta.get("error"):
+        return jsonify({"error": "Could not read that playlist — is it public?"})
+    items = meta["tracks"][:_IMPORT_MAX]
+    keys = [_source_key(it) for it in items]
+    new = [it for it, k in zip(items, keys)
+           if k not in known and not (not known and _already_have(it, have))]
+    found: List[Optional[Dict[str, Any]]] = [None] * len(new)
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futs = {ex.submit(_find, it, youtube): i for i, it in enumerate(new)}
+        for fut in as_completed(futs):
+            try:
+                found[futs[fut]] = fut.result()
+            except Exception:
+                found[futs[fut]] = None
+    tracks = []
+    for t in found:
+        if t:
+            t.pop("kept_from_youtube", None)
+            tracks.append(t)
+    return jsonify({"name": meta.get("name", ""), "keys": keys, "tracks": tracks,
+                    "new": len(new), "missing": len(new) - len(tracks)})
 
 
 @app.get("/api/spotify/import")
