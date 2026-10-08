@@ -641,21 +641,6 @@ export function CollectionScreen({
                 <SearchIcon size={21} color={C.text} />
               </TouchableOpacity>
             )}
-            {isOwnPlaylist && livePlaylist && syncFrom && (
-              <TouchableOpacity
-                onPress={() => runSync(syncFrom)}
-                disabled={syncing}
-                hitSlop={12}
-                style={styles.barBtn}
-                accessibilityRole="button"
-                accessibilityLabel={`Sync with the ${importSourceName(syncFrom.url)} playlist`}>
-                {syncing ? (
-                  <ActivityIndicator size="small" color={C.text} />
-                ) : (
-                  <RefreshCw size={21} color={C.text} />
-                )}
-              </TouchableOpacity>
-            )}
             {isOwnPlaylist && livePlaylist && (
               <TouchableOpacity
                 onPress={share}
@@ -773,6 +758,23 @@ export function CollectionScreen({
                         ]}>
                         Shuffle
                       </Text>
+                    </TouchableOpacity>
+                  )}
+                  {/* Sync with the playlist it was imported from: the same
+                      icon as Check for updates, filled like Play. */}
+                  {isOwnPlaylist && livePlaylist && syncFrom && (
+                    <TouchableOpacity
+                      style={[styles.bigBtn, styles.bigPlay, styles.bigSync]}
+                      activeOpacity={0.85}
+                      onPress={() => runSync(syncFrom)}
+                      disabled={syncing}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Sync with the ${importSourceName(syncFrom.url)} playlist`}>
+                      {syncing ? (
+                        <ActivityIndicator size="small" color={C.bg} />
+                      ) : (
+                        <RefreshCw size={19} color={C.bg} strokeWidth={2.4} />
+                      )}
                     </TouchableOpacity>
                   )}
                 </View>
@@ -1138,6 +1140,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   bigPlay: {backgroundColor: C.text},
+  // Round, beside the two wide ones: an icon, not a word.
+  bigSync: {flex: 0, width: 44},
   bigPlayText: {color: C.bg, fontSize: 15, fontWeight: '800'},
   bigShuffle: {borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.28)'},
   bigShuffleText: {color: C.text, fontSize: 15, fontWeight: '800'},
