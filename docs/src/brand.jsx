@@ -1,5 +1,5 @@
 /**
- * The site's own pieces: the logo and the logo alive, the
+ * The site's own pieces: the logo, the
  * Recap-style starburst, the Home deck, the download button, live release
  * numbers, and the blocks pages are written with.
  *
@@ -28,38 +28,12 @@ export function Logo({size = 28}) {
 }
 
 /**
- * The mark, alive. `mood`: dance (Home), wave (Get the app), huh (Help),
- * vibe (the rest: a gentle bob).
+ * The mark on a page's header card or the Home hero. Still: the logo is the
+ * app's icon, not a toy. `mood` is kept for the callers and changes nothing.
+ * The card's own CSS (.phead-art) places it; nothing inline may override that.
  */
-export function Mascot({mood = 'vibe', size = 120, className = ''}) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (reduceMotion()) {
-      return;
-    }
-    const ctx = gsap.context(() => {
-      const el = ref.current.querySelector('img');
-      gsap.set(el, {transformOrigin: '50% 90%'});
-      if (mood === 'dance') {
-        gsap.to(el, {rotation: 7, y: -4, duration: 0.42, yoyo: true, repeat: -1, ease: 'sine.inOut'});
-      } else if (mood === 'wave') {
-        gsap.to(el, {rotation: 10, duration: 0.5, yoyo: true, repeat: -1, ease: 'sine.inOut'});
-      } else if (mood === 'huh') {
-        gsap.to(el, {rotation: -6, duration: 1.4, yoyo: true, repeat: -1, ease: 'sine.inOut'});
-      } else {
-        gsap.to(el, {y: -4, duration: 1.2, yoyo: true, repeat: -1, ease: 'sine.inOut'});
-      }
-    }, ref);
-    return () => ctx.revert();
-  }, [mood]);
-  return (
-    <span ref={ref} className={`mascot ${className}`} style={{display: 'inline-block', position: 'relative', width: size, height: size}} aria-hidden="true">
-      <img src={MARK} width={size} height={size} alt="" style={{display: 'block', width: '100%', height: '100%'}} />
-      {mood === 'huh' && (
-        <b style={{position: 'absolute', right: '6%', top: '0', fontSize: size * 0.22, fontWeight: 800, color: 'currentColor'}}>?</b>
-      )}
-    </span>
-  );
+export function Mascot({size = 120, className = ''}) {
+  return <img className={`mascot ${className}`} src={MARK} width={size} height={size} alt="" aria-hidden="true" />;
 }
 
 /* ── the Recap starburst ─────────────────────────────────────────────────── */

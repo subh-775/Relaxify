@@ -37,9 +37,6 @@
   .head .k { font-weight: 700; font-size: 14px; opacity: .75; position: relative; }
   .head h1 { margin: 4px 0 0; font-size: clamp(40px, 12vw, 54px); line-height: .98; letter-spacing: -.04em; font-weight: 800; position: relative; }
   .mascot { position: absolute; right: 4px; top: 6px; width: 150px; height: 150px; overflow: visible; }
-  .mascot { transform-origin: 50% 90%; animation: wave 1s ease-in-out infinite alternate; }
-  @keyframes wave { from { transform: rotate(-4deg); } to { transform: rotate(10deg); } }
-  @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
   .get { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 60px; margin-top: 16px; border-radius: 999px; background: var(--brand); color: var(--brand-ink); font-weight: 800; font-size: 18px; text-decoration: none; }
   .get:hover { color: var(--brand-ink); }
   .meta { color: var(--muted); font-size: 13.5px; text-align: center; margin: 8px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -62,7 +59,6 @@
     .mascot { width: 110px; height: 110px; }
     ol { grid-template-columns: 1fr 1fr; }
   }
-  @media (prefers-reduced-motion: reduce) { .mascot { animation: none; } }
 </style>
 </head>
 <body>
