@@ -27,7 +27,7 @@ export const JAM_NOTE =
 /** And when you share a playlist. */
 export const SHARE_NOTE =
   'When you share a playlist, its name, its songs and the name you share it ' +
-  "under (your phone's name, unless you type another) are kept in our " +
+  "under (the name you use in a Jam, or else your phone's name) are kept in our " +
   "database for anyone who has its link, and the link's page shows the " +
   "playlist's name, until you delete the playlist.";
 

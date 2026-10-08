@@ -17,6 +17,12 @@ export function playlistLink(code: string): string {
   return `${DOCS_URL}p/?c=${code}`;
 }
 
+/** What a friend receives: the playlist's name and its link. The link's
+ *  preview shows the app icon. (Pasted into Search, it still opens.) */
+export function shareMessage(name: string, code: string): string {
+  return `${name}\n${playlistLink(code)}`;
+}
+
 /** A new GitHub issue with the facts a report always needs filled in. */
 export function reportUrl(version: string, phone: string, android: string): string {
   const body = [
