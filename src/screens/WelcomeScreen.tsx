@@ -169,7 +169,7 @@ export function WelcomeScreen() {
               <Text style={[styles.kicker, styles.onDark]}>One last thing</Text>
               <Text style={[styles.title, styles.onDark]}>What do you listen to?</Text>
               <Text style={[styles.body, styles.sub]}>
-                Pick up to three. Home and Browse are drawn from these; Search always
+                Pick up to two. Home and Browse are drawn from these; Search always
                 covers everything, and you can change them in Settings.
               </Text>
               <LanguageChips />

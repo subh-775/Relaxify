@@ -3,8 +3,8 @@
  *
  * A radio dial: the languages, each in its own script, slide under a fixed
  * pointer, and letting go on one tunes Home and Search to it. A tap on a name
- * slides it there too. Tuning picks that ONE language; Settings still holds
- * up to three for anyone who wants a mix.
+ * slides it there too. Tuning picks that ONE language for now; how a
+ * second one is picked here is still being decided.
  */
 import React, {useRef, useState} from 'react';
 import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
