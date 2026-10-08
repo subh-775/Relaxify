@@ -1729,6 +1729,9 @@ from components.spotify_import import (
     parse_url as parse_spotify_url,
     fetch_tracklist as _spotify_tracklist,
     is_good_match as _title_artist_ok,   # title + artist + duration gate
+    match_rank as _match_rank,
+    clean_title as _clean_import_title,
+    credited as _credited,
 )
 # YouTube / YouTube Music playlists go through the same job: NewPipe reads the
 # list, each song is matched on JioSaavn/SoundCloud first, and a song with no
@@ -1782,6 +1785,41 @@ def _youtube_original(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _youtube_match(item: Dict[str, Any], title: str, names: List[str]):
+    """The song on YouTube: (hit, playable track) or None. A label's channel
+    ("T-Series") is not the singer, so the weak-artist rule applies: a
+    near-exact title and the original's length within five seconds, or a
+    credited artist as the channel. Searched through NewPipe whatever the
+    YouTube switch says, as a YouTube playlist's originals are."""
+    from types import SimpleNamespace
+    try:
+        import newpipe_yt
+        hits = newpipe_yt.search(f"{title} {names[0] if names else ''}".strip(), 6)
+    except Exception:
+        return None
+    good = []
+    for h in hits or []:
+        if not h.get("url"):
+            continue
+        t = SimpleNamespace(title=h.get("title") or "", artist=h.get("artist") or "",
+                            duration_ms=h.get("duration_ms") or 0, sources={})
+        if _title_artist_ok(item, t, True):
+            good.append((t, h))
+    if not good:
+        return None
+    t, h = max(good, key=lambda g: _match_rank(item, g[0]))
+    return t, _youtube_original({**item, "url": h["url"], "artwork": h.get("artwork"),
+                                 "duration_ms": item.get("duration_ms") or h.get("duration_ms")})
+
+
+def _settled(item: Dict[str, Any], track) -> bool:
+    """A hit good enough to stop searching: the title near-exact and, when
+    both are known, the length within five seconds of the original's."""
+    exact, close = _match_rank(item, track)[:2]
+    want = int(item.get("duration_ms") or 0)
+    return bool(exact) and (not want or close >= -5_000)
+
+
 def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Dict[str, Any]]:
     """Find a PLAYABLE version of one imported song on our own sources.
 
@@ -1789,7 +1827,18 @@ def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Di
     a label rather than the singer (see is_good_match)."""
     if _search_service is None:
         return None
-    query = f"{item['title']} {item['artist']}".strip()
+    # The song's own name with its main artists first: the full credit of a
+    # film song (six names) and its '(From "Film")' buried the right hit. The
+    # title as written is the last try.
+    title = _clean_import_title(item["title"])
+    names = _credited(item["artist"])
+    queries = []
+    for q in (f"{title} {names[0]}" if names else title,
+              f"{title} {names[1]}" if len(names) > 1 else "",
+              f"{item['title']} {item['artist']}"):
+        q = q.strip()
+        if q and q not in queries:
+            queries.append(q)
     try:
         cfg = replace(
             _search_service.config,
@@ -1798,12 +1847,32 @@ def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Di
             enabled_sources=PLAYABLE_SEARCH_SOURCES,
             timeout_seconds=10.0,
         )
-        for track in _search_service.search(query, cfg):
+        best = None
+        for query in queries:
+            # The BEST hit that passes, not the first: an exact title and the
+            # original's length beat a copy that happened to rank higher.
+            good = [t for t in _search_service.search(query, cfg)
+                    if _playable_source_name(t) and _title_artist_ok(item, t, weak_artist)]
+            if best is not None:
+                good.append(best)
+            if good:
+                best = max(good, key=lambda t: _match_rank(item, t))
+                # Settled only by a near-exact title within a few seconds of
+                # the original; anything less ("O Saathiya" for "O Saathi", a
+                # DJ upload 30 s short) lets the next search try for better.
+                if _settled(item, best):
+                    break
+        # Not on JioSaavn or SoundCloud as itself (T-Series' catalogue is the
+        # big one: only fan uploads there): the original on YouTube, when it
+        # is closer than anything found. Not for a YouTube playlist, whose
+        # songs already keep their own video (see _find).
+        if not weak_artist and (best is None or not _settled(item, best)):
+            yt = _youtube_match(item, title, names)
+            if yt is not None and (best is None or _match_rank(item, yt[0]) > _match_rank(item, best)):
+                return yt[1]
+        if best is not None:
+            track = best
             source = _playable_source_name(track)
-            if not source:
-                continue
-            if not _title_artist_ok(item, track, weak_artist):
-                continue               # nearest hit but not the right song — skip
             return {
                 "title": _clean_text(track.title) or item["title"],
                 "artist": _clean_text(track.artist) or item["artist"],
