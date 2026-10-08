@@ -570,8 +570,8 @@ async function setupPlayerOnce(): Promise<boolean> {
       onTrackSettled(() => {
         (async () => {
           try {
-            const idx = (await TrackPlayer.getActiveTrackIndex()) ?? 0;
-            await refreshEngineMirror(idx);
+            await refreshEngineMirror();
+            const idx = activeIndex;
             // Recomputed rather than captured: by the time this runs the
             // active track may be several skips further on, and writing the
             // one that was current when the burst started would resume to the
@@ -1127,10 +1127,37 @@ function warmArtwork(index: number): void {
 }
 
 /** Re-read the engine's queue and index so the mirror is warm before a gesture. */
-async function refreshEngineMirror(index?: number): Promise<void> {
+/**
+ * Where the playing row sits in `queue`, found by its row identity (`_qid`).
+ *
+ * The engine's index was read in a separate call from its queue, and songs
+ * inserted in between (a list starting, the earlier songs going in front)
+ * left it pointing at a different row. The swipe then drew that row as the
+ * next song, and Next showed its name and cover for a moment before the
+ * engine's own event put the real one back. The index is the fallback only.
+ *
+ * Exported for the test.
+ */
+export function rowIndex<T>(
+  queue: T[],
+  active: T | null | undefined,
+  fallback: number,
+): number {
+  const qid = (t: T | null | undefined) => (t as {_qid?: unknown} | null)?._qid;
+  const want = qid(active);
+  const at = want ? queue.findIndex(t => qid(t) === want) : -1;
+  return at >= 0 ? at : fallback;
+}
+
+async function refreshEngineMirror(): Promise<void> {
   try {
-    engineQueue = await TrackPlayer.getQueue();
-    activeIndex = index ?? (await TrackPlayer.getActiveTrackIndex()) ?? 0;
+    const queue = await TrackPlayer.getQueue();
+    const [active, index] = await Promise.all([
+      TrackPlayer.getActiveTrack(),
+      TrackPlayer.getActiveTrackIndex(),
+    ]);
+    engineQueue = queue;
+    activeIndex = rowIndex(queue, active, index ?? 0);
     warmArtwork(activeIndex);
     // Here rather than at the five call sites: setShuffle, moveQueueItem,
     // playTrack, restoreSession, topUpFromRadio and both skips ALL end with
