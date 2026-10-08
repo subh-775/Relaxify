@@ -760,6 +760,19 @@ function warmStream(track: Track | null | undefined, bitrate: number): void {
  */
 let queueSeq = 0;
 
+/**
+ * Which recording a track is: the file, or the source page it streams from.
+ * Two JioSaavn uploads of one song share a title and an artist, so those
+ * alone lit both rows when either played.
+ */
+function recordingOf(track: Track): string {
+  if (track.file_path) {
+    return track.file_path;
+  }
+  const source = track.playable_source || track.primary_source || '';
+  return (source && track.sources?.[source]?.url) || '';
+}
+
 function toQueueItem(track: Track, bitrate: number) {
   const url = streamUrlFor(track, bitrate);
   if (!url) {
@@ -770,6 +783,8 @@ function toQueueItem(track: Track, bitrate: number) {
     id: `${track.title}-${track.artist}`,
     /** Identity of this ROW, as opposed to `id`, the identity of the song. */
     _qid: `q${++queueSeq}`,
+    /** The recording (see recordingOf), for the playing highlight. */
+    _rec: recordingOf(track),
     url,
     // Sent on the redirect to the CDN too (see STREAM_UA).
     userAgent: STREAM_UA,
@@ -1158,12 +1173,11 @@ export function peekAdjacentTrack(delta: 1 | -1): RNTPTrack | null {
  * useSyncExternalStore bails out when the snapshot is Object.is-equal, and
  * `false === false`, so the rows that were not involved never re-render.
  */
-export function useIsActiveTrack(
-  title: string | null | undefined,
-  artist: string | null | undefined,
-): boolean {
-  const t = String(title ?? '').toLowerCase();
-  const a = String(artist ?? '').toLowerCase();
+export function useIsActiveTrack(track: Track): boolean {
+  const t = String(track.title ?? '').toLowerCase();
+  const a = String(track.artist ?? '').toLowerCase();
+  // The copy that plays when this row is tapped: your "Wrong song?" pick.
+  const rec = recordingOf(chosenCopy(track));
   return useSyncExternalStore(
     l => {
       trackListeners.add(l);
@@ -1172,7 +1186,9 @@ export function useIsActiveTrack(
     () =>
       !!trackSnapshot &&
       String(trackSnapshot.title ?? '').toLowerCase() === t &&
-      String(trackSnapshot.artist ?? '').toLowerCase() === a,
+      String(trackSnapshot.artist ?? '').toLowerCase() === a &&
+      // Rows queued by an older build carry no recording: title + artist.
+      (!rec || !trackSnapshot._rec || trackSnapshot._rec === rec),
   );
 }
 

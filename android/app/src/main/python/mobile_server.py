@@ -1616,12 +1616,12 @@ def artist_profile():
 
 @app.get("/api/artists/releases")
 def followed_releases():
-    """Home's "From artists you follow". `names` is "A|B|C"."""
+    """Home's "From artists you love". `names` is "A|B|C"."""
     try:
         from components.profile import get_followed_releases
         return jsonify(get_followed_releases(_arg("names").split("|"), time.localtime().tm_year))
     except Exception as e:
-        return jsonify({"releases": [], "playlists": [], "error": str(e)})
+        return jsonify({"releases": [], "error": str(e)})
 
 
 @app.get("/api/search/artists")

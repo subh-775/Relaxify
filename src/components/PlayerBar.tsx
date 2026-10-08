@@ -497,11 +497,16 @@ export const PlayerBar = React.memo(function PlayerBar({
               hitSlop={8}
               style={styles.playBtn}>
               {buffering ? (
-                <ActivityIndicator color={C.text} />
+                <ActivityIndicator color={C.bg} />
               ) : playing ? (
-                <Pause size={26} color={C.text} fill={C.text} />
+                <Pause size={20} color={C.bg} fill={C.bg} />
               ) : (
-                <Play size={26} color={C.text} fill={C.text} />
+                <Play
+                  size={20}
+                  color={C.bg}
+                  fill={C.bg}
+                  style={styles.playNudge}
+                />
               )}
             </TouchableOpacity>
           </View>
@@ -592,14 +597,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The same 42x42 slot as the other two. No disc: `playNudge` went with it,
-  // since it existed only to optically centre a triangle inside a circle.
+  // The same 42x42 slot as the other two, as a Blush disc: the full
+  // player's Play/Pause, small.
   playBtn: {
     width: 42,
     height: 42,
+    borderRadius: 21,
+    backgroundColor: C.tone,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // A triangle sits left of centre inside a circle; this centres it by eye.
+  playNudge: {marginLeft: 2},
   progressTrack: {
     position: 'absolute',
     // Edge to edge along the very bottom. It used to be inset by 12 to keep

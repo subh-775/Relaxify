@@ -198,21 +198,17 @@ export type Track = {
   _autoplay?: boolean;
 };
 
-/** A release card on Home's "From artists you follow". */
+/** A release card on Home's "From artists you love". */
 export type FollowedItem = HomeItem & {artist: string; new?: boolean};
 
-/** Newest releases and own playlists of the artists you follow. */
+/** The newest releases of the artists you follow. */
 export async function getFollowedReleases(
   names: string[],
-): Promise<{releases: FollowedItem[]; playlists: FollowedItem[]}> {
-  const data = await apiGet<{
-    releases?: FollowedItem[];
-    playlists?: FollowedItem[];
-  }>(`/artists/releases?names=${encodeURIComponent(names.join('|'))}`);
-  return {
-    releases: Array.isArray(data.releases) ? data.releases : [],
-    playlists: Array.isArray(data.playlists) ? data.playlists : [],
-  };
+): Promise<FollowedItem[]> {
+  const data = await apiGet<{releases?: FollowedItem[]}>(
+    `/artists/releases?names=${encodeURIComponent(names.join('|'))}`,
+  );
+  return Array.isArray(data.releases) ? data.releases : [];
 }
 
 export async function getHome(language = 'hindi,english'): Promise<HomeRow[]> {

@@ -1,5 +1,5 @@
 /**
- * Home's "Tune to another language" banner, between Charts and Top playlists.
+ * Home's "Tune to your taste" banner, between Charts and Top playlists.
  *
  * A radio dial: the languages, each in its own script, slide under a fixed
  * pointer, and letting go on one tunes Home and Search to it. A tap on a name
@@ -36,8 +36,8 @@ export function LanguageDial() {
 
   return (
     <View style={styles.card} onLayout={e => setWidth(e.nativeEvent.layout.width)}>
-      <Text style={styles.title}>Tune to another language</Text>
-      <Text style={styles.sub}>Slide to change the songs and the style</Text>
+      <Text style={styles.title}>Tune to your taste</Text>
+      <Text style={styles.sub}>Select your style</Text>
       {width > 0 && (
         <View>
           <ScrollView

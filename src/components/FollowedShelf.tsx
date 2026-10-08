@@ -1,8 +1,8 @@
 /**
- * Home's "From artists you follow", below New releases: what following is
+ * Home's "From artists you love", below New releases: what following is
  * for. The newest releases of the artists you follow (a coral NEW on this
- * year's), each with the artist's face as a badge, then their own playlists.
- * Nothing followed, or nothing found: no section at all.
+ * year's), each with the artist's face as a badge. Nothing followed, or
+ * nothing found: no section at all.
  */
 import React, {useEffect, useState} from 'react';
 import {
@@ -25,10 +25,7 @@ export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
   const followed = useFollowedArtists();
   const offline = useOffline();
   const names = followed.map(a => a.name).join('|');
-  const [data, setData] = useState<{
-    releases: FollowedItem[];
-    playlists: FollowedItem[];
-  } | null>(null);
+  const [data, setData] = useState<FollowedItem[] | null>(null);
 
   useEffect(() => {
     if (!names || offline) {
@@ -43,7 +40,7 @@ export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
     };
   }, [names, offline]);
 
-  if (!names || !data || (!data.releases.length && !data.playlists.length)) {
+  if (!names || !data?.length) {
     return null;
   }
   const face = (artist: string) =>
@@ -51,11 +48,11 @@ export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>From artists you follow</Text>
+      <Text style={styles.title}>From artists you love</Text>
       <Text style={styles.sub}>Their newest first</Text>
       <FlatList
         horizontal
-        data={data.releases}
+        data={data}
         keyExtractor={r => r.perma_url || `${r.artist}|${r.title}`}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.shelf}
@@ -87,27 +84,6 @@ export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
           </TouchableOpacity>
         )}
       />
-      {data.playlists.map(p => (
-        <TouchableOpacity
-          key={p.perma_url}
-          style={styles.li}
-          activeOpacity={0.75}
-          onPress={() => onPick(p)}>
-          {p.image ? (
-            <Image source={{uri: upgradeArtwork(p.image)}} style={styles.liArt} />
-          ) : (
-            <View style={[styles.liArt, styles.empty]} />
-          )}
-          <View style={styles.liText}>
-            <Text style={styles.liTitle} numberOfLines={1}>
-              {p.title}
-            </Text>
-            <Text style={styles.relSub} numberOfLines={1}>
-              {p.subtitle}
-            </Text>
-          </View>
-        </TouchableOpacity>
-      ))}
     </View>
   );
 }
@@ -145,14 +121,5 @@ const styles = StyleSheet.create({
   },
   relTitle: {...T.body, color: C.text, marginTop: 14},
   relSub: {...T.sub, color: C.sub, marginTop: 2},
-  li: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: S.gutter,
-    marginTop: 10,
-  },
-  liArt: {width: 42, height: 42, borderRadius: 6},
-  liText: {flex: 1, minWidth: 0},
-  liTitle: {...T.body, color: C.text},
+
 });

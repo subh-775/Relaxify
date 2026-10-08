@@ -1067,8 +1067,8 @@ def _parse_albums(raw_albums):
 
 
 def _artist_releases(name, this_year):
-    """One followed artist's newest releases (JioSaavn's own "latest release"
-    first, then singles and albums by year) and their own playlist."""
+    """One followed artist's newest releases: JioSaavn's own "latest release"
+    first, then singles and albums by year."""
     key = ("releases", (name or "").strip().lower())
     with _cache_lock:
         if key in _cache:
@@ -1101,16 +1101,7 @@ def _artist_releases(name, this_year):
                 "new": latest or year >= this_year,
             })
     releases.sort(key=lambda r: (r["new"], r["year"]), reverse=True)
-    playlists = [{
-        "type": "playlist",
-        "title": _clean(pl.get("title")),
-        "subtitle": "Their own playlist",
-        "image": pl.get("image", ""),
-        "perma_url": pl["perma_url"],
-        "artist": name,
-    } for pl in (d.get("dedicated_artist_playlist") or [])[:1]
-        if isinstance(pl, dict) and pl.get("perma_url")]
-    result = {"releases": releases[:2], "playlists": playlists}
+    result = releases[:2]
     if d:
         with _cache_lock:
             _cache[key] = result
@@ -1118,17 +1109,16 @@ def _artist_releases(name, this_year):
 
 
 def get_followed_releases(names, this_year):
-    """Home's "From artists you follow": newest first, two per artist, at
-    most 12; then up to 4 of the artists' own playlists."""
+    """Home's "From artists you love": newest first, two per artist, at
+    most 12."""
     names = [n for n in names if n][:10]
     if not names:
-        return {"releases": [], "playlists": []}
+        return {"releases": []}
     with ThreadPoolExecutor(max_workers=5) as ex:
         per = list(ex.map(lambda n: _artist_releases(n, this_year), names))
-    releases = sorted((r for p in per for r in p["releases"]),
+    releases = sorted((r for p in per for r in p),
                       key=lambda r: (r["new"], r["year"]), reverse=True)
-    return {"releases": releases[:12],
-            "playlists": [pl for p in per for pl in p["playlists"]][:4]}
+    return {"releases": releases[:12]}
 
 
 def get_artist(name):
