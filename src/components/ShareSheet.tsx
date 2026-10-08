@@ -26,16 +26,11 @@ import {shareCodeOf, sharePlaylist} from '../sharedPlaylists';
 import {playlistLink} from '../links';
 import {Sheet} from './Sheet';
 
-/** What a friend receives. The whole message can be pasted into Search,
- *  which finds the code inside it. */
+/** What a friend receives: the playlist's name and its link. The link opens
+ *  it in Relaxify, or takes someone without the app to the install page; its
+ *  preview shows the app icon. (Pasted into Search, it still opens.) */
 export function shareMessage(name: string, code: string): string {
-  // The link opens the playlist in Relaxify, or offers the app to someone
-  // without it.
-  return (
-    `Listen to "${name}" with me on Relaxify 🎧\n${playlistLink(code)}\n\n` +
-    'No app yet? The link gets it for you. Already have it? Paste this ' +
-    'message in Search.'
-  );
+  return `${name}\n${playlistLink(code)}`;
 }
 
 export function ShareSheet({
@@ -125,7 +120,7 @@ export function ShareSheet({
           activeOpacity={0.8}
           onPress={send}>
           {code || error ? (
-            <Text style={styles.btnSolidText}>Send…</Text>
+            <Text style={styles.btnSolidText}>Share</Text>
           ) : (
             <ActivityIndicator color={C.bg} />
           )}
