@@ -9,6 +9,7 @@
  */
 import {NativeModules} from 'react-native';
 import {toast} from './toast';
+import {getBestArtworkUrl} from './tracks';
 
 const {port, token, version} = (NativeModules.Backend ?? {}) as {
   port?: number;
@@ -197,6 +198,19 @@ export type Track = {
   _autoplay?: boolean;
 };
 
+/** A release card on Home's "From artists you love". */
+export type FollowedItem = HomeItem & {artist: string; new?: boolean};
+
+/** The newest releases of the artists you follow. */
+export async function getFollowedReleases(
+  names: string[],
+): Promise<FollowedItem[]> {
+  const data = await apiGet<{releases?: FollowedItem[]}>(
+    `/artists/releases?names=${encodeURIComponent(names.join('|'))}`,
+  );
+  return Array.isArray(data.releases) ? data.releases : [];
+}
+
 export async function getHome(language = 'hindi,english'): Promise<HomeRow[]> {
   const data = await apiGet<{rows?: HomeRow[]}>(
     `/home?language=${encodeURIComponent(language)}`,
@@ -329,6 +343,7 @@ export async function getAlbum(
   name: string,
   artist = '',
   songUrl = '',
+  albumId = '',
 ): Promise<Collection> {
   // Hand-built for the same Hermes reason as getLyrics — the stub
   // URLSearchParams broke every album-by-name open (artist page albums).
@@ -337,6 +352,11 @@ export async function getAlbum(
   )}`;
   if (songUrl) {
     q += `&song_url=${encodeURIComponent(songUrl)}`;
+  }
+  // Exact: by name, a film soundtrack (most of an Indian artist's albums)
+  // matched nothing and opened empty.
+  if (albumId) {
+    q += `&album_id=${encodeURIComponent(albumId)}`;
   }
   const data = await apiGet<Partial<Collection>>(`/album?${q}`);
   return {
@@ -518,7 +538,13 @@ export type ArtistProfile = {
   followers?: number | null;
   listeners?: number | null;
   top_songs: Track[];
-  albums: Array<{name: string; image?: string; year?: string | number}>;
+  albums: Array<{
+    name: string;
+    image?: string;
+    year?: string | number;
+    /** JioSaavn's id; absent on an iTunes-only album. */
+    album_id?: string;
+  }>;
   error?: string;
 };
 
@@ -585,7 +611,7 @@ export async function startDownload(
         artist: track.artist,
         album: track.album,
         duration_ms: track.duration_ms,
-        artwork_url: track.artwork_url,
+        artwork_url: getBestArtworkUrl(track),
       },
       // The backend clamps to 64..320 anyway; clamping here keeps the value
       // we report to the user honest.

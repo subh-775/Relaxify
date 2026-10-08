@@ -24,7 +24,6 @@ import {
   Pencil,
   Plus,
   Search as SearchIcon,
-  Ticket,
   Trash2,
   X,
 } from '../icons';
@@ -44,7 +43,7 @@ import {
   renamePlaylist,
   setPlaylistImage,
 } from '../playlists';
-import {OpenSharedSheet} from '../components/OpenSharedSheet';
+import {shareCodeOf} from '../sharedPlaylists';
 import {
   MAX_PINS,
   isPinned,
@@ -128,8 +127,6 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   /** The row a long-press opened options for. */
   const [menuFor, setMenuFor] = useState<Collection | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Collection | null>(null);
-  /** The ticket: open a friend's shared playlist by its code. */
-  const [opening, setOpening] = useState(false);
   const [renaming, setRenaming] = useState<Collection | null>(null);
   const [renameText, setRenameText] = useState('');
   /** The library search: open, and what is typed in it. */
@@ -356,13 +353,6 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           <SearchIcon size={24} color={C.text} strokeWidth={2.2} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setOpening(true)}
-          hitSlop={12}
-          style={styles.barBtn}
-          accessibilityLabel="Open a shared playlist">
-          <Ticket size={24} color={C.text} strokeWidth={2.2} />
-        </TouchableOpacity>
-        <TouchableOpacity
           onPress={() => setCreating(true)}
           hitSlop={12}
           style={styles.barBtn}
@@ -550,16 +540,14 @@ export const LibraryScreen = React.memo(function LibraryScreen({
         )}
       </Sheet>
 
-      <OpenSharedSheet
-        open={opening}
-        onClose={() => setOpening(false)}
-        onOpened={onOpen}
-      />
-
       <ConfirmModal
         visible={!!confirmDelete}
         title={confirmDelete ? `Delete "${confirmDelete.name}"?` : ''}
-        message="The songs themselves are not touched."
+        message={
+          confirmDelete && shareCodeOf(playlistIdOf(confirmDelete))
+            ? 'The songs themselves are not touched. Its share link stops working; friends keep the copies they added.'
+            : 'The songs themselves are not touched.'
+        }
         confirmLabel="Delete"
         danger
         onCancel={() => setConfirmDelete(null)}

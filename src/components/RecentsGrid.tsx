@@ -132,7 +132,7 @@ function LastSongs({
   return (
     <Sheet open={open} onClose={onClose} scrollY={scrollY}>
       <View style={styles.sheetHead}>
-        <Text style={styles.sheetTitle}>{`Last ${recent.length} songs`}</Text>
+        <Text style={styles.sheetTitle}>{`Your last ${recent.length}s`}</Text>
         <TouchableOpacity
           style={styles.playAll}
           activeOpacity={0.8}
@@ -167,7 +167,7 @@ const Tile = React.memo(function Tile({
   size: number;
   onPress: () => void;
 }) {
-  const playing = useIsActiveTrack(track.title, track.artist);
+  const playing = useIsActiveTrack(track);
   const art = getBestArtworkUrl(track);
   return (
     <TouchableOpacity

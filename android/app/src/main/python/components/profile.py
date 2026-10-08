@@ -1066,6 +1066,61 @@ def _parse_albums(raw_albums):
     return out
 
 
+def _artist_releases(name, this_year):
+    """One followed artist's newest releases: JioSaavn's own "latest release"
+    first, then singles and albums by year."""
+    key = ("releases", (name or "").strip().lower())
+    with _cache_lock:
+        if key in _cache:
+            return _cache[key]
+    d = _fetch_jiosaavn_artist(name)
+    releases, seen = [], set()
+    for group, latest in (("latest_release", True), ("singles", False), ("topAlbums", False)):
+        items = d.get(group)
+        if isinstance(items, dict):
+            items = items.get("albums") or []
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict) or not it.get("perma_url") or it.get("id") in seen:
+                continue
+            # Theirs, not a compilation they appear on ("Best Hindi Love
+            # Songs" by Various Artists sits in an artist's album list too).
+            am = (it.get("more_info") or {}).get("artistMap") or {}
+            if not any(_score_artist(name, a.get("name", "")) >= 85
+                       for a in am.get("primary_artists") or []):
+                continue
+            seen.add(it.get("id"))
+            year = int(it["year"]) if str(it.get("year", "")).isdigit() else 0
+            releases.append({
+                "type": "album",
+                "title": _clean(it.get("title")),
+                "subtitle": f"{name} · {'single' if group == 'singles' else 'album'}",
+                "image": it.get("image", ""),
+                "perma_url": it["perma_url"],
+                "artist": name,
+                "year": year,
+                "new": latest or year >= this_year,
+            })
+    releases.sort(key=lambda r: (r["new"], r["year"]), reverse=True)
+    result = releases[:2]
+    if d:
+        with _cache_lock:
+            _cache[key] = result
+    return result
+
+
+def get_followed_releases(names, this_year):
+    """Home's "From artists you love": newest first, two per artist, at
+    most 12."""
+    names = [n for n in names if n][:10]
+    if not names:
+        return {"releases": []}
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        per = list(ex.map(lambda n: _artist_releases(n, this_year), names))
+    releases = sorted((r for p in per for r in p),
+                      key=lambda r: (r["new"], r["year"]), reverse=True)
+    return {"releases": releases[:12]}
+
+
 def get_artist(name):
     """Cached artist profile (see _build_artist)."""
     key = ("artist", (name or "").strip().lower())
@@ -1163,10 +1218,14 @@ def _build_artist(name):
     albums = _parse_albums(js_alb)
     # Always merge iTunes' clean discography (fetched in parallel above → no
     # extra latency): richer covers + Western releases JioSaavn misses.
-    seen = {a["name"].lower() for a in albums}
+    # Keyed without iTunes's " - EP" / " - Single" suffix: "Ved - EP" is the
+    # JioSaavn "Ved" again, and only the JioSaavn copy opens by its id.
+    def _album_key(n):
+        return re.sub(r"\s*-\s*(ep|single)$", "", (n or "").strip().lower())
+    seen = {_album_key(a["name"]) for a in albums}
     for a in itunes_albums:
-        if a["name"].lower() not in seen:
-            seen.add(a["name"].lower())
+        if _album_key(a["name"]) not in seen:
+            seen.add(_album_key(a["name"]))
             albums.append(a)
 
     # ── merged header metadata (best of each source) ────────────

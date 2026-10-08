@@ -57,6 +57,7 @@ import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {clearResume, readResume, resumeIndex, saveResume} from './resume';
+import {DOWNLOADS_ID} from './collections';
 import {chosenCopy} from './songChoice';
 
 let ready = false;
@@ -569,8 +570,8 @@ async function setupPlayerOnce(): Promise<boolean> {
       onTrackSettled(() => {
         (async () => {
           try {
-            const idx = (await TrackPlayer.getActiveTrackIndex()) ?? 0;
-            await refreshEngineMirror(idx);
+            await refreshEngineMirror();
+            const idx = activeIndex;
             // Recomputed rather than captured: by the time this runs the
             // active track may be several skips further on, and writing the
             // one that was current when the burst started would resume to the
@@ -581,6 +582,7 @@ async function setupPlayerOnce(): Promise<boolean> {
                 position: 0,
                 queue: queueSource,
                 index: idx,
+                origin: playbackOrigin,
               },
               true,
             );
@@ -644,6 +646,10 @@ export async function restoreSession(): Promise<boolean> {
   }
   try {
     queueSource = items.map(x => x.t);
+    // The collection it was playing from, so its coral highlight comes back
+    // (and Downloads its loop).
+    setPlaybackOrigin(s.origin ?? '');
+    await loopIf(s.origin ?? '');
     // By the saved TRACK, not the bare index: dropping an unplayable entry
     // above shifts every later index by one.
     const idx = resumeIndex(
@@ -754,6 +760,19 @@ function warmStream(track: Track | null | undefined, bitrate: number): void {
  */
 let queueSeq = 0;
 
+/**
+ * Which recording a track is: the file, or the source page it streams from.
+ * Two JioSaavn uploads of one song share a title and an artist, so those
+ * alone lit both rows when either played.
+ */
+function recordingOf(track: Track): string {
+  if (track.file_path) {
+    return track.file_path;
+  }
+  const source = track.playable_source || track.primary_source || '';
+  return (source && track.sources?.[source]?.url) || '';
+}
+
 function toQueueItem(track: Track, bitrate: number) {
   const url = streamUrlFor(track, bitrate);
   if (!url) {
@@ -764,6 +783,8 @@ function toQueueItem(track: Track, bitrate: number) {
     id: `${track.title}-${track.artist}`,
     /** Identity of this ROW, as opposed to `id`, the identity of the song. */
     _qid: `q${++queueSeq}`,
+    /** The recording (see recordingOf), for the playing highlight. */
+    _rec: recordingOf(track),
     url,
     // Sent on the redirect to the CDN too (see STREAM_UA).
     userAgent: STREAM_UA,
@@ -771,7 +792,9 @@ function toQueueItem(track: Track, bitrate: number) {
       source === 'jiosaavn' ? {Referer: 'https://www.jiosaavn.com/'} : undefined,
     title: track.title,
     artist: track.artist,
-    artwork: track.artwork_url,
+    // Not the baked artwork_url: songs saved by older builds carry an iTunes
+    // cover there that the current order no longer picks.
+    artwork: getBestArtworkUrl(track),
     duration: track.duration_ms ? track.duration_ms / 1000 : undefined,
   };
 }
@@ -803,6 +826,7 @@ export async function playTrack(
 ): Promise<void> {
   await requireEngine();
   setPlaybackOrigin(originId);
+  await loopIf(originId);
   // Was a fourth parameter defaulting to exactly this, which nothing ever
   // passed. With originId inserted BEFORE it, playTrack(t, list, 320) would
   // have quietly taken 320 as a collection id and still used the default
@@ -1103,10 +1127,37 @@ function warmArtwork(index: number): void {
 }
 
 /** Re-read the engine's queue and index so the mirror is warm before a gesture. */
-async function refreshEngineMirror(index?: number): Promise<void> {
+/**
+ * Where the playing row sits in `queue`, found by its row identity (`_qid`).
+ *
+ * The engine's index was read in a separate call from its queue, and songs
+ * inserted in between (a list starting, the earlier songs going in front)
+ * left it pointing at a different row. The swipe then drew that row as the
+ * next song, and Next showed its name and cover for a moment before the
+ * engine's own event put the real one back. The index is the fallback only.
+ *
+ * Exported for the test.
+ */
+export function rowIndex<T>(
+  queue: T[],
+  active: T | null | undefined,
+  fallback: number,
+): number {
+  const qid = (t: T | null | undefined) => (t as {_qid?: unknown} | null)?._qid;
+  const want = qid(active);
+  const at = want ? queue.findIndex(t => qid(t) === want) : -1;
+  return at >= 0 ? at : fallback;
+}
+
+async function refreshEngineMirror(): Promise<void> {
   try {
-    engineQueue = await TrackPlayer.getQueue();
-    activeIndex = index ?? (await TrackPlayer.getActiveTrackIndex()) ?? 0;
+    const queue = await TrackPlayer.getQueue();
+    const [active, index] = await Promise.all([
+      TrackPlayer.getActiveTrack(),
+      TrackPlayer.getActiveTrackIndex(),
+    ]);
+    engineQueue = queue;
+    activeIndex = rowIndex(queue, active, index ?? 0);
     warmArtwork(activeIndex);
     // Here rather than at the five call sites: setShuffle, moveQueueItem,
     // playTrack, restoreSession, topUpFromRadio and both skips ALL end with
@@ -1149,12 +1200,11 @@ export function peekAdjacentTrack(delta: 1 | -1): RNTPTrack | null {
  * useSyncExternalStore bails out when the snapshot is Object.is-equal, and
  * `false === false`, so the rows that were not involved never re-render.
  */
-export function useIsActiveTrack(
-  title: string | null | undefined,
-  artist: string | null | undefined,
-): boolean {
-  const t = String(title ?? '').toLowerCase();
-  const a = String(artist ?? '').toLowerCase();
+export function useIsActiveTrack(track: Track): boolean {
+  const t = String(track.title ?? '').toLowerCase();
+  const a = String(track.artist ?? '').toLowerCase();
+  // The copy that plays when this row is tapped: your "Wrong song?" pick.
+  const rec = recordingOf(chosenCopy(track));
   return useSyncExternalStore(
     l => {
       trackListeners.add(l);
@@ -1163,7 +1213,9 @@ export function useIsActiveTrack(
     () =>
       !!trackSnapshot &&
       String(trackSnapshot.title ?? '').toLowerCase() === t &&
-      String(trackSnapshot.artist ?? '').toLowerCase() === a,
+      String(trackSnapshot.artist ?? '').toLowerCase() === a &&
+      // Rows queued by an older build carry no recording: title + artist.
+      (!rec || !trackSnapshot._rec || trackSnapshot._rec === rec),
   );
 }
 
@@ -1259,6 +1311,37 @@ function setShuffleFlag(on: boolean) {
   shuffleListeners.forEach(l => l());
 }
 
+/**
+ * Repeat, owned here rather than by the player screen: Downloads turns on
+ * repeat-all by itself, and the screen's button has to show it.
+ */
+let repeatMode: RepeatMode = RepeatMode.Off;
+const repeatListeners = new Set<() => void>();
+
+export function useRepeat(): RepeatMode {
+  return useSyncExternalStore(
+    l => {
+      repeatListeners.add(l);
+      return () => repeatListeners.delete(l);
+    },
+    () => repeatMode,
+  );
+}
+
+/**
+ * Downloads loop: songs 1 to n, then 1 again (or the shuffled order), and no
+ * radio picks — they need the internet, and Downloads is what you play
+ * without it. Any other queue turns the loop off again. Awaited by the
+ * callers, so a quick second tap can't leave the two disagreeing.
+ */
+async function loopIf(originId: string): Promise<void> {
+  if (originId === DOWNLOADS_ID) {
+    await setRepeat(RepeatMode.Queue);
+  } else if (repeatMode === RepeatMode.Queue) {
+    await setRepeat(RepeatMode.Off);
+  }
+}
+
 export function isShuffled(): boolean {
   return shuffleOn;
 }
@@ -1302,6 +1385,30 @@ export function restoreOrder<T>(snapshot: T[], liveUpcoming: T[]): T[] {
   return snapshot.filter(t => qid(t) !== undefined && live.has(qid(t)));
 }
 
+/**
+ * The source list re-ordered to follow the engine after a shuffle.
+ *
+ * Shuffle reorders the ENGINE queue, and the source list is read by index
+ * against it — the resume note above all. Left in the old order, the saved
+ * index pointed at a different song, so a restart reopened on the wrong one.
+ * Matched by `_qid`, not by title, so a song queued twice keeps both rows.
+ *
+ * Exported for the test.
+ */
+export function alignUpcoming<S, R>(
+  source: S[],
+  index: number,
+  before: R[],
+  after: R[],
+): S[] {
+  const qid = (r: R) => (r as {_qid?: unknown})._qid;
+  const byQid = new Map(before.map((r, i) => [qid(r), source[index + 1 + i]]));
+  const upcoming = after
+    .map(r => byQid.get(qid(r)))
+    .filter((t): t is S => t !== undefined);
+  return [...source.slice(0, index + 1), ...upcoming];
+}
+
 /** Fisher-Yates, and it must not return the identity for a short list — a
  *  shuffle that visibly changes nothing reads as a broken button. */
 export function shuffleUpcoming<T>(rest: T[]): T[] {
@@ -1337,8 +1444,10 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
       return shuffleOn; // nothing ahead to reorder
     }
     preShuffleUpcoming = rest; // remember so OFF can restore it
+    const mixed = shuffleUpcoming(rest);
     await TrackPlayer.removeUpcomingTracks();
-    await TrackPlayer.add(shuffleUpcoming(rest));
+    await TrackPlayer.add(mixed);
+    queueSource = alignUpcoming(queueSource, index, rest, mixed);
     setShuffleFlag(true);
   } else {
     if (preShuffleUpcoming) {
@@ -1346,6 +1455,7 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
       if (restored.length) {
         await TrackPlayer.removeUpcomingTracks();
         await TrackPlayer.add(restored);
+        queueSource = alignUpcoming(queueSource, index, rest, restored);
       }
       preShuffleUpcoming = null;
     }
@@ -1386,12 +1496,21 @@ export function shuffleInAfterCurrent(
       return false;
     }
     const order = items.map(x => x.q as RNTPTrack);
+    const mixed = shuffleUpcoming(order);
     await TrackPlayer.removeUpcomingTracks();
-    await TrackPlayer.add(shuffleUpcoming(order));
-    queueSource = [...queueSource, ...items.map(x => x.t)];
+    await TrackPlayer.add(mixed);
+    // Everything after the playing song is now `items`, in `mixed` order —
+    // the old upcoming tail is gone from the engine, so it goes here too.
+    queueSource = alignUpcoming(
+      [...queueSource.slice(0, index + 1), ...items.map(x => x.t)],
+      index,
+      order,
+      mixed,
+    );
     preShuffleUpcoming = order;
     setShuffleFlag(true);
     setPlaybackOrigin(originId);
+    await loopIf(originId);
     await refreshEngineMirror();
     return true;
   });
@@ -1449,6 +1568,10 @@ export async function setRepeat(mode: RepeatMode): Promise<void> {
     cancelCrossfade();
   }
   await TrackPlayer.setRepeatMode(mode);
+  if (repeatMode !== mode) {
+    repeatMode = mode;
+    repeatListeners.forEach(l => l());
+  }
 }
 
 /**
@@ -1566,7 +1689,10 @@ async function saveSession(force = false): Promise<void> {
   ]);
   const src = sourceTrackFor(active ?? null);
   if (src) {
-    saveResume({track: src, position, queue: queueSource, index: idx ?? 0}, force);
+    saveResume(
+      {track: src, position, queue: queueSource, index: idx ?? 0, origin: playbackOrigin},
+      force,
+    );
   }
 }
 
@@ -1612,7 +1738,8 @@ export async function topUpFromRadio(force = false): Promise<void> {
     buildingQueue ||
     (autoplayHeld && !force) ||
     !readSettings().autoplay ||
-    sleepMode() === 'endOfTrack'
+    sleepMode() === 'endOfTrack' ||
+    repeatMode === RepeatMode.Queue
   ) {
     return;
   }
@@ -2074,7 +2201,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
           );
           if (src) {
             saveResume(
-              {track: src, position, queue: queueSource, index: idx},
+              {track: src, position, queue: queueSource, index: idx, origin: playbackOrigin},
               true,
             );
           }
@@ -2134,7 +2261,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
       }
       const src = sourceTrackFor(active);
       if (src) {
-        saveResume({track: src, position, queue: queueSource, index: idx});
+        saveResume({track: src, position, queue: queueSource, index: idx, origin: playbackOrigin});
       }
     } catch {}
   }, 1000);

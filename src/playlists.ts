@@ -209,6 +209,12 @@ export function playlistsContaining(
   );
 }
 
+/** Rewrite every saved song in place (coverRepair.ts). Not a change the user
+ *  made, so `updatedAt` — the library's sort key — stays as it was. */
+export function mapPlaylistTracks(fn: (t: Track) => Track): void {
+  store.update(list => list.map(p => ({...p, tracks: p.tracks.map(fn)})));
+}
+
 export function usePlaylists(): Playlist[] {
   return useStoreValue(store);
 }

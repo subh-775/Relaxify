@@ -229,6 +229,31 @@ class JioSaavnClient:
             return songs[0]["more_info"].get("encrypted_media_url")
         return None
 
+    def get_song_image(self, song_url: str) -> Optional[str]:
+        """The cover JioSaavn itself shows for this exact song, at 500x500.
+
+        Used to repair saved songs that only kept an iTunes cover: iTunes is a
+        separate fuzzy lookup and sometimes matched another song."""
+        match = re.search(r"song/(.*?)/([^/?#]+)", song_url or "")
+        if not match:
+            return None
+        params = {
+            "__call": "webapi.get",
+            "api_version": "4",
+            "_format": "json",
+            "_marker": "0",
+            "ctx": "wap6dot0",
+            "token": match.group(2),
+            "type": "song",
+        }
+        response = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}")
+        data = response.json()
+        songs = data.get("songs") if isinstance(data, dict) else None
+        image = songs[0].get("image") if songs and isinstance(songs[0], dict) else None
+        if not isinstance(image, str) or not image.startswith("http"):
+            return None
+        return re.sub(r"\d+x\d+", "500x500", image)
+
     def _generate_auth_token(
         self, encrypted_url: str, bitrate: int = 320
     ) -> Optional[str]:

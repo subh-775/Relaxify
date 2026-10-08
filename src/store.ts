@@ -63,6 +63,9 @@ export function setOnCellular(v: boolean): void {
   cellular = v;
 }
 
+/** Data saver is on AND the phone is on mobile data: hold background fetches. */
+export const savingData = () => settingsStore.get().dataSaver && cellular;
+
 export const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
   showSourceBadge: true,
@@ -87,7 +90,13 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 /** At most this many Home languages: more and Home turns into a blur. */
-export const MAX_LANGUAGES = 3;
+export const MAX_LANGUAGES = 2;
+
+/** Home's tuner: the pair after tuning to `lang`. It leads and the one you
+ *  were on follows, so landing on the second swaps them. */
+export function retune(pair: string[], lang: string): string[] {
+  return lang === pair[0] ? pair : [lang, pair[0]].filter(Boolean);
+}
 /** The sizes "Clear cache automatically" steps through, in MB; 0 = off. */
 export const CACHE_STEPS = [0, 10, 20, 50, 100, 200, 500];
 
@@ -127,6 +136,13 @@ export function toggleLike(t: Track): boolean {
   likesStore.set(had ? list.filter(x => getTrackId(x) !== k) : [t, ...list]);
   logEvent(had ? 'song_unliked' : 'song_liked', songParams(t));
   return !had;
+}
+
+export const readLikes = likesStore.get;
+
+/** Rewrite liked songs in place (coverRepair.ts); order and ids unchanged. */
+export function mapLikes(fn: (t: Track) => Track): void {
+  likesStore.update(list => list.map(fn));
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────

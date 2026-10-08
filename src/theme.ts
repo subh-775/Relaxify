@@ -18,6 +18,9 @@ export const C = {
   /** Destructive only: a true red, so a warning never reads as "on" next to
    *  the coral accent. Big actions fill with it (white text); icons wear it. */
   danger: '#FF3B30',
+  /** Blush: a softer coral, for a second choice beside an accent one (the
+   *  language tuner's second station). */
+  tone: '#FF8D9A',
   border: 'rgba(255,255,255,0.08)',
 };
 

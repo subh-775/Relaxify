@@ -14,7 +14,7 @@
  */
 import {expect, jest, test} from '@jest/globals';
 import TrackPlayer from 'react-native-track-player';
-import {addToQueue, playTrack, topUpFromRadio} from '../src/player';
+import {addToQueue, playTrack, rowIndex, topUpFromRadio} from '../src/player';
 
 jest.mock('react-native-track-player', () => {
   const queue: any[] = [];
@@ -164,4 +164,13 @@ test('two radio top-ups racing append one batch, not two', async () => {
 
   const titles = engine.__queue.map(t => t.title);
   expect(new Set(titles).size).toBe(titles.length);
+});
+
+test('the playing row is found by identity, not a stale index', () => {
+  // The index was read before two songs went in front of the playing one.
+  const queue = [{_qid: 'a'}, {_qid: 'b'}, {_qid: 'tapped'}, {_qid: 'c'}];
+  expect(rowIndex(queue, {_qid: 'tapped'}, 0)).toBe(2);
+  // Unknown row (an engine that outlived the JS): the index stands.
+  expect(rowIndex(queue, {_qid: 'gone'}, 1)).toBe(1);
+  expect(rowIndex(queue, null, 3)).toBe(3);
 });

@@ -1306,6 +1306,12 @@ def scan_downloads(directory: str) -> List[Dict[str, Any]]:
         if " - " in stem:
             f_title, f_artist = stem.split(" - ", 1)
             title, artist = f_title.strip(), f_artist.strip()
+            # The download name is capped in bytes, so a long title or artist
+            # can be cut short there; the tag holds the whole of it.
+            if tag_title and len(tag_title) > len(title) and tag_title.startswith(title):
+                title = tag_title
+            if tag_artist and len(tag_artist) > len(artist) and tag_artist.startswith(artist):
+                artist = tag_artist
         else:
             title, artist = (tag_title or stem), tag_artist
 

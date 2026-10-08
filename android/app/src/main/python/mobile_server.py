@@ -1023,6 +1023,14 @@ def quality_cap():
 
 
 # ─── Downloads ────────────────────────────────────────────────────────────────
+def _fit_bytes(text: str, max_bytes: int) -> str:
+    """`text` cut to at most `max_bytes` of UTF-8, never mid-character."""
+    raw = text.encode("utf-8")
+    if len(raw) <= max_bytes:
+        return text
+    return raw[:max_bytes].decode("utf-8", "ignore").rstrip()
+
+
 @app.post("/api/download")
 def download_track():
     if not _download_manager:
@@ -1043,8 +1051,13 @@ def download_track():
     except Exception:
         pass
 
-    safe_title = re.sub(r'[<>:"/\\|?*]', "_", track_info.get("title", "unknown")).strip() or "unknown"
-    safe_artist = re.sub(r'[<>:"/\\|?*]', "_", track_info.get("artist", "unknown")).strip() or "unknown"
+    # Capped in BYTES: Android's file name limit is 255 bytes, and a Devanagari
+    # character is three of them, so a long Hindi title (or a JioSaavn credit
+    # listing a dozen singers) failed the download with "File name too long".
+    # 140 + " - " + 80 + ".m4a.part" stays well under it; the full title and
+    # artist still go into the tags, and the library scan reads them back.
+    safe_title = _fit_bytes(re.sub(r'[<>:"/\\|?*]', "_", str(track_info.get("title") or "")).strip(), 140) or "unknown"
+    safe_artist = _fit_bytes(re.sub(r'[<>:"/\\|?*]', "_", str(track_info.get("artist") or "")).strip(), 80) or "unknown"
     output_path = str(out_dir_path / f"{safe_title} - {safe_artist}")
 
     try:
@@ -1309,7 +1322,25 @@ def get_lyrics():
         cleaned = re.sub(r'\s+(?:feat\.|ft\.).*$', '', cleaned, flags=re.IGNORECASE)
         return cleaned.strip()
 
-    def _fetch():
+    def _youtube_split(text: str, credit: str):
+        """A YouTube upload titled "Artist - Song", credited to a channel.
+
+        Searched as it stands, "Ritviz - Dha" by "Sony Music India" matches
+        nothing. Returns (song, artist) to try first, or None when the title
+        has no dash. Whichever side reads as the credited artist is the artist;
+        with neither, the YouTube convention says it is the left."""
+        parts = re.split(r"\s+[-–—]\s+", _clean_for_search(text), maxsplit=1)
+        if len(parts) != 2 or not parts[0].strip() or not parts[1].strip():
+            return None
+        left, right = parts[0].strip(), parts[1].strip()
+        who = _clean_for_search(credit).lower()
+        if who and fuzz.token_set_ratio(who, right.lower()) >= 80:
+            return left, credit
+        if who and fuzz.token_set_ratio(who, left.lower()) >= 80:
+            return right, credit
+        return right, left
+
+    def _fetch(title, artist, budget):
         headers = {"User-Agent": "Fix_Spotify/1.0 (music player)"}
         clean_title = _clean_for_search(title)
         clean_artist = _clean_for_search(artist)
@@ -1317,8 +1348,8 @@ def get_lyrics():
         # A total miss can otherwise stack many slow calls; on a mobile network
         # those add up fast. Bound the whole lookup.
         start = time.monotonic()
-        deadline = start + 20      # hard cap for the entire lookup
-        ll_deadline = start + 12   # favour lrclib (our only SYNCED source)
+        deadline = start + budget             # hard cap for the entire lookup
+        ll_deadline = start + budget * 0.6    # favour lrclib (our only SYNCED source)
 
         def _http_get(url, *, timeout, **kw):
             left = deadline - time.monotonic()
@@ -1524,7 +1555,13 @@ def get_lyrics():
         return {"plain": "", "synced": [], "source": None}
 
     try:
-        result = _fetch()
+        # Both attempts together stay inside the app's 30s request timeout.
+        result = None
+        split = _youtube_split(title, artist)
+        if split:
+            result = _fetch(split[0], split[1], 9)
+        if not (result and result.get("source")):
+            result = _fetch(title, artist, 18 if split else 20)
         # Cache only real hits, so a transient miss can retry later.
         if result and result.get("source"):
             with _lyrics_cache_lock:
@@ -1539,6 +1576,13 @@ def get_lyrics():
 # ─── Discovery / profiles ─────────────────────────────────────────────────────
 @app.get("/api/artwork")
 def get_artwork():
+    # A JioSaavn song's own cover, by its song link (the app's cover repair).
+    song_url = _arg("song_url")
+    if song_url:
+        try:
+            return jsonify({"artwork_url": _source_client("jiosaavn").get_song_image(song_url) or ""})
+        except Exception as e:
+            return jsonify({"artwork_url": "", "error": str(e)})
     try:
         results = _source_client("itunes").search(
             f"{_arg('title')} {_arg('artist')}".strip(), limit=1)
@@ -1568,6 +1612,16 @@ def artist_profile():
         return jsonify(get_artist(name))
     except Exception as e:
         return jsonify({"name": name, "top_songs": [], "albums": [], "error": str(e)})
+
+
+@app.get("/api/artists/releases")
+def followed_releases():
+    """Home's "From artists you love". `names` is "A|B|C"."""
+    try:
+        from components.profile import get_followed_releases
+        return jsonify(get_followed_releases(_arg("names").split("|"), time.localtime().tm_year))
+    except Exception as e:
+        return jsonify({"releases": [], "error": str(e)})
 
 
 @app.get("/api/search/artists")

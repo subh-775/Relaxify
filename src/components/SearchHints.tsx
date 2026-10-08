@@ -1,23 +1,17 @@
 /**
- * The empty search box, teaching what it can do: a hint that rolls between a
- * few examples (an artist you actually play, pasting a Spotify link, a mood)
- * with the same rise as the Home header's words. It only exists while the box
- * is empty, so typing stops it at once.
- *
- * Two sibling Texts per hint, each with its own weight: a nested span that
- * names no weight falls back to Regular on Android (see Greeting).
+ * The empty search box, teaching what it can do: a plain grey placeholder
+ * that rolls between pasting a playlist link and searching by mood, with the
+ * same rise as the Home header's words. It only exists while the box is
+ * empty, so typing stops it at once.
  */
 import React, {useEffect, useRef, useState} from 'react';
 import {Animated, Easing, StyleSheet, Text} from 'react-native';
 
 const EVERY_MS = 3200;
 
-export function SearchHints({artist}: {artist?: string}) {
-  const hints: [string, string][] = [
-    ['Try ', artist || 'Arijit Singh'],
-    ['Paste a ', 'Spotify or YouTube playlist'],
-    ['Search by mood, like ', 'chill'],
-  ];
+const HINTS = ['Paste a Spotify or YT playlist', 'Search by mood, like chill'];
+
+export function SearchHints() {
   const [i, setI] = useState(0);
   // -1 below, 0 in place, 1 gone above.
   const v = useRef(new Animated.Value(0)).current;
@@ -29,7 +23,7 @@ export function SearchHints({artist}: {artist?: string}) {
         easing: Easing.in(Easing.quad),
         useNativeDriver: true,
       }).start(() => {
-        setI(n => (n + 1) % 3);
+        setI(n => (n + 1) % HINTS.length);
         v.setValue(-1);
         Animated.timing(v, {
           toValue: 0,
@@ -44,7 +38,6 @@ export function SearchHints({artist}: {artist?: string}) {
       v.stopAnimation();
     };
   }, [v]);
-  const [lead, key] = hints[i];
   return (
     <Animated.View
       pointerEvents="none"
@@ -65,11 +58,8 @@ export function SearchHints({artist}: {artist?: string}) {
           ],
         },
       ]}>
-      <Text style={styles.lead} numberOfLines={1}>
-        {lead}
-      </Text>
-      <Text style={styles.key} numberOfLines={1}>
-        {key}
+      <Text style={styles.hint} numberOfLines={1}>
+        {HINTS[i]}
       </Text>
     </Animated.View>
   );
@@ -82,6 +72,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  lead: {color: '#6b6b6b', fontSize: 15, fontWeight: '600'},
-  key: {color: '#111014', fontSize: 15, fontWeight: '800', flexShrink: 1},
+  hint: {color: '#6b6b6b', fontSize: 15, fontWeight: '600', flexShrink: 1},
 });

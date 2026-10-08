@@ -5,22 +5,22 @@ export const LICENCE_URL = 'https://www.gnu.org/licenses/gpl-3.0.html';
  *  release (GitHub's releases/latest/download), so it never goes stale. */
 export const GET_URL = `${DOCS_URL}get/`;
 
-/** What "Recommend Relaxify" (and the Recap's share) sends: one line on what
- *  the app is, and the link that always installs the newest version. */
-export function inviteMessage(
-  lead = "I've been listening on Relaxify 🎧",
-): string {
-  return [
-    lead,
-    'A free music app for Android: search once, play from JioSaavn, ' +
-      'SoundCloud and YouTube, listen together with Jam.',
-    `Get it: ${GET_URL}`,
-  ].join('\n');
+/** What "Recommend Relaxify" (and the Recap's share) sends: the name, one
+ *  line, and the link that always installs the newest version. The link's
+ *  preview shows the app icon. */
+export function inviteMessage(lead = 'Try Relaxify 🎧'): string {
+  return [lead, 'Music, made simple.', GET_URL].join('\n');
 }
 
 /** A shared playlist as a link: opens it in the app, or offers the install. */
 export function playlistLink(code: string): string {
   return `${DOCS_URL}p/?c=${code}`;
+}
+
+/** What a friend receives: the playlist's name and its link. The link's
+ *  preview shows the app icon. (Pasted into Search, it still opens.) */
+export function shareMessage(name: string, code: string): string {
+  return `${name}\n${playlistLink(code)}`;
 }
 
 /** A new GitHub issue with the facts a report always needs filled in. */

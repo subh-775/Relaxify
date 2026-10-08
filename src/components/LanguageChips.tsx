@@ -15,7 +15,7 @@ import {Sheet} from './Sheet';
 import {MAX_LANGUAGES, useSettings, writeSetting} from '../store';
 
 /** JioSaavn's catalogue languages, the ones most people pick first. */
-const LANGUAGES: [string, string][] = [
+export const LANGUAGES: [string, string][] = [
   ['hindi', 'हिन्दी'],
   ['english', 'English'],
   ['punjabi', 'ਪੰਜਾਬੀ'],

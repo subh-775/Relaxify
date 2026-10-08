@@ -272,9 +272,14 @@ export function startSharing(): () => void {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   const seed = () => {
     const all = readPlaylists();
-    Object.keys(shares.get()).forEach(id =>
-      last.set(id, all.find(p => p.id === id)),
-    );
+    Object.keys(shares.get()).forEach(id => {
+      const p = all.find(x => x.id === id);
+      last.set(id, p);
+      // Deleted while offline: its link is stopped now instead.
+      if (!p) {
+        push(id).catch(() => {});
+      }
+    });
   };
   seed();
   const off = onPlaylistsChanged(() => {

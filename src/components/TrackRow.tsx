@@ -98,7 +98,7 @@ export const TrackRow = React.memo(function TrackRow({
   // Every row knows for itself whether it's the song playing — callers kept
   // forgetting to pass `active`, and a list where the playing song isn't green
   // leaves the user hunting. The prop still wins when supplied.
-  const engineActive = useIsActiveTrack(track.title, track.artist);
+  const engineActive = useIsActiveTrack(track);
   const isActive = active ?? engineActive;
 
   const slide = useSharedValue(0);

@@ -37,6 +37,10 @@ import {
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
+import {checkOnline, useOffline} from '../offline';
+import {OfflineScreen} from '../components/OfflineScreen';
+import {LanguageDial} from '../components/LanguageDial';
+import {FollowedShelf} from '../components/FollowedShelf';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -272,6 +276,9 @@ export const HomeScreen = React.memo(function HomeScreen({
         throw new Error('The music engine did not start.');
       }
       const data = await getHome(homeLanguageParam());
+      if (!data.length) {
+        checkOnline().catch(() => {});
+      }
       if (data.length) {
         // The first screenful's covers, before the rows are shown, so the
         // page arrives drawn rather than filling in picture by picture.
@@ -280,6 +287,8 @@ export const HomeScreen = React.memo(function HomeScreen({
         homeCache.set(trimForCache(data)); // seed the next launch
       }
     } catch (e) {
+      // Offline shows its own screen, even over cached rows.
+      checkOnline().catch(() => {});
       // Only surface the error if there's nothing on screen — a failed refresh
       // behind cached rows should stay silent.
       if (!homeCache.get().length) {
@@ -290,11 +299,15 @@ export const HomeScreen = React.memo(function HomeScreen({
     }
   }, []);
 
-  // Again whenever the languages change (Settings, or the welcome).
+  // Again whenever the languages change (Settings, or the welcome), and when
+  // the internet comes back.
   const langs = useSettings().homeLanguages.join(',');
+  const offline = useOffline();
   useEffect(() => {
-    load();
-  }, [load, langs]);
+    if (!offline) {
+      load();
+    }
+  }, [load, langs, offline]);
 
   // Claiming the left strip back from Android's system back gesture happens in
   // onLayout, below — NOT here. Home mounts while the splash is still up, and
@@ -313,6 +326,10 @@ export const HomeScreen = React.memo(function HomeScreen({
       onReady?.();
     }
   }, [settled, phase, onReady]);
+
+  if (offline && onOpenCollection) {
+    return <OfflineScreen onOpenCollection={onOpenCollection} />;
+  }
 
   if (phase === 'error') {
     return (
@@ -388,7 +405,19 @@ export const HomeScreen = React.memo(function HomeScreen({
           <FlatList
             data={rows}
             keyExtractor={row => row.title}
-            renderItem={({item}) => <Row row={item} onPick={onPickTrack} />}
+            renderItem={({item}) => (
+              <>
+                <Row row={item} onPick={onPickTrack} />
+                {/* Your artists' newest, between New releases and Charts. */}
+                {item.title.trim().toLowerCase() === 'new releases' && (
+                  <FollowedShelf onPick={onPickTrack} />
+                )}
+                {/* The language dial between Charts and Top playlists. */}
+                {item.title.trim().toLowerCase() === 'charts' && (
+                  <LanguageDial />
+                )}
+              </>
+            )}
             contentContainerStyle={[styles.scroll, listEnd]}
             showsVerticalScrollIndicator={false}
             overScrollMode="never"

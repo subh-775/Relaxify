@@ -15,6 +15,7 @@ import {
   Image,
   Modal,
   NativeModules,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -65,6 +66,7 @@ import {
   State,
   setShuffle,
   shuffleInAfterCurrent,
+  shuffleUpcoming,
   togglePlay,
   useActiveTrack,
   usePlaybackOrigin,
@@ -80,7 +82,8 @@ import {
   setPlaylistImage,
   usePlaylists,
 } from '../playlists';
-import {ShareSheet} from '../components/ShareSheet';
+import {sharePlaylist} from '../sharedPlaylists';
+import {shareMessage} from '../links';
 import {getLocalLibrary} from '../backend';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {Sheet} from '../components/Sheet';
@@ -228,6 +231,28 @@ export function CollectionScreen({
     ? playlists.find(p => p.id === playlistId)
     : undefined;
   const displayName = livePlaylist?.name ?? collection.name;
+
+  /** Share: straight to the phone's share options with the playlist's name
+   *  and link. The first time makes the link (sharedPlaylists.ts), which
+   *  needs the internet; after that it is the same link. */
+  const share = useCallback(async () => {
+    if (!livePlaylist || sharing) {
+      return;
+    }
+    setSharing(true);
+    try {
+      const code = await sharePlaylist(livePlaylist);
+      await Share.share({message: shareMessage(livePlaylist.name, code)});
+    } catch (e) {
+      toast(
+        e instanceof Error && !/^Jam /.test(e.message)
+          ? e.message
+          : 'Could not share it. Check your connection.',
+      );
+    } finally {
+      setSharing(false);
+    }
+  }, [livePlaylist, sharing]);
   // A friend's playlist opened from its link: playable here, kept only by
   // "Add to library", which saves a copy that is entirely yours. The same
   // link again finds that copy and says so, rather than adding it twice.
@@ -434,6 +459,12 @@ export function CollectionScreen({
     if (playingHere || origin === collection.id) {
       await setShuffle(true).catch(() => {});
       toast('Shuffled what comes next');
+    } else if (collection.kind === 'downloads') {
+      // Downloads loops, so it starts on its own, from the top of a random
+      // order: slotted in after another song, that song would loop with it.
+      const mixed = shuffleUpcoming(tracks);
+      onPlay(mixed[0], mixed);
+      setTimeout(() => setShuffle(true).catch(() => {}), 600);
     } else if (
       await shuffleInAfterCurrent(tracks, collection.id).catch(() => false)
     ) {
@@ -443,7 +474,16 @@ export function CollectionScreen({
       // Give the queue a beat to build before shuffling its tail.
       setTimeout(() => setShuffle(true).catch(() => {}), 600);
     }
-  }, [onPlay, tracks, playingHere, shuffled, origin, collection.id, displayName]);
+  }, [
+    onPlay,
+    tracks,
+    playingHere,
+    shuffled,
+    origin,
+    collection.id,
+    collection.kind,
+    displayName,
+  ]);
 
   /** The green button: pause/resume when this collection is playing, start it
    *  otherwise — never a dead control. */
@@ -542,12 +582,17 @@ export function CollectionScreen({
             )}
             {isOwnPlaylist && livePlaylist && (
               <TouchableOpacity
-                onPress={() => setSharing(true)}
+                onPress={share}
+                disabled={sharing}
                 hitSlop={12}
                 style={styles.barBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Share with friends">
-                <Share2 size={21} color={C.text} />
+                {sharing ? (
+                  <ActivityIndicator size="small" color={C.text} />
+                ) : (
+                  <Share2 size={21} color={C.text} />
+                )}
               </TouchableOpacity>
             )}
             {isOwnPlaylist && (
@@ -856,11 +901,6 @@ export function CollectionScreen({
           </TouchableOpacity>
         </View>
       </Sheet>
-
-      <ShareSheet
-        playlist={sharing && livePlaylist ? livePlaylist : null}
-        onClose={() => setSharing(false)}
-      />
 
       {/* Rename dialog. Stays a <Modal>: a TextInput dialog wants a real window
           for soft-keyboard focus and insets. See LibraryScreen for the full
