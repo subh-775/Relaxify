@@ -395,6 +395,12 @@ async function setupPlayerOnce(): Promise<boolean> {
         appKilledPlaybackBehavior:
           AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
       },
+      // The note in the corner of the media controls (and the notification),
+      // where Android drew ExoPlayer's generic play-circle. The white
+      // silhouette already in res/drawable-* (the Recap's reminder uses it):
+      // a small icon is drawn as its alpha only, so it must be one. A plain
+      // resource name, which RN's drawable lookup resolves as it stands.
+      icon: {uri: 'ic_stat_recap'} as unknown as number,
       capabilities: [
         Capability.Play,
         Capability.Pause,
