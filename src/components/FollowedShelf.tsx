@@ -15,28 +15,66 @@ import {
 } from 'react-native';
 import {C, S, T} from '../theme';
 import {useFollowedArtists} from '../artists';
-import {getFollowedReleases, type FollowedItem, type HomeItem} from '../backend';
+import {
+  getFollowedReleases,
+  waitForBackend,
+  type FollowedItem,
+  type HomeItem,
+} from '../backend';
+import {asArray, createStore, useStoreValue} from '../storage';
 import {upgradeArtwork} from '../tracks';
 import {useOffline} from '../offline';
 
 const COVER = 128;
 
+/** The last shelf, so it is there at once on the next launch. Keyed by the
+ *  names it was made for: follow someone new and it is fetched again. */
+const last = createStore<{names: string; items: FollowedItem[]}>(
+  'mp.followedShelf.v1',
+  {names: '', items: []},
+  raw => {
+    const r = raw as {names?: unknown; items?: unknown} | null;
+    return {names: String(r?.names ?? ''), items: asArray<FollowedItem>(r?.items)};
+  },
+);
+
 export function FollowedShelf({onPick}: {onPick: (i: HomeItem) => void}) {
   const followed = useFollowedArtists();
   const offline = useOffline();
   const names = followed.map(a => a.name).join('|');
-  const [data, setData] = useState<FollowedItem[] | null>(null);
+  const saved = useStoreValue(last);
+  const [fresh, setFresh] = useState<FollowedItem[] | null>(null);
+  const data = fresh ?? (saved.names === names ? saved.items : null);
 
+  // Home mounts while the engine is still starting, with last launch's rows:
+  // asked then, this failed and stayed empty until a follow changed. So it
+  // waits for the engine, and tries again a few times.
   useEffect(() => {
     if (!names || offline) {
       return;
     }
     let live = true;
-    getFollowedReleases(names.split('|'))
-      .then(d => live && setData(d))
-      .catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = (n: number) => {
+      waitForBackend()
+        .then(ok => (ok ? getFollowedReleases(names.split('|')) : Promise.reject()))
+        .then(items => {
+          if (live) {
+            setFresh(items);
+            last.set({names, items});
+          }
+        })
+        .catch(() => {
+          if (live && n < 3) {
+            timer = setTimeout(() => attempt(n + 1), 10_000 * (n + 1));
+          }
+        });
+    };
+    setFresh(null);
+    attempt(0);
     return () => {
       live = false;
+      clearTimeout(timer);
     };
   }, [names, offline]);
 
