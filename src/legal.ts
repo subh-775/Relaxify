@@ -1,10 +1,9 @@
 /**
  * Relaxify's Terms of Use and Privacy statement, and the credits.
  *
- * The ONE copy: the app shows it in Settings > About and support (LegalScreen),
- * and the docs site renders the same text at /terms and /privacy by importing
- * this file. Plain strings only, and no React Native imports, so the docs'
- * build can load it too.
+ * The ONE copy: the app shows it in Settings > About and support (LegalView).
+ * Plain strings only, and no React Native imports, so another build (the
+ * docs) could load it as it is.
  *
  * `**bold**` inside a string is the only markup; both renderers understand it.
  */
