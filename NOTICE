@@ -29,8 +29,8 @@ may still use, study, change and share the code.
 
 3. Name and logo (section 7(e)). The licence grants no rights to the name
    "Relaxify" or to the Relaxify logo, wordmarks and app icons (docs/public/
-   logo.svg, logo.png, wordmark-*.svg and the launcher icons under
-   android/app/src/main/res/). A modified version must use a different name
+   logo.png, mark.png and wordmark-*.svg, src/assets/logo.png, and the
+   launcher icons under android/app/src/main/res/ and android/app/src/rc/res/). A modified version must use a different name
    and icon. Unmodified copies of an official release may be shared as they
    are, under the name.
 

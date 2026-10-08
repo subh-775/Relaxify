@@ -1,12 +1,12 @@
 /**
- * The site's own pieces: the logo and its two notes as characters, the
+ * The site's own pieces: the logo and the logo alive, the
  * Recap-style starburst, the Home deck, the download button, live release
  * numbers, and the blocks pages are written with.
  *
  * Motion is GSAP, transform and opacity only, and none of it runs for anyone
  * whose phone asks for less motion.
  */
-import {useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import gsap from 'gsap';
 import {CYCLE, PAGES, PAL, SITE} from './nav.js';
 
@@ -19,125 +19,46 @@ export const reduceMotion = () =>
 
 /* ── the mark, and the mark alive ────────────────────────────────────────── */
 
-const NOTE =
-  'M52 16 C52 13 55 12 57 13 C72 20 84 32 82 50 C81 58 77 63 72 66 C75 55 72 42 60 36 L60 70 C60 82 50 90 38 90 C27 90 19 83 19 74 C19 64 28 57 39 57 C44 57 48 58 52 61 Z';
-const SHINE = 'M52 16 C52 13 55 12 57 13 C66 17 73 23 77 30 C70 26 62 24 56 26 L52 28 Z';
-const BACK = 'translate(-6.96 -3.78) scale(0.7022)';
-const FRONT = 'translate(4.89 -2.03) scale(1.0721)';
+/** The Coral Ribbon mark, transparent (public/mark.png). */
+const MARK = href('/mark.png');
 
-function Grads({id}) {
-  return (
-    <defs>
-      <linearGradient id={`${id}b`} x1="0.1" y1="0" x2="0.9" y2="1">
-        <stop offset="0" stopColor="#C0606C" />
-        <stop offset="0.5" stopColor="#A12C48" />
-        <stop offset="1" stopColor="#6E1030" />
-      </linearGradient>
-      <linearGradient id={`${id}f`} x1="0.1" y1="0" x2="0.9" y2="1">
-        <stop offset="0" stopColor="#FF9AA0" />
-        <stop offset="0.5" stopColor="#FF5A6E" />
-        <stop offset="1" stopColor="#E2266A" />
-      </linearGradient>
-    </defs>
-  );
-}
-
-/** The logo: two notes, no faces. */
+/** The logo. */
 export function Logo({size = 28}) {
-  const id = `l${useId().replace(/:/g, '')}`;
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-      <Grads id={id} />
-      <path d={NOTE} transform={BACK} fill={`url(#${id}b)`} />
-      <path d={NOTE} transform={FRONT} fill={`url(#${id}f)`} />
-    </svg>
-  );
-}
-
-/** Eyes and a mouth on a note's round head (cx, cy), scaled by s. */
-function Face({cx, cy, s, mood}) {
-  const look = mood === 'huh' ? [-1, -1.2] : [0.8, 0.6];
-  const eye = x => (
-    <g className="eye" transform={`translate(${x} ${cy - 2 * s}) scale(${s})`}>
-      <ellipse rx="3.4" ry="4.2" fill="#fff" />
-      <circle cx={look[0]} cy={look[1]} r="1.9" fill="#111014" />
-    </g>
-  );
-  return (
-    <>
-      {eye(cx - 6.5 * s)}
-      {eye(cx + 6.5 * s)}
-      <path
-        d={mood === 'huh' ? 'M-3 5 Q0 3 3 5' : 'M-3.5 3.5 Q0 7 3.5 3.5'}
-        transform={`translate(${cx} ${cy + 5 * s}) scale(${s})`}
-        stroke="#111014"
-        strokeWidth="1.8"
-        fill="none"
-        strokeLinecap="round"
-      />
-    </>
-  );
+  return <img src={MARK} width={size} height={size} alt="" aria-hidden="true" style={{display: 'block'}} />;
 }
 
 /**
- * The two notes as characters. `mood`: dance (Home), wave (Get the app),
- * huh (Help), vibe (the rest: a gentle bob).
+ * The mark, alive. `mood`: dance (Home), wave (Get the app), huh (Help),
+ * vibe (the rest: a gentle bob).
  */
 export function Mascot({mood = 'vibe', size = 120, className = ''}) {
-  const id = `m${useId().replace(/:/g, '')}`;
   const ref = useRef(null);
   useEffect(() => {
     if (reduceMotion()) {
       return;
     }
     const ctx = gsap.context(() => {
-      const nb = ref.current.querySelector('.nb');
-      const nf = ref.current.querySelector('.nf');
-      gsap.set([nb, nf], {transformOrigin: '50% 90%'});
+      const el = ref.current.querySelector('img');
+      gsap.set(el, {transformOrigin: '50% 90%'});
       if (mood === 'dance') {
-        gsap.to(nf, {rotation: 8, y: -3, duration: 0.42, yoyo: true, repeat: -1, ease: 'sine.inOut'});
-        gsap.to(nb, {rotation: -10, y: -4, duration: 0.42, yoyo: true, repeat: -1, ease: 'sine.inOut', delay: 0.21});
+        gsap.to(el, {rotation: 7, y: -4, duration: 0.42, yoyo: true, repeat: -1, ease: 'sine.inOut'});
       } else if (mood === 'wave') {
-        gsap.to(nf, {rotation: 12, duration: 0.5, yoyo: true, repeat: -1, ease: 'sine.inOut'});
-        gsap.to(nb, {y: -5, duration: 0.7, yoyo: true, repeat: -1, ease: 'sine.inOut'});
+        gsap.to(el, {rotation: 10, duration: 0.5, yoyo: true, repeat: -1, ease: 'sine.inOut'});
       } else if (mood === 'huh') {
-        gsap.to(ref.current, {rotation: -6, duration: 1.4, yoyo: true, repeat: -1, ease: 'sine.inOut', transformOrigin: '50% 80%'});
+        gsap.to(el, {rotation: -6, duration: 1.4, yoyo: true, repeat: -1, ease: 'sine.inOut'});
       } else {
-        gsap.to([nf, nb], {y: -3, duration: 1.2, yoyo: true, repeat: -1, ease: 'sine.inOut', stagger: 0.3});
+        gsap.to(el, {y: -4, duration: 1.2, yoyo: true, repeat: -1, ease: 'sine.inOut'});
       }
-      // A blink now and then.
-      const eyes = ref.current.querySelectorAll('.eye');
-      const blink = () => {
-        gsap.to(eyes, {scaleY: 0.1, duration: 0.08, yoyo: true, repeat: 1, transformOrigin: 'center'});
-        gsap.delayedCall(2 + Math.random() * 3, blink);
-      };
-      gsap.delayedCall(1.5, blink);
     }, ref);
     return () => ctx.revert();
   }, [mood]);
   return (
-    <svg ref={ref} className={`mascot ${className}`} width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
-      <Grads id={id} />
-      <g className="nb">
-        <g transform={BACK}>
-          <path d={NOTE} fill={`url(#${id}b)`} />
-          <path d={SHINE} fill="#fff" opacity=".3" />
-        </g>
-        <Face cx={20.4} cy={48.2} s={0.62} mood={mood} />
-      </g>
-      <g className="nf">
-        <g transform={FRONT}>
-          <path d={NOTE} fill={`url(#${id}f)`} />
-          <path d={SHINE} fill="#fff" opacity=".3" />
-        </g>
-        <Face cx={46.7} cy={77.3} s={1} mood={mood} />
-      </g>
+    <span ref={ref} className={`mascot ${className}`} style={{display: 'inline-block', position: 'relative', width: size, height: size}} aria-hidden="true">
+      <img src={MARK} width={size} height={size} alt="" style={{display: 'block', width: '100%', height: '100%'}} />
       {mood === 'huh' && (
-        <text x="80" y="26" fontSize="22" fontWeight="800" fill="#111014" fontFamily="inherit">
-          ?
-        </text>
+        <b style={{position: 'absolute', right: '6%', top: '0', fontSize: size * 0.22, fontWeight: 800, color: 'currentColor'}}>?</b>
       )}
-    </svg>
+    </span>
   );
 }
 
