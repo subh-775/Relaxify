@@ -79,7 +79,7 @@ import {
   type HomeItem,
   type Track,
 } from './src/backend';
-import {downloadsCollection} from './src/collections';
+import {collectionKey, downloadsCollection} from './src/collections';
 import {overlayDownloadArtwork} from './src/downloads';
 import {
   playTrack,
@@ -804,7 +804,7 @@ function Shell() {
               onPlay={(t, ctx) => {
                 // Home's Continue card reopens whatever was played from last.
                 rememberCollection(collection);
-                play(t, ctx, collection.id);
+                play(t, ctx, collectionKey(collection));
               }}
               onMenu={openSheet}
               onOpenAlbum={openAlbumByName}

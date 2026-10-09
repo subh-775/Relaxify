@@ -50,6 +50,7 @@ import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
 import {
+  collectionKey,
   isSaved,
   toggleSaved,
   type Collection,
@@ -519,7 +520,7 @@ export function CollectionScreen({
     }
     // The origin too: a "Wrong song?" pick or a cleaned-up title misses the
     // title match, and Shuffle then restarted the list on a random song.
-    if (playingHere || origin === collection.id) {
+    if (playingHere || origin === collectionKey(collection)) {
       await setShuffle(true).catch(() => {});
       toast('Shuffled what comes next');
     } else if (collection.kind === 'downloads') {
@@ -529,7 +530,9 @@ export function CollectionScreen({
       onPlay(mixed[0], mixed);
       setTimeout(() => setShuffle(true).catch(() => {}), 600);
     } else if (
-      await shuffleInAfterCurrent(tracks, collection.id).catch(() => false)
+      await shuffleInAfterCurrent(tracks, collectionKey(collection)).catch(
+        () => false,
+      )
     ) {
       toast(`${displayName} comes next, shuffled`);
     } else {
@@ -543,8 +546,7 @@ export function CollectionScreen({
     playingHere,
     shuffled,
     origin,
-    collection.id,
-    collection.kind,
+    collection,
     displayName,
   ]);
 

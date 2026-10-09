@@ -33,6 +33,7 @@ import {getLocalLibrary, type Track} from '../backend';
 import {useLikes} from '../store';
 import {useFollowedArtists} from '../artists';
 import {
+  collectionKey,
   collectionSubtitle,
   useLibrary,
   type Collection,
@@ -157,7 +158,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const origin = usePlaybackOrigin();
   const isPlayingFrom = useCallback(
     (c: Collection) => {
-      return !!origin && c.id === origin;
+      return !!origin && collectionKey(c) === origin;
     },
     [origin],
   );

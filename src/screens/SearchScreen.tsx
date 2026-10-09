@@ -38,6 +38,7 @@ import {
   type Track,
 } from '../backend';
 import {useStats} from '../stats';
+import {useIsActiveTrack} from '../player';
 import {
   cleanText,
   getBestArtworkUrl,
@@ -93,6 +94,21 @@ const TILE_BLOBS = BRIGHT_PALS.map((_, k) => blob(55, 55, 46, 0.22, 8, k + 1));
  * not work being done, but work being redone. Every prop below is
  * useCallback-stable in App, so this actually holds.
  */
+/** A song suggestion's title, coral while that song is the one playing, as a
+ *  song row is anywhere else in the app. */
+function SuggestionTitle({item}: {item: Suggestion}) {
+  const playing = useIsActiveTrack(
+    item.track ?? ({title: item.title, artist: item.artist} as Track),
+  );
+  return (
+    <Text
+      style={[styles.suggestionTitle, playing && styles.suggestionPlaying]}
+      numberOfLines={1}>
+      {cleanText(item.title)}
+    </Text>
+  );
+}
+
 export const SearchScreen = React.memo(function SearchScreen({
   visible,
   onPickTrack,
@@ -531,9 +547,13 @@ export const SearchScreen = React.memo(function SearchScreen({
                 </View>
               )}
               <View style={styles.suggestionText}>
-                <Text style={styles.suggestionTitle} numberOfLines={1}>
-                  {cleanText(item.title)}
-                </Text>
+                {item.kind === 'artist' ? (
+                  <Text style={styles.suggestionTitle} numberOfLines={1}>
+                    {cleanText(item.title)}
+                  </Text>
+                ) : (
+                  <SuggestionTitle item={item} />
+                )}
                 {item.kind === 'artist' ? (
                   <Text style={styles.suggestionSub} numberOfLines={1}>
                     Artist
@@ -875,6 +895,7 @@ const styles = StyleSheet.create({
   suggestionTitle: {...T.body, color: C.text},
   suggestionSub: {...T.sub, color: C.sub, marginTop: 2},
   suggestionOwn: {color: C.accent},
+  suggestionPlaying: {color: C.accent, fontWeight: '800'},
   empty: {
     color: C.faint,
     textAlign: 'center',
