@@ -558,13 +558,6 @@ export const SearchScreen = React.memo(function SearchScreen({
                   <Text style={styles.suggestionSub} numberOfLines={1}>
                     Artist
                   </Text>
-                ) : item.kind === 'own' || item.kind === 'lyric' ? (
-                  <Text style={styles.suggestionSub} numberOfLines={1}>
-                    <Text style={styles.suggestionOwn}>
-                      {item.kind === 'own' ? 'Your music' : 'From the lyrics'}
-                    </Text>
-                    {item.artist ? ` · ${cleanText(item.artist)}` : ''}
-                  </Text>
                 ) : (
                   !!item.artist && (
                     <Text style={styles.suggestionSub} numberOfLines={1}>
@@ -894,7 +887,6 @@ const styles = StyleSheet.create({
   suggestionText: {flex: 1, minWidth: 0},
   suggestionTitle: {...T.body, color: C.text},
   suggestionSub: {...T.sub, color: C.sub, marginTop: 2},
-  suggestionOwn: {color: C.accent},
   suggestionPlaying: {color: C.accent, fontWeight: '800'},
   empty: {
     color: C.faint,
