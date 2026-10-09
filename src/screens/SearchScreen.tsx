@@ -27,6 +27,7 @@ import {Clock, Search as SearchIcon, X} from '../icons';
 import {C, S, T} from '../theme';
 import {
   getGenres,
+  getLyricHint,
   getSuggestions,
   search,
   searchArtists,
@@ -43,6 +44,7 @@ import {
   getTrackId,
   normalizeTracks,
   ownSongMatches,
+  withLyric,
   thumbArtwork,
 } from '../tracks';
 import {readRecentlyPlayed} from '../recentlyPlayed';
@@ -232,7 +234,8 @@ export const SearchScreen = React.memo(function SearchScreen({
   }, []);
 
   // While typing: your own matching songs at once (no network, so offline
-  // too), then the debounced suggestions after them.
+  // too), then the debounced suggestions after them, and for a line of four
+  // words or more, the song those lyrics are from when YouTube Music answers.
   useEffect(() => {
     const text = query.trim();
     if (text.length < 2 || isImportUrl(text) || codeIn(text)) {
@@ -261,16 +264,30 @@ export const SearchScreen = React.memo(function SearchScreen({
     ];
     // Over the last answer, which stays until the new one lands.
     setSuggestions(withOwn);
+    // Set once the field has moved on: a late answer must not land.
+    let gone = false;
     const id = setTimeout(async () => {
+      const lyric =
+        text.split(/\s+/).length >= 4
+          ? getLyricHint(text).catch(() => null)
+          : null;
       try {
         const list = await getSuggestions(text);
-        // Only apply if the field still holds what we asked about.
-        setSuggestions(prev => (query.trim() === text ? withOwn(list) : prev));
+        if (!gone) {
+          setSuggestions(withOwn(list));
+        }
       } catch {
         // Suggestions are a convenience — a failure must stay silent.
       }
+      const hit = await lyric;
+      if (hit && !gone) {
+        setSuggestions(prev => withLyric(prev, hit));
+      }
     }, DEBOUNCE_MS);
-    return () => clearTimeout(id);
+    return () => {
+      gone = true;
+      clearTimeout(id);
+    };
   }, [query]);
 
   /**
@@ -489,7 +506,9 @@ export const SearchScreen = React.memo(function SearchScreen({
                   onOpenArtist(item.title);
                   return;
                 }
-                const q = `${item.title} ${item.artist}`.trim();
+                const title =
+                  item.kind === 'lyric' ? cleanText(item.title) : item.title;
+                const q = `${title} ${item.artist}`.trim();
                 setQuery(q);
                 runSearch(q);
               }}>
@@ -519,10 +538,12 @@ export const SearchScreen = React.memo(function SearchScreen({
                   <Text style={styles.suggestionSub} numberOfLines={1}>
                     Artist
                   </Text>
-                ) : item.kind === 'own' ? (
+                ) : item.kind === 'own' || item.kind === 'lyric' ? (
                   <Text style={styles.suggestionSub} numberOfLines={1}>
-                    <Text style={styles.suggestionOwn}>Your music</Text>
-                    {item.artist ? ` · ${item.artist}` : ''}
+                    <Text style={styles.suggestionOwn}>
+                      {item.kind === 'own' ? 'Your music' : 'From the lyrics'}
+                    </Text>
+                    {item.artist ? ` · ${cleanText(item.artist)}` : ''}
                   </Text>
                 ) : (
                   !!item.artist && (

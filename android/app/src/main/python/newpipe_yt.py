@@ -45,13 +45,17 @@ def is_supported() -> bool:
         return False
 
 
-def search(query: str, limit: int = 10):
-    """-> [{title, artist, duration_ms, url, artwork}]. Empty list on failure."""
+def search(query: str, limit: int = 10, music: bool = False):
+    """-> [{title, artist, duration_ms, url, artwork}]. Empty list on failure.
+
+    `music`: YouTube Music's song search instead of YouTube's videos."""
     np = _bridge()
     if np is None or not query:
         return []
     try:
-        return json.loads(str(np.search(query, int(limit)))) or []
+        raw = (np.searchIn(query, int(limit), "music_songs") if music
+               else np.search(query, int(limit)))
+        return json.loads(str(raw)) or []
     except Exception as e:
         log.warning("NewPipe search failed (%s): %s", query, e)
         return []

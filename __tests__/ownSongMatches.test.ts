@@ -1,7 +1,7 @@
 import {describe, expect, it} from '@jest/globals';
 
-import {ownSongMatches} from '../src/tracks';
-import type {Track} from '../src/backend';
+import {ownSongMatches, withLyric} from '../src/tracks';
+import type {Suggestion, Track} from '../src/backend';
 
 const t = (title: string, artist = 'Arijit Singh') => ({title, artist}) as Track;
 
@@ -36,5 +36,29 @@ describe('ownSongMatches', () => {
   it('ignores the artist and anything under two letters', () => {
     expect(ownSongMatches('arij', [recents, likes])).toEqual([]);
     expect(ownSongMatches('k', [recents])).toEqual([]);
+  });
+});
+
+describe('withLyric', () => {
+  const s = (title: string, kind?: Suggestion['kind']): Suggestion => ({
+    kind,
+    title,
+    artist: '',
+  });
+  const hit = s('Channa Mereya (From "Ae Dil Hai Mushkil")', 'lyric');
+
+  it('goes after your own songs, before the rest', () => {
+    const list = [s('Achha Lagta Hai', 'own'), s('Achha Chalta Hoon'), s('Duaa')];
+    expect(withLyric(list, hit).map(x => x.kind ?? 'song')).toEqual([
+      'own',
+      'lyric',
+      'song',
+      'song',
+    ]);
+  });
+
+  it('is left out when the first songs already have it', () => {
+    const list = [s('Arijit Singh', 'artist'), s('Channa Mereya'), s('Duaa')];
+    expect(withLyric(list, hit)).toBe(list);
   });
 });

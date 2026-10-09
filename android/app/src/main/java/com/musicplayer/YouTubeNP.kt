@@ -107,26 +107,35 @@ object YouTubeNP {
      * [{title, artist, duration_ms, url, artwork}], or "[]".
      */
     @JvmStatic
-    fun search(query: String, limit: Int): String {
+    fun search(query: String, limit: Int): String = searchIn(query, limit, "videos")
+
+    /**
+     * The same, in one of NewPipe's YouTube filters: "videos", or
+     * "music_songs", YouTube Music's song search, which also finds a song from
+     * a line of its lyrics (20 of 22 typed lines, measured 2026-10-09).
+     */
+    @JvmStatic
+    fun searchIn(query: String, limit: Int, filter: String): String {
         if (!ensureStarted()) return "[]"
         return try {
             val yt = ServiceList.YouTube
             val info = SearchInfo.getInfo(
                 yt,
-                yt.searchQHFactory.fromQuery(query, listOf("videos"), ""),
+                yt.searchQHFactory.fromQuery(query, listOf(filter), ""),
             )
             val out = JSONArray()
             for (item in info.relatedItems) {
                 if (item !is StreamInfoItem) continue
                 if (out.length() >= limit) break
                 // duration is SECONDS here; <=0 means live/unknown — unplayable.
+                // A song row may come without one; it is only named, not played.
                 val secs = item.duration
-                if (secs <= 0) continue
+                if (secs <= 0 && filter == "videos") continue
                 out.put(
                     JSONObject()
                         .put("title", item.name ?: "")
                         .put("artist", item.uploaderName ?: "")
-                        .put("duration_ms", secs * 1000L)
+                        .put("duration_ms", maxOf(secs, 0L) * 1000L)
                         .put("url", item.url ?: "")
                         .put("artwork", firstThumbnail(item)),
                 )

@@ -484,8 +484,9 @@ export async function setYouTubeExperimental(
 export type Suggestion = {
   /** 'artist': JioSaavn's own top match was an artist (opens the artist).
    *  'own': a song of yours, matched on the phone (`track` plays it).
+   *  'lyric': the song a typed lyric line is from (YouTube Music).
    *  Absent from an older backend: a song. */
-  kind?: 'song' | 'artist' | 'own';
+  kind?: 'song' | 'artist' | 'own' | 'lyric';
   track?: Track;
   title: string;
   artist: string;
@@ -508,6 +509,22 @@ export async function getSuggestions(
     `/search/suggestions?q=${encodeURIComponent(q)}&limit=${limit}`,
   );
   return Array.isArray(data.suggestions) ? data.suggestions : [];
+}
+
+/** A typed line of lyrics (four words or more) -> the song it is from, by
+ *  YouTube Music's song search; null when it names none. */
+export async function getLyricHint(q: string): Promise<Suggestion | null> {
+  const data = await apiGet<{title?: string; artist?: string; artwork_url?: string}>(
+    `/search/lyric?q=${encodeURIComponent(q)}`,
+  );
+  return data.title
+    ? {
+        kind: 'lyric',
+        title: data.title,
+        artist: data.artist ?? '',
+        artwork_url: data.artwork_url || undefined,
+      }
+    : null;
 }
 
 // ─── Spotify import ─────────────────────────────────────────────────────────

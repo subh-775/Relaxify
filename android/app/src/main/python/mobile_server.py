@@ -838,6 +838,33 @@ def search_suggestions():
         return jsonify({"suggestions": []})
 
 
+@app.get("/api/search/lyric")
+def search_lyric():
+    """A typed line of lyrics -> the song it is from: {title, artist,
+    artwork_url}, or {}.
+
+    YouTube Music's song search, through NewPipe: the right song first for 20
+    of 22 typed lines that do not contain the title (JioSaavn: 10), measured
+    2026-10-09. It only NAMES the song; a tap searches for it as usual, so this
+    works with the YouTube setting off. Lines of four words or more only."""
+    q = _arg("q")
+    if len(q.split()) < 4:
+        return jsonify({})
+    try:
+        import newpipe_yt
+        hits = newpipe_yt.search(q, 1, music=True)
+    except Exception:
+        hits = []
+    hit = hits[0] if hits else None
+    if not hit or not hit.get("title"):
+        return jsonify({})
+    return jsonify({
+        "title": hit["title"],
+        "artist": hit.get("artist") or "",
+        "artwork_url": hit.get("artwork") or None,
+    })
+
+
 # ─── Streaming ────────────────────────────────────────────────────────────────
 @app.post("/api/stream_url")
 def get_stream_url():

@@ -7,7 +7,7 @@
  * drift apart the moment both exist — likes computed with one and dedup with
  * the other stop matching — so this is the only one.
  */
-import type {Track} from './backend';
+import type {Suggestion, Track} from './backend';
 
 const PLAYABLE_SOURCES = new Set([
   'jiosaavn',
@@ -129,6 +129,24 @@ export function ownSongMatches(
     }
   }
   return out;
+}
+
+/** The song a lyric line names, placed after your own songs, unless it is
+ *  already among the first songs listed. */
+export function withLyric(list: Suggestion[], hit: Suggestion): Suggestion[] {
+  const name = fold(cleanText(hit.title));
+  const known = list
+    .filter(x => x.kind !== 'artist')
+    .slice(0, 3)
+    .some(x => {
+      const t = fold(cleanText(x.title));
+      return !!t && (t.includes(name) || name.includes(t));
+    });
+  if (!name || known) {
+    return list;
+  }
+  const at = list.filter(x => x.kind === 'own').length;
+  return [...list.slice(0, at), hit, ...list.slice(at)];
 }
 
 export function getTrackId(track: Track | null | undefined): string {
