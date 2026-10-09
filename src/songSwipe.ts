@@ -260,17 +260,24 @@ export function useSongSwipe({
    */
   const commit = useCallback(
     (d: 1 | -1, liftedAt: number) => {
-      // The song being left, read before the skip can publish the next one.
+      // The song being left and the one drawn to land on, both read — and the
+      // landing set — BEFORE the skip. The skip publishes the next song, and
+      // that can re-render this player synchronously and run its effects
+      // before the skip call even returns; a refresh() running with no landing
+      // yet re-read the neighbours from the new position, so the song AFTER
+      // the next one was drawn mid-glide and landed on, then swapped back.
+      // The mini player's flash: its listener is usually not the last one.
       const from = activeKeyRef.current;
-      // Skip NOW, so the engine and the title move while the cover glides.
-      (d === 1 ? skipNext() : skipPrevious(true)).catch(() => {});
       const n = d === 1 ? sidesRef.current.next : sidesRef.current.prev;
+      const skip = () =>
+        (d === 1 ? skipNext() : skipPrevious(true)).catch(() => {});
       if (!n) {
         // Nothing drawn to glide to (the end of the queue, or the queue
         // changed under the finger): back to rest, and the new song replaces
         // this one in place.
         busy.value = false;
         slide.value = withSpring(0, {damping: 20, stiffness: 220});
+        skip();
         return;
       }
       landing.current = {
@@ -286,6 +293,8 @@ export function useSongSwipe({
         // stopped until the app was restarted. Now it always ends.
         guard: setTimeout(() => settle('guard'), LAND_GUARD_MS),
       };
+      // Now the engine and the title move, while the cover glides.
+      skip();
     },
     [slide, busy, settle],
   );
