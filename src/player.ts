@@ -495,6 +495,11 @@ async function setupPlayerOnce(): Promise<boolean> {
       noteTrackChange();
       // The engine is authoritative — reconcile the optimistic mirror with what
       // actually started, and keep the queue snapshot warm for the next gesture.
+      // The index too, NOW: it used to wait for onTrackSettled (350 ms), and in
+      // between, a song that changed by itself (it ended, a headset or
+      // notification Next) left the swipe reading its neighbours from the old
+      // position — the song just started drawn as the next one.
+      activeIndex = rowIndex(engineQueue, e.track, e.index ?? activeIndex);
       publishTrack(e.track ?? null);
       // The new song is the resume point NOW, from this native event, not
       // from onTrackSettled's timer (frozen in the background).
