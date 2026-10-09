@@ -1729,6 +1729,9 @@ from components.spotify_import import (
     parse_url as parse_spotify_url,
     fetch_tracklist as _spotify_tracklist,
     is_good_match as _title_artist_ok,   # title + artist + duration gate
+    match_rank as _match_rank,
+    clean_title as _clean_import_title,
+    credited as _credited,
 )
 # YouTube / YouTube Music playlists go through the same job: NewPipe reads the
 # list, each song is matched on JioSaavn/SoundCloud first, and a song with no
@@ -1782,6 +1785,41 @@ def _youtube_original(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _youtube_match(item: Dict[str, Any], title: str, names: List[str]):
+    """The song on YouTube: (hit, playable track) or None. A label's channel
+    ("T-Series") is not the singer, so the weak-artist rule applies: a
+    near-exact title and the original's length within five seconds, or a
+    credited artist as the channel. Searched through NewPipe whatever the
+    YouTube switch says, as a YouTube playlist's originals are."""
+    from types import SimpleNamespace
+    try:
+        import newpipe_yt
+        hits = newpipe_yt.search(f"{title} {names[0] if names else ''}".strip(), 6)
+    except Exception:
+        return None
+    good = []
+    for h in hits or []:
+        if not h.get("url"):
+            continue
+        t = SimpleNamespace(title=h.get("title") or "", artist=h.get("artist") or "",
+                            duration_ms=h.get("duration_ms") or 0, sources={})
+        if _title_artist_ok(item, t, True):
+            good.append((t, h))
+    if not good:
+        return None
+    t, h = max(good, key=lambda g: _match_rank(item, g[0]))
+    return t, _youtube_original({**item, "url": h["url"], "artwork": h.get("artwork"),
+                                 "duration_ms": item.get("duration_ms") or h.get("duration_ms")})
+
+
+def _settled(item: Dict[str, Any], track) -> bool:
+    """A hit good enough to stop searching: the title near-exact and, when
+    both are known, the length within five seconds of the original's."""
+    exact, close = _match_rank(item, track)[:2]
+    want = int(item.get("duration_ms") or 0)
+    return bool(exact) and (not want or close >= -5_000)
+
+
 def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Dict[str, Any]]:
     """Find a PLAYABLE version of one imported song on our own sources.
 
@@ -1789,7 +1827,18 @@ def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Di
     a label rather than the singer (see is_good_match)."""
     if _search_service is None:
         return None
-    query = f"{item['title']} {item['artist']}".strip()
+    # The song's own name with its main artists first: the full credit of a
+    # film song (six names) and its '(From "Film")' buried the right hit. The
+    # title as written is the last try.
+    title = _clean_import_title(item["title"])
+    names = _credited(item["artist"])
+    queries = []
+    for q in (f"{title} {names[0]}" if names else title,
+              f"{title} {names[1]}" if len(names) > 1 else "",
+              f"{item['title']} {item['artist']}"):
+        q = q.strip()
+        if q and q not in queries:
+            queries.append(q)
     try:
         cfg = replace(
             _search_service.config,
@@ -1798,12 +1847,32 @@ def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Di
             enabled_sources=PLAYABLE_SEARCH_SOURCES,
             timeout_seconds=10.0,
         )
-        for track in _search_service.search(query, cfg):
+        best = None
+        for query in queries:
+            # The BEST hit that passes, not the first: an exact title and the
+            # original's length beat a copy that happened to rank higher.
+            good = [t for t in _search_service.search(query, cfg)
+                    if _playable_source_name(t) and _title_artist_ok(item, t, weak_artist)]
+            if best is not None:
+                good.append(best)
+            if good:
+                best = max(good, key=lambda t: _match_rank(item, t))
+                # Settled only by a near-exact title within a few seconds of
+                # the original; anything less ("O Saathiya" for "O Saathi", a
+                # DJ upload 30 s short) lets the next search try for better.
+                if _settled(item, best):
+                    break
+        # Not on JioSaavn or SoundCloud as itself (T-Series' catalogue is the
+        # big one: only fan uploads there): the original on YouTube, when it
+        # is closer than anything found. Not for a YouTube playlist, whose
+        # songs already keep their own video (see _find).
+        if not weak_artist and (best is None or not _settled(item, best)):
+            yt = _youtube_match(item, title, names)
+            if yt is not None and (best is None or _match_rank(item, yt[0]) > _match_rank(item, best)):
+                return yt[1]
+        if best is not None:
+            track = best
             source = _playable_source_name(track)
-            if not source:
-                continue
-            if not _title_artist_ok(item, track, weak_artist):
-                continue               # nearest hit but not the right song — skip
             return {
                 "title": _clean_text(track.title) or item["title"],
                 "artist": _clean_text(track.artist) or item["artist"],
@@ -1851,7 +1920,14 @@ def _import_snapshot(job: Dict[str, Any]) -> Dict[str, Any]:
             # Each song as it is checked, in the order the checks finish, so
             # the import screen can fill in live instead of all at the end.
             "checked": list(job.get("checked", [])),
+            # Every song of the original list, for Sync to tell new from old.
+            "keys": list(job.get("keys", [])),
         }
+
+
+def _source_key(item: Dict[str, Any]) -> str:
+    """One song of the ORIGINAL list (Spotify / YouTube), as Sync remembers it."""
+    return f"{_clean_text(item.get('title')) or ''}|{_clean_text(item.get('artist')) or ''}".lower()
 
 
 def _find(item: Dict[str, Any], youtube: bool) -> Optional[Dict[str, Any]]:
@@ -1887,6 +1963,7 @@ def _run_import(kind: str, ref: str, job: Dict[str, Any]) -> None:
         job["image"] = meta.get("image", "")
         job["total"] = len(items)
         job["source"] = kind if youtube else "spotify"
+        job["keys"] = [_source_key(it) for it in items]
 
     matched: List[Optional[Dict[str, Any]]] = [None] * len(items)
     with ThreadPoolExecutor(max_workers=6) as ex:
@@ -1928,6 +2005,76 @@ def _run_import(kind: str, ref: str, job: Dict[str, Any]) -> None:
                           for i, t in enumerate(matched) if not t]
         job["matched"] = len(job["tracks"])
         job["finished"] = True
+
+
+def _import_ref(url: str):
+    """(kind, ref) for a playlist link, as the import reads it, or an error."""
+    kind, ref = parse_spotify_url(url)
+    if kind:
+        return kind, ref, None
+    yt_list = parse_youtube_list(url)
+    if not yt_list:
+        return None, None, "Not a playlist link"
+    if yt_list in _PRIVATE_YT_LISTS:
+        return None, None, "Private playlist: your own likes and Watch later need a Google login"
+    return "youtube", url, None
+
+
+def _already_have(item: Dict[str, Any], have: List[Dict[str, str]]) -> bool:
+    """A playlist imported before Sync existed remembers no original list:
+    an original song counts as already there when a song in the playlist has
+    its title and shares an artist (titles differ between services a little)."""
+    t = (item.get("title") or "").lower()
+    a = (item.get("artist") or "").lower()
+    for h in have:
+        if fuzz.token_set_ratio(t, (h.get("title") or "").lower()) >= 88 and (
+                not a or fuzz.token_set_ratio(a, (h.get("artist") or "").lower()) >= 60):
+            return True
+    return False
+
+
+@app.post("/api/import/sync")
+def import_sync():
+    """Sync an imported playlist with its original. Body: {url, keys, have}.
+
+    `keys` are the original's songs as last seen (empty for a playlist
+    imported before Sync); `have` is the playlist's songs now. Reads the
+    original again, matches ONLY the songs that are new on it, and returns
+    them with the original's current keys. Nothing is ever removed: a song you
+    took out stays out, because its key is still known."""
+    body = _body()
+    url = str(body.get("url") or "").strip()
+    known = set(body.get("keys") or [])
+    have = [h for h in (body.get("have") or []) if isinstance(h, dict)]
+    kind, ref, err = _import_ref(url)
+    if err:
+        return jsonify({"error": err}), 400
+    youtube = kind == "youtube"
+    try:
+        meta = _youtube_tracklist(ref) if youtube else _spotify_tracklist(kind, ref)
+    except Exception as e:
+        return jsonify({"error": f"Could not read that playlist: {e}"})
+    if not meta or meta.get("error"):
+        return jsonify({"error": "Could not read that playlist — is it public?"})
+    items = meta["tracks"][:_IMPORT_MAX]
+    keys = [_source_key(it) for it in items]
+    new = [it for it, k in zip(items, keys)
+           if k not in known and not (not known and _already_have(it, have))]
+    found: List[Optional[Dict[str, Any]]] = [None] * len(new)
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futs = {ex.submit(_find, it, youtube): i for i, it in enumerate(new)}
+        for fut in as_completed(futs):
+            try:
+                found[futs[fut]] = fut.result()
+            except Exception:
+                found[futs[fut]] = None
+    tracks = []
+    for t in found:
+        if t:
+            t.pop("kept_from_youtube", None)
+            tracks.append(t)
+    return jsonify({"name": meta.get("name", ""), "keys": keys, "tracks": tracks,
+                    "new": len(new), "missing": len(new) - len(tracks)})
 
 
 @app.get("/api/spotify/import")

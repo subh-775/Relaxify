@@ -1,16 +1,16 @@
 /**
- * The in-app update prompt: a concert ticket floating above the mini player.
+ * The in-app update prompt: a slim coral strip floating above the mini player.
  * Appears when a newer release is found, fills up as it downloads, and lets
  * the user install or put it off.
  *
- * A ticket, not a sheet or a dialog: the page stays visible and usable around
+ * A strip, not a sheet or a dialog: the page stays visible and usable around
  * it, so a new version is news rather than an interruption.
  *
  * A failure shows here only when a DOWNLOAD failed (see `attempted` in
  * update.ts). A failed automatic check stays quiet; Settings reports it.
  *
  * The same spot carries the one-time usage-statistics notice, after any update
- * card, so the two never stack.
+ * strip, so the two never stack.
  */
 import React, {useMemo} from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
@@ -31,12 +31,14 @@ const noticeSeen = createStore<boolean>(
   raw => raw === true,
 );
 
-/** The ticket's height, and the room a page's list leaves for it. */
-const STRIP_H = 96;
-const STRIP_ROOM = STRIP_H + 14;
+/** The strip's height, and the room a page's list leaves for it. */
+const STRIP_H = 52;
+/** The hard shadow's offset: a flat blush slab, no blur. */
+const SLAB = 4;
+const STRIP_ROOM = STRIP_H + SLAB + 10;
 const INK = '#000000';
-const LEMON = '#FFE14D';
-const BUTTER = '#FFF3A3';
+/** The download's fill: the accent, a step deeper. */
+const DEEP = '#D9364C';
 
 /** Is the update strip up? The same test UpdateModal renders by. */
 function stripUp(u: ReturnType<typeof useUpdate>): boolean {
@@ -63,10 +65,10 @@ export function useListEnd(): {paddingBottom: number} {
 }
 
 /**
- * The update, as a ticket docked above the mini player: an "ADMIT ONE" stub,
- * then what it is, the version big, and Install. Yellow, a thick black edge
- * and a hard shadow, so it reads as news without covering the page. The notes
- * live in Settings; the ticket says only what to do.
+ * The update, as one coral line docked above the mini player: the version and
+ * Install. A thick black edge and a flat blush slab for its shadow (a black
+ * one vanishes on the app's black), so it reads as news without covering the
+ * page. The notes live in Settings; the strip says only what to do.
  */
 export function UpdateModal({hidden = false}: {hidden?: boolean}) {
   const u = useUpdate();
@@ -81,57 +83,47 @@ export function UpdateModal({hidden = false}: {hidden?: boolean}) {
   const failed = phase === 'failed';
   const downloading = phase === 'downloading';
   const size = formatSize(info?.sizeBytes);
-  const kick = failed
-    ? 'UPDATE FAILED'
+  const v = `v${info?.version ?? ''}`;
+  const title = failed
+    ? 'Update failed'
     : downloading
-    ? 'DOWNLOADING'
-    : 'NEW VERSION AVAILABLE';
+    ? `Downloading ${v}`
+    : `${v} is out`;
+  const meta = downloading
+    ? [`${pct}%`, size && `of ${size}`].filter(Boolean).join(' ')
+    : failed
+    ? [v, size].filter(Boolean).join(' · ')
+    : size;
 
   return (
     <Animated.View
       entering={FadeInDown.duration(260)}
       exiting={FadeOutDown.duration(180)}
-      style={styles.strip}
+      style={styles.dock}
       accessibilityLiveRegion="polite">
-      {/* While downloading, the ticket itself fills up. */}
-      {downloading && (
-        <View
-          style={[styles.fill, {width: `${Math.max(3, Math.min(100, pct))}%`}]}
-        />
-      )}
-      <View style={styles.stub}>
-        <Text style={styles.stubText} numberOfLines={1}>
-          ADMIT ONE
-        </Text>
-      </View>
-      {/* The perforation: a dashed line, drawn as dashes — Android cannot
-          dash a single side of a border. */}
-      <View style={styles.perf}>
-        {Array.from({length: 7}, (_, i) => (
-          <View key={i} style={styles.dash} />
-        ))}
-      </View>
-      <View style={styles.body}>
-        <View style={styles.line}>
-          <Text style={styles.kick} numberOfLines={1}>
-            {kick}
+      <View style={styles.slab} />
+      <View style={styles.strip}>
+        {/* While downloading, the strip itself fills up. */}
+        {downloading && (
+          <View
+            style={[
+              styles.fill,
+              {width: `${Math.max(3, Math.min(100, pct))}%`},
+            ]}
+          />
+        )}
+        <View style={styles.body}>
+          <Text style={styles.stripTitle} numberOfLines={1}>
+            {title}
           </Text>
-          {!downloading && (
-            <TouchableOpacity
-              onPress={dismissUpdate}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Not now">
-              <X size={18} color={INK} strokeWidth={2.8} />
-            </TouchableOpacity>
+          {!!meta && (
+            <Text style={styles.meta} numberOfLines={1}>
+              {meta}
+            </Text>
           )}
         </View>
-        <Text style={styles.version} numberOfLines={1}>
-          {`v${info?.version ?? ''}`}
-        </Text>
-        <View style={styles.line}>
-          <Text style={styles.meta}>{downloading ? `${pct}%` : size}</Text>
-          {!downloading && (
+        {!downloading && (
+          <>
             <TouchableOpacity
               style={styles.stripBtn}
               onPress={startUpdateInstall}
@@ -140,8 +132,16 @@ export function UpdateModal({hidden = false}: {hidden?: boolean}) {
                 {failed ? 'Retry' : 'Install'}
               </Text>
             </TouchableOpacity>
-          )}
-        </View>
+            <TouchableOpacity
+              onPress={dismissUpdate}
+              hitSlop={12}
+              style={styles.close}
+              accessibilityRole="button"
+              accessibilityLabel="Not now">
+              <X size={18} color={INK} strokeWidth={2.8} />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </Animated.View>
   );
@@ -176,80 +176,61 @@ function Notice() {
 }
 
 const styles = StyleSheet.create({
-  strip: {
+  dock: {
     position: 'absolute',
     left: S.gutter,
-    right: S.gutter + 4, // room for the hard shadow
-    bottom: BOTTOM_INSET + 10,
+    right: S.gutter + SLAB, // room for the slab
+    bottom: BOTTOM_INSET + 10 + SLAB,
     height: STRIP_H,
+  },
+  // The neobrutalist hard shadow: an offset slab, no blur. elevation would
+  // blur it on Android.
+  slab: {
+    ...StyleSheet.absoluteFillObject,
+    top: SLAB,
+    left: SLAB,
+    right: -SLAB,
+    bottom: -SLAB,
+    borderRadius: 10,
+    backgroundColor: C.tone,
+  },
+  strip: {
+    flex: 1,
     flexDirection: 'row',
-    borderRadius: 12,
+    alignItems: 'center',
+    borderRadius: 10,
     borderWidth: 2.5,
     borderColor: INK,
-    backgroundColor: BUTTER,
+    backgroundColor: C.accent,
     overflow: 'hidden',
-    // The neobrutalist hard shadow: an offset slab, no blur. elevation would
-    // blur it on Android, so it is drawn as a border instead.
-    borderRightWidth: 6,
-    borderBottomWidth: 6,
+    paddingLeft: 14,
+    paddingRight: 8,
   },
   fill: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: LEMON,
+    backgroundColor: DEEP,
   },
-  stub: {
-    width: 30,
-    backgroundColor: LEMON,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Laid out flat at the ticket's height, then turned to read bottom-up.
-  stubText: {
-    width: STRIP_H - 10,
-    textAlign: 'center',
-    transform: [{rotate: '-90deg'}],
+  body: {flex: 1, minWidth: 0, justifyContent: 'center'},
+  stripTitle: {
     color: INK,
-    fontSize: 11,
+    fontSize: 15.5,
+    lineHeight: 19,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: -0.2,
   },
-  perf: {
-    width: 2.5,
-    backgroundColor: LEMON,
-    justifyContent: 'space-evenly',
-  },
-  dash: {height: 6, backgroundColor: INK},
-  body: {flex: 1, paddingHorizontal: 12, justifyContent: 'center', gap: 3},
-  line: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  kick: {
-    flex: 1,
-    color: INK,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-  },
-  version: {
-    color: INK,
-    fontSize: 26,
-    lineHeight: 30,
-    fontWeight: '900',
-    letterSpacing: -0.5,
-  },
-  meta: {color: INK, fontSize: 12, fontWeight: '700', opacity: 0.7},
+  meta: {color: INK, fontSize: 11.5, fontWeight: '700', opacity: 0.7},
   stripBtn: {
     backgroundColor: INK,
     borderRadius: 7,
     paddingHorizontal: 14,
     paddingVertical: 6,
+    marginLeft: 8,
   },
-  stripBtnText: {color: LEMON, fontSize: 13.5, fontWeight: '900'},
+  stripBtnText: {color: C.accent, fontSize: 13.5, fontWeight: '900'},
+  close: {padding: 6, marginLeft: 4},
   card: {
     position: 'absolute',
     left: S.gutter,

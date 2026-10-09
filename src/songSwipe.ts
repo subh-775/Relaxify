@@ -122,8 +122,13 @@ export function useSongSwipe({
 
   const landing = useRef<{
     key: string;
+    /** The song the swipe started from: until something else is published,
+     *  the real view still shows it, so the swap must not happen. */
+    from: string;
     art: string;
     glided: boolean;
+    /** The short wait for a slow cover is over. */
+    waited?: boolean;
     /** When commit ran, and how long after the finger lifted it ran: the
      *  wait for the JS thread, which is the suspect in the first-swipe stall. */
     at: number;
@@ -202,13 +207,20 @@ export function useSongSwipe({
     if (l && !l.coverAt && l.art && loadedArt.current === l.art) {
       l.coverAt = Date.now();
     }
-    if (
-      l?.glided &&
-      activeKeyRef.current === l.key &&
-      (!l.art || loadedArt.current === l.art)
-    ) {
+    if (!l?.glided) {
+      return;
+    }
+    const k = activeKeyRef.current;
+    if (k === l.key && (!l.art || loadedArt.current === l.art || l.waited)) {
+      settle(l.waited ? 'timeout' : 'landed');
+    } else if (k !== l.key && k !== l.from) {
+      // A different song than the one drawn came out (the queue moved under
+      // the swipe): show it at once rather than hold a wrong neighbour.
       settle('landed');
     }
+    // Otherwise the song is not published yet (the end of the queue fetches
+    // more first): the neighbour stays in place. Swapping back now showed the
+    // song just left, then the new one — the flash. The guard still ends it.
   }, [settle]);
 
   useEffect(tryLand, [activeKey, tryLand]);
@@ -229,9 +241,16 @@ export function useSongSwipe({
     }
     l.glided = true;
     l.glidedAt = Date.now();
-    l.timer = setTimeout(() => settle('timeout'), LAND_TIMEOUT_MS);
+    // A slow cover is waited for only briefly, and only once the song itself
+    // is the right one (tryLand); before that, nothing swaps.
+    l.timer = setTimeout(() => {
+      if (landing.current === l) {
+        l.waited = true;
+        tryLand();
+      }
+    }, LAND_TIMEOUT_MS);
     tryLand();
-  }, [settle, tryLand]);
+  }, [tryLand]);
 
   /**
    * The JS half of a committed swipe. The glide itself was already started on
@@ -241,19 +260,29 @@ export function useSongSwipe({
    */
   const commit = useCallback(
     (d: 1 | -1, liftedAt: number) => {
-      // Skip NOW, so the engine and the title move while the cover glides.
-      (d === 1 ? skipNext() : skipPrevious(true)).catch(() => {});
+      // The song being left and the one drawn to land on, both read — and the
+      // landing set — BEFORE the skip. The skip publishes the next song, and
+      // that can re-render this player synchronously and run its effects
+      // before the skip call even returns; a refresh() running with no landing
+      // yet re-read the neighbours from the new position, so the song AFTER
+      // the next one was drawn mid-glide and landed on, then swapped back.
+      // The mini player's flash: its listener is usually not the last one.
+      const from = activeKeyRef.current;
       const n = d === 1 ? sidesRef.current.next : sidesRef.current.prev;
+      const skip = () =>
+        (d === 1 ? skipNext() : skipPrevious(true)).catch(() => {});
       if (!n) {
         // Nothing drawn to glide to (the end of the queue, or the queue
         // changed under the finger): back to rest, and the new song replaces
         // this one in place.
         busy.value = false;
         slide.value = withSpring(0, {damping: 20, stiffness: 220});
+        skip();
         return;
       }
       landing.current = {
         key: trackKey(n.track),
+        from,
         art: n.art,
         glided: false,
         at: Date.now(),
@@ -264,6 +293,8 @@ export function useSongSwipe({
         // stopped until the app was restarted. Now it always ends.
         guard: setTimeout(() => settle('guard'), LAND_GUARD_MS),
       };
+      // Now the engine and the title move, while the cover glides.
+      skip();
     },
     [slide, busy, settle],
   );

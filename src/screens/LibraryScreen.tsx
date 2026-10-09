@@ -40,9 +40,12 @@ import {
 import {
   createPlaylist,
   deletePlaylist,
+  playlistSource,
   renamePlaylist,
   setPlaylistImage,
+  usePlaylists,
 } from '../playlists';
+import {PlaylistSourceBadge} from '../components/Badges';
 import {shareCodeOf} from '../sharedPlaylists';
 import {
   MAX_PINS,
@@ -298,6 +301,12 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   }, []);
 
   const playlistIdOf = (c: Collection) => c.id.replace(/^pl:/, '');
+  // Where each playlist came from, for the label at the end of its row.
+  const playlists = usePlaylists();
+  const sourceOf = (c: Collection) =>
+    c.kind === 'userPlaylist'
+      ? playlistSource(playlists.find(p => p.id === playlistIdOf(c)))
+      : '';
 
   const doChangeCover = useCallback(async (c: Collection) => {
     setMenuFor(null);
@@ -470,6 +479,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                     </Text>
                   </View>
                 </View>
+                <PlaylistSourceBadge source={sourceOf(item)} />
               </TouchableOpacity>
             )}
           />

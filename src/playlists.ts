@@ -36,6 +36,13 @@ export type Playlist = {
    * "In your library" instead of adding it twice.
    */
   from?: {code: string; by: string};
+  /**
+   * Imported from a Spotify or YouTube playlist: its link, and its songs as
+   * last seen (`keys`, "title|artist"). What Sync reads again and compares
+   * against. `keys` is empty for a playlist imported before Sync existed,
+   * until its first Sync.
+   */
+  importedFrom?: {url: string; keys: string[]};
 };
 
 /** Stored before v1.2.36, a shared playlist was FOLLOWED: it kept updating
@@ -217,6 +224,36 @@ export function mapPlaylistTracks(fn: (t: Track) => Track): void {
 
 export function usePlaylists(): Playlist[] {
   return useStoreValue(store);
+}
+
+/**
+ * Where a playlist came from, for its label: an import's link (Spotify, YouTube
+ * Music, YouTube), a friend's Relaxify link, or '' for one made in the app.
+ * Exported for the test.
+ */
+export function playlistSource(p: Playlist | undefined): string {
+  if (!p) {
+    return '';
+  }
+  if (p.from) {
+    return 'relaxify';
+  }
+  const url = p.importedFrom?.url ?? '';
+  if (/music\.youtube\.com/i.test(url)) {
+    return 'youtube_music';
+  }
+  if (/youtube\.com|youtu\.be/i.test(url)) {
+    return 'youtube';
+  }
+  return /spotify/i.test(url) ? 'spotify' : '';
+}
+
+/** Remember (or update) the original a playlist was imported from. */
+export function setImportedFrom(
+  id: string,
+  importedFrom: {url: string; keys: string[]},
+): void {
+  store.update(list => list.map(p => (p.id === id ? {...p, importedFrom} : p)));
 }
 
 /** Every playlist change, for the owner's side of sharing. */

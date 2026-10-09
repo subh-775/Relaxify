@@ -10,7 +10,7 @@ import {useSyncExternalStore} from 'react';
 import {importSpotify, type ImportSnapshot} from './backend';
 import {logEvent} from './analytics';
 import {createStore, useStoreValue} from './storage';
-import {addTracksToPlaylist, createPlaylist} from './playlists';
+import {addTracksToPlaylist, createPlaylist, setImportedFrom} from './playlists';
 import {normalizeTracks} from './tracks';
 import {toast} from './toast';
 
@@ -62,6 +62,8 @@ function saveFinished(url: string, res: ImportSnapshot): void {
     return;
   }
   addTracksToPlaylist(pl.id, tracks);
+  // What Sync reads again later.
+  setImportedFrom(pl.id, {url, keys: res.keys ?? []});
   lastImport.set({
     url,
     name: pl.name,

@@ -56,6 +56,7 @@ export {default as Plus} from 'lucide-react-native/dist/esm/icons/plus';
 export {default as Quote} from 'lucide-react-native/dist/esm/icons/quote';
 export {default as Radio} from 'lucide-react-native/dist/esm/icons/radio';
 export {default as RefreshCw} from 'lucide-react-native/dist/esm/icons/refresh-cw';
+export {default as Link} from 'lucide-react-native/dist/esm/icons/link';
 export {default as Repeat2} from 'lucide-react-native/dist/esm/icons/repeat-2';
 export {default as Search} from 'lucide-react-native/dist/esm/icons/search';
 export {default as Share2} from 'lucide-react-native/dist/esm/icons/share-2';

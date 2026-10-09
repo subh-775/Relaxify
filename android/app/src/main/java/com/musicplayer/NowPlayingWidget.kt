@@ -40,6 +40,10 @@ class NowPlayingWidget : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         render(context, manager, ids)
+        // Just placed: songs pushed while there was no widget never fetched
+        // their cover (see push), so catch up on the current one.
+        val app = context.applicationContext
+        if (coverStale(app)) io.execute { refreshCover(app) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -91,29 +95,49 @@ class NowPlayingWidget : AppWidgetProvider() {
         ) {
             alive = true
             val app = context.applicationContext
-            val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val newCover = (artwork ?: "") != prefs.getString("artwork", "")
-            prefs.edit()
+            app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("title", title)
                 .putString("artist", artist)
                 .putString("artwork", artwork ?: "")
                 .putBoolean("playing", playing)
                 .putInt("tint", tint)
                 .apply()
-            if (newCover) {
-                io.execute {
-                    saveCover(app, artwork)
-                    renderAll(app)
-                }
+            // No widget on the home screen, which is most phones: nothing to
+            // draw, so no cover to download, scale and encode on every song
+            // change either, screen off and on mobile data included. A widget
+            // placed later catches up in onUpdate.
+            if (widgetIds(app).isEmpty()) return
+            if (coverStale(app)) {
+                io.execute { refreshCover(app) }
             } else {
                 renderAll(app)
             }
         }
 
+        private fun widgetIds(context: Context): IntArray =
+            AppWidgetManager.getInstance(context)
+                .getAppWidgetIds(ComponentName(context, NowPlayingWidget::class.java))
+
+        /** The cover file was made from a different song's artwork. */
+        private fun coverStale(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            return prefs.getString("artwork", "") != prefs.getString("cover", null)
+        }
+
+        /** On [io]: bring the cover file up to the current song, then redraw. */
+        private fun refreshCover(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val artwork = prefs.getString("artwork", "").orEmpty()
+            if (artwork != prefs.getString("cover", null)) {
+                saveCover(context, artwork)
+                prefs.edit().putString("cover", artwork).apply()
+            }
+            renderAll(context)
+        }
+
         private fun renderAll(context: Context) {
-            val manager = AppWidgetManager.getInstance(context)
-            val ids = manager.getAppWidgetIds(ComponentName(context, NowPlayingWidget::class.java))
-            if (ids.isNotEmpty()) render(context, manager, ids)
+            val ids = widgetIds(context)
+            if (ids.isNotEmpty()) render(context, AppWidgetManager.getInstance(context), ids)
         }
 
         private fun render(context: Context, manager: AppWidgetManager, ids: IntArray) {

@@ -104,6 +104,62 @@ def fetch_tracklist(kind: str, sid: str):
     return {"name": _norm_ws(name), "tracks": tracks, "image": cover}
 
 
+# Words that make a different recording of the same song. A hit carrying one
+# the original's title does not have is a copy (a lofi, a slowed upload, a
+# cover), not the song that was imported.
+_VARIANT = re.compile(
+    r"\b(slowed|reverb|lofi|lo fi|sped|speed up|nightcore|remix|mix|cover|"
+    r"karaoke|instrumental|8d|reprise|unplugged|acoustic|live|version|mashup|"
+    r"recreated|rendition|jhankar|bass boosted|extended|female|male|"
+    r"sitar|flute|piano|violin|guitar|edit|remastered|refix|flip|vip)\b",
+    re.I,
+)
+
+
+def _plain(s: str) -> str:
+    """Without accents: Spotify credits "ROSÉ" and "ADÉLA", JioSaavn lists
+    the same songs under "Rose" and "Adela"."""
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFKD", s or "") if not unicodedata.combining(c))
+
+
+def _variants(s: str) -> set:
+    return {w.lower() for w in _VARIANT.findall(re.sub(r"[^\w\s]", " ", s or ""))}
+
+
+def clean_title(title: str) -> str:
+    """The song's own name: no '(From "Film")', '- From "Film"' or [tags],
+    which search engines match poorly and other services leave out."""
+    t = re.sub(r"\s*[\(\[][^\)\]]*\b(from|feat\.?|ft\.?|with)\b[^\)\]]*[\)\]]", "", title or "", flags=re.I)
+    t = re.sub(r"\s+-\s+from\s+.*$", "", t, flags=re.I)
+    return re.sub(r"\s{2,}", " ", t).strip() or (title or "").strip()
+
+
+def credited(artist: str) -> list:
+    """'A, B & C feat. D' as its separate names. Split BEFORE anything strips
+    the commas: splitting a cleaned string found no separators, so a credit of
+    several artists (most film songs) was one long name that matched nobody."""
+    parts = re.split(r",|&|/|\bx\b|\bfeat\.?|\bft\.?|\band\b", artist or "", flags=re.I)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def match_rank(item, track) -> tuple:
+    """Higher is better, among hits that passed is_good_match: an exact title,
+    then the closest length, then JioSaavn (the best quality) first."""
+    from components.fuzz_compat import fuzz
+
+    def norm(s):
+        return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", _plain(s).lower())).strip()
+
+    exact = fuzz.ratio(norm(clean_title(item["title"])), norm(clean_title(getattr(track, "title", ""))))
+    want = int(item.get("duration_ms") or 0)
+    got = int(getattr(track, "duration_ms", 0) or 0)
+    close = -abs(got - want) if want and got else -60_000
+    sources = getattr(track, "sources", {}) or {}
+    saavn = any(getattr(k, "value", k) == "jiosaavn" for k in sources)
+    return (exact >= 90, close, exact, saavn)
+
+
 def is_good_match(item, track, weak_artist: bool = False) -> bool:
     """Is `track` (a search hit) genuinely the Spotify song `item`?
 
@@ -125,10 +181,14 @@ def is_good_match(item, track, weak_artist: bool = False) -> bool:
     from components.fuzz_compat import fuzz
 
     def norm(s):
-        return re.sub(r"[^\w\s]", " ", (s or "").lower()).strip()
+        return re.sub(r"[^\w\s]", " ", _plain(s).lower()).strip()
 
     title_score = fuzz.token_set_ratio(norm(item["title"]), norm(getattr(track, "title", "")))
     if title_score < 82:
+        return False
+    # A different recording: the hit says lofi / slowed / cover / remix and
+    # the original does not.
+    if _variants(getattr(track, "title", "")) - _variants(item["title"]):
         return False
 
     want = int(item.get("duration_ms") or 0)
@@ -141,8 +201,8 @@ def is_good_match(item, track, weak_artist: bool = False) -> bool:
         return True
 
     cand_artist = norm(getattr(track, "artist", ""))
-    for a in re.split(r"[,&/]| x |feat| ft ", norm(item["artist"])):
-        a = a.strip()
+    for a in credited(item["artist"]):
+        a = norm(a)
         if a and (a in cand_artist or fuzz.partial_ratio(a, cand_artist) >= 88):
             return True
     return False

@@ -1,5 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
+  Animated,
   FlatList,
   Image,
   StyleSheet,
@@ -110,6 +111,8 @@ type Props = {
   onImportSpotify?: (url: string) => void;
   /** Open a playlist or album, from the Continue and import cards. */
   onOpenCollection?: (c: Collection) => void;
+  /** Open an album by name, artist and JioSaavn id (From artists you love). */
+  onOpenAlbum?: (name: string, artist: string, albumId: string) => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
    *  greeting takes new colours then. */
@@ -157,6 +160,7 @@ export const HomeScreen = React.memo(function HomeScreen({
   onOpenJam,
   onImportSpotify,
   onOpenCollection,
+  onOpenAlbum,
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
@@ -268,8 +272,13 @@ export const HomeScreen = React.memo(function HomeScreen({
 
   /** The first load has finished, fresh rows or not. */
   const [settled, setSettled] = useState(false);
+  /** New languages picked, their rows not in yet. */
+  const [tuning, setTuning] = useState(false);
+  /** The latest load: an older one finishing late must not land. */
+  const lastLoad = useRef(0);
 
   const load = useCallback(async () => {
+    const n = ++lastLoad.current;
     setError('');
     try {
       if (!(await waitForBackend())) {
@@ -283,6 +292,9 @@ export const HomeScreen = React.memo(function HomeScreen({
         // The first screenful's covers, before the rows are shown, so the
         // page arrives drawn rather than filling in picture by picture.
         await prefetchFirstCovers(data);
+        if (n !== lastLoad.current) {
+          return;
+        }
         setFresh(data);
         homeCache.set(trimForCache(data)); // seed the next launch
       }
@@ -295,7 +307,10 @@ export const HomeScreen = React.memo(function HomeScreen({
         setError(e instanceof Error ? e.message : String(e));
       }
     } finally {
-      setSettled(true);
+      if (n === lastLoad.current) {
+        setSettled(true);
+        setTuning(false);
+      }
     }
   }, []);
 
@@ -303,11 +318,26 @@ export const HomeScreen = React.memo(function HomeScreen({
   // the internet comes back.
   const langs = useSettings().homeLanguages.join(',');
   const offline = useOffline();
+  const loadedLangs = useRef(langs);
   useEffect(() => {
     if (!offline) {
+      setTuning(langs !== loadedLangs.current);
+      loadedLangs.current = langs;
       load();
     }
   }, [load, langs, offline]);
+
+  // The rows the languages change (Charts on) dim while the new ones load,
+  // and come back up with them, instead of snapping over.
+  const dim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(dim, {
+      toValue: tuning ? 0.35 : 1,
+      duration: tuning ? 150 : 300,
+      useNativeDriver: true,
+    }).start();
+  }, [tuning, dim]);
+  const chartsAt = rows.findIndex(r => r.title.trim().toLowerCase() === 'charts');
 
   // Claiming the left strip back from Android's system back gesture happens in
   // onLayout, below — NOT here. Home mounts while the splash is still up, and
@@ -405,16 +435,21 @@ export const HomeScreen = React.memo(function HomeScreen({
           <FlatList
             data={rows}
             keyExtractor={row => row.title}
-            renderItem={({item}) => (
+            extraData={tuning}
+            renderItem={({item, index}) => (
               <>
-                <Row row={item} onPick={onPickTrack} />
+                {/* The language dial above the rows it changes. */}
+                {index === chartsAt && <LanguageDial busy={tuning} />}
+                <Animated.View
+                  style={chartsAt >= 0 && index >= chartsAt && {opacity: dim}}>
+                  <Row row={item} onPick={onPickTrack} />
+                </Animated.View>
                 {/* Your artists' newest, between New releases and Charts. */}
                 {item.title.trim().toLowerCase() === 'new releases' && (
-                  <FollowedShelf onPick={onPickTrack} />
-                )}
-                {/* The language dial between Charts and Top playlists. */}
-                {item.title.trim().toLowerCase() === 'charts' && (
-                  <LanguageDial />
+                  <FollowedShelf
+                    onPlay={onPlayTrack}
+                    onOpenAlbum={onOpenAlbum}
+                  />
                 )}
               </>
             )}

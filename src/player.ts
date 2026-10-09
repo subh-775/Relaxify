@@ -395,6 +395,12 @@ async function setupPlayerOnce(): Promise<boolean> {
         appKilledPlaybackBehavior:
           AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
       },
+      // The note in the corner of the media controls (and the notification),
+      // where Android drew ExoPlayer's generic play-circle. The white
+      // silhouette already in res/drawable-* (the Recap's reminder uses it):
+      // a small icon is drawn as its alpha only, so it must be one. A plain
+      // resource name, which RN's drawable lookup resolves as it stands.
+      icon: {uri: 'ic_stat_recap'} as unknown as number,
       capabilities: [
         Capability.Play,
         Capability.Pause,
@@ -489,6 +495,11 @@ async function setupPlayerOnce(): Promise<boolean> {
       noteTrackChange();
       // The engine is authoritative — reconcile the optimistic mirror with what
       // actually started, and keep the queue snapshot warm for the next gesture.
+      // The index too, NOW: it used to wait for onTrackSettled (350 ms), and in
+      // between, a song that changed by itself (it ended, a headset or
+      // notification Next) left the swipe reading its neighbours from the old
+      // position — the song just started drawn as the next one.
+      activeIndex = rowIndex(engineQueue, e.track, e.index ?? activeIndex);
       publishTrack(e.track ?? null);
       // The new song is the resume point NOW, from this native event, not
       // from onTrackSettled's timer (frozen in the background).

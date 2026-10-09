@@ -199,7 +199,14 @@ export type Track = {
 };
 
 /** A release card on Home's "From artists you love". */
-export type FollowedItem = HomeItem & {artist: string; new?: boolean};
+export type FollowedItem = HomeItem & {
+  artist: string;
+  new?: boolean;
+  /** JioSaavn's album id: a release opens by it. */
+  album_id?: string;
+  /** How many songs the release has (0 when JioSaavn does not say). */
+  songs?: number;
+};
 
 /** The newest releases of the artists you follow. */
 export async function getFollowedReleases(
@@ -518,7 +525,62 @@ export type ImportSnapshot = {
   source?: string;
   /** YouTube songs kept as their YouTube original: nothing else matched. */
   kept?: number;
+  /** Every song of the original list, as Sync remembers it. */
+  keys?: string[];
 };
+
+export type SyncResult = {
+  name: string;
+  /** The original's songs now: remembered for the next Sync. */
+  keys: string[];
+  /** The songs new on the original that were found here. */
+  tracks: Track[];
+  /** New on the original, and of those, not found anywhere. */
+  new: number;
+  missing: number;
+  error?: string;
+};
+
+/**
+ * Sync an imported playlist with its original (Spotify or YouTube): the new
+ * songs there, found here. `keys` is the original as last seen (empty for a
+ * playlist imported before Sync existed: then `have`, the playlist's songs,
+ * tells new from old). Matching is a real search per new song, so this waits
+ * longer than the usual request.
+ */
+export async function syncImport(
+  url: string,
+  keys: string[],
+  have: Track[],
+): Promise<SyncResult> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 180_000);
+  try {
+    const res = await fetch(apiUrl('/import/sync'), {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        url,
+        keys,
+        have: have.map(t => ({title: t.title, artist: t.artist})),
+      }),
+      signal: ctl.signal,
+    });
+    const data = (await res.json()) as Partial<SyncResult>;
+    if (!res.ok || data.error) {
+      throw new Error(data.error || 'Could not sync this playlist.');
+    }
+    return {
+      name: data.name || '',
+      keys: Array.isArray(data.keys) ? data.keys : [],
+      tracks: Array.isArray(data.tracks) ? data.tracks : [],
+      new: data.new ?? 0,
+      missing: data.missing ?? 0,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Poll (and on the first call, start) the background import job for `url`.
  *  The job lives in the server process, so it survives the screen closing. */
