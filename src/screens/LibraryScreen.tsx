@@ -73,6 +73,7 @@ import {MenuMark} from '../components/MenuMark';
 import {useListEnd} from '../components/UpdateModal';
 import {LibraryHeroes} from '../components/LibraryHeroes';
 import {EmptyState} from '../components/EmptyState';
+import {fold} from '../tracks';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
@@ -103,11 +104,6 @@ function idOf(c: Collection): string {
  * not work being done, but work being redone. Every prop below is
  * useCallback-stable in App, so this actually holds.
  */
-/** Lower case, accents removed: what the library search compares. */
-function fold(text: string): string {
-  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
-
 export const LibraryScreen = React.memo(function LibraryScreen({
   onOpen,
   onOpenMenu,

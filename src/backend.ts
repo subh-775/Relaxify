@@ -482,6 +482,11 @@ export async function setYouTubeExperimental(
 // ─── Search suggestions ─────────────────────────────────────────────────────
 
 export type Suggestion = {
+  /** 'artist': JioSaavn's own top match was an artist (opens the artist).
+   *  'own': a song of yours, matched on the phone (`track` plays it).
+   *  Absent from an older backend: a song. */
+  kind?: 'song' | 'artist' | 'own';
+  track?: Track;
   title: string;
   artist: string;
   album?: string;
@@ -490,8 +495,8 @@ export type Suggestion = {
   artwork_url?: string;
 };
 
-/** Autocomplete for the search field. Cheap by design — the backend restricts
- *  this to JioSaavn and ranks prefix matches above contains above fuzzy. */
+/** Autocomplete for the search field. Cheap by design — JioSaavn only, in its
+ *  own popularity order, led by an artist row when the typing names one. */
 export async function getSuggestions(
   q: string,
   limit = 8,

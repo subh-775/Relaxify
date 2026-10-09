@@ -3,7 +3,8 @@
  *
  * Three states, in the order you meet them:
  *   empty field  → recent searches
- *   typing       → suggestions (debounced, cheap, JioSaavn-only server-side)
+ *   typing       → your own matching songs at once, then suggestions
+ *                  (debounced, cheap, JioSaavn-only server-side)
  *   submitted    → full cross-source results, final as soon as they land
  *
  * A Spotify playlist/album link pasted into the field is detected and offered
@@ -36,14 +37,23 @@ import {
   type Track,
 } from '../backend';
 import {useStats} from '../stats';
-import {getTrackId, normalizeTracks} from '../tracks';
+import {
+  cleanText,
+  getBestArtworkUrl,
+  getTrackId,
+  normalizeTracks,
+  ownSongMatches,
+  thumbArtwork,
+} from '../tracks';
+import {readRecentlyPlayed} from '../recentlyPlayed';
+import {readPlaylists} from '../playlists';
 import {TrackRow, listWindowing} from '../components/TrackRow';
 import {forgetSearch, rememberSearch, useSearchHistory} from '../searchHistory';
 import {BOTTOM_INSET} from '../layout';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
-import {homeLanguageParam, useSettings} from '../store';
+import {homeLanguageParam, readLikes, useSettings} from '../store';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
 import {OfflineScreen} from '../components/OfflineScreen';
@@ -221,18 +231,41 @@ export const SearchScreen = React.memo(function SearchScreen({
     }
   }, []);
 
-  // Debounced suggestions while typing.
+  // While typing: your own matching songs at once (no network, so offline
+  // too), then the debounced suggestions after them.
   useEffect(() => {
     const text = query.trim();
     if (text.length < 2 || isImportUrl(text) || codeIn(text)) {
       setSuggestions([]);
       return;
     }
+    const own: Suggestion[] = ownSongMatches(text, [
+      readRecentlyPlayed(),
+      readLikes(),
+      ...readPlaylists().map(p => p.tracks),
+    ]).map(t => ({
+      kind: 'own',
+      track: t,
+      title: cleanText(t.title),
+      artist: cleanText(t.artist),
+      artwork_url: thumbArtwork(getBestArtworkUrl(t)) || undefined,
+    }));
+    const mine = new Set(own.map(o => `${o.title}|${o.artist}`.toLowerCase()));
+    const withOwn = (list: Suggestion[]) => [
+      ...own,
+      ...list.filter(
+        x =>
+          x.kind !== 'own' &&
+          !mine.has(`${x.title}|${x.artist}`.toLowerCase()),
+      ),
+    ];
+    // Over the last answer, which stays until the new one lands.
+    setSuggestions(withOwn);
     const id = setTimeout(async () => {
       try {
         const list = await getSuggestions(text);
         // Only apply if the field still holds what we asked about.
-        setSuggestions(prev => (query.trim() === text ? list : prev));
+        setSuggestions(prev => (query.trim() === text ? withOwn(list) : prev));
       } catch {
         // Suggestions are a convenience — a failure must stay silent.
       }
@@ -434,7 +467,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       {showSuggestions && (
         <FlatList
           data={suggestions}
-          keyExtractor={s => `${s.title}|${s.artist}`}
+          keyExtractor={s => `${s.kind ?? 'song'}|${s.title}|${s.artist}`}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
@@ -444,6 +477,18 @@ export const SearchScreen = React.memo(function SearchScreen({
               style={styles.suggestion}
               activeOpacity={0.7}
               onPress={() => {
+                logEvent('suggestion_pick', {kind: item.kind ?? 'song'});
+                // Your song plays; an artist opens; a song is searched for.
+                if (item.kind === 'own' && item.track) {
+                  Keyboard.dismiss();
+                  onPickTrack(item.track);
+                  return;
+                }
+                if (item.kind === 'artist' && onOpenArtist) {
+                  Keyboard.dismiss();
+                  onOpenArtist(item.title);
+                  return;
+                }
                 const q = `${item.title} ${item.artist}`.trim();
                 setQuery(q);
                 runSearch(q);
@@ -451,21 +496,40 @@ export const SearchScreen = React.memo(function SearchScreen({
               {item.artwork_url ? (
                 <Image
                   source={{uri: item.artwork_url}}
-                  style={styles.suggestionArt}
+                  style={[
+                    styles.suggestionArt,
+                    item.kind === 'artist' && styles.suggestionRound,
+                  ]}
                 />
               ) : (
-                <View style={[styles.suggestionArt, styles.suggestionArtEmpty]}>
+                <View
+                  style={[
+                    styles.suggestionArt,
+                    styles.suggestionArtEmpty,
+                    item.kind === 'artist' && styles.suggestionRound,
+                  ]}>
                   <SearchIcon size={16} color={C.faint} />
                 </View>
               )}
               <View style={styles.suggestionText}>
                 <Text style={styles.suggestionTitle} numberOfLines={1}>
-                  {item.title}
+                  {cleanText(item.title)}
                 </Text>
-                {!!item.artist && (
+                {item.kind === 'artist' ? (
                   <Text style={styles.suggestionSub} numberOfLines={1}>
-                    {item.artist}
+                    Artist
                   </Text>
+                ) : item.kind === 'own' ? (
+                  <Text style={styles.suggestionSub} numberOfLines={1}>
+                    <Text style={styles.suggestionOwn}>Your music</Text>
+                    {item.artist ? ` · ${item.artist}` : ''}
+                  </Text>
+                ) : (
+                  !!item.artist && (
+                    <Text style={styles.suggestionSub} numberOfLines={1}>
+                      {cleanText(item.artist)}
+                    </Text>
+                  )
                 )}
               </View>
             </TouchableOpacity>
@@ -780,6 +844,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: C.surface,
   },
+  suggestionRound: {borderRadius: 22},
   suggestionArtEmpty: {
     backgroundColor: C.surfaceHi,
     alignItems: 'center',
@@ -788,6 +853,7 @@ const styles = StyleSheet.create({
   suggestionText: {flex: 1, minWidth: 0},
   suggestionTitle: {...T.body, color: C.text},
   suggestionSub: {...T.sub, color: C.sub, marginTop: 2},
+  suggestionOwn: {color: C.accent},
   empty: {
     color: C.faint,
     textAlign: 'center',

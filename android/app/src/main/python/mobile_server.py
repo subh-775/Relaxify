@@ -766,6 +766,11 @@ def search_tracks():
         return jsonify({"error": str(e)}), 500
 
 
+# Autocomplete's artist lookup runs beside the song search. Shared, not one
+# pool per keystroke; a slow lookup is abandoned (see below), never awaited.
+_suggest_pool = ThreadPoolExecutor(max_workers=4)
+
+
 @app.get("/api/search/suggestions")
 def search_suggestions():
     q = _arg("q")
@@ -783,28 +788,36 @@ def search_suggestions():
         # results ACROSS sources, and this route deliberately queries exactly
         # one, so there was never anything to reconcile.
         #
-        # Straight to the client. The prefix ordering and the de-dupe below are
-        # what actually shape this list, and they are unchanged.
+        # Straight to the client: one source, so nothing to reconcile.
+        from components.profile import top_artist_hint
+        artist_f = _suggest_pool.submit(top_artist_hint, q)
         songs = _source_client("jiosaavn").search(q, limit)
 
-        # While TYPING, what the user wants is almost always a completion of
-        # what they've typed — so titles that start with the query outrank
-        # titles that merely contain it, which outrank fuzzy-only hits.
-        qn = q.lower().strip()
-        songs = sorted(songs, key=lambda t: (
-            0 if (t.title or "").lower().startswith(qn)
-            else 1 if qn in (t.title or "").lower()
-            else 2,
-            len(t.title or ""),
-        ))
+        # JioSaavn's own order, which is its popularity ranking. It used to be
+        # re-sorted here (title starts with the query, then shortest first),
+        # which put the wanted song first for 24 of 35 typed searches; kept as
+        # JioSaavn sends it, plus the artist row, 32 of 35.
+        suggestions = []
+        try:
+            artist = artist_f.result(timeout=1.5)
+        except Exception:
+            artist = None  # slow or failed: the songs alone, as before
+        if artist:
+            suggestions.append({
+                "kind": "artist",
+                "title": artist["name"],
+                "artist": "",
+                "artwork_url": artist["image"] or None,
+            })
 
-        seen, suggestions = set(), []
+        seen = set()
         for track in songs:
             key = f"{(track.title or '').lower()}|{(track.artist or '').lower()}"
             if key in seen:
                 continue
             seen.add(key)
             suggestions.append({
+                "kind": "song",
                 "title": track.title,
                 "artist": track.artist,
                 "album": track.album,
@@ -818,7 +831,7 @@ def search_suggestions():
                 # extra request per row, on every debounced keystroke.
                 "artwork_url": track.image_url or None,
             })
-            if len(suggestions) >= limit:
+            if len(suggestions) >= limit + (1 if artist else 0):
                 break
         return jsonify({"suggestions": suggestions})
     except Exception:

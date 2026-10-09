@@ -638,6 +638,26 @@ def _jiosaavn_search_artists(query, limit):
     return out
 
 
+def top_artist_hint(query):
+    """JioSaavn's own top match for a half-typed search, when it is an artist:
+    {name, image} or None. One row for the search-as-you-type list.
+
+    Measured on 35 typed searches (2026-10-09): autocomplete's top match named
+    the artist for all 7 artist searches ("arij" -> Arijit Singh) and was never
+    an artist for the 28 song searches. Its songs and albums were worse than
+    search.getResults (lofi / slowed copies, compilation pressings), so this
+    one row is all that is taken from it."""
+    ac = _jcall({"__call": "autocomplete.get", "query": query})
+    data = ((ac.get("topquery") or {}).get("data") or []) if isinstance(ac, dict) else []
+    top = data[0] if data and isinstance(data[0], dict) else None
+    if not top or top.get("type") != "artist":
+        return None
+    name = _clean(top.get("title"))
+    img = top.get("image") or ""
+    img = "" if "artist-default" in img else re.sub(r"\d+x\d+(?=\.\w+$)", "150x150", img)
+    return {"name": name, "image": img} if name else None
+
+
 def _jiosaavn_artist_photos(query, limit):
     """{normalized name: official photo} from JioSaavn's artist search.
 

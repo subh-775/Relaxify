@@ -92,6 +92,45 @@ export function cleanText(value: unknown): string {
 }
 
 /** Stable identity for a track. ISRC when known, else cleaned title+artist. */
+/** Lower case, accents removed: what the library search compares. */
+export function fold(text: string): string {
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/**
+ * Your own songs whose TITLE matches what is being typed, at the start of the
+ * title or of any word in it, for the top of Search's suggestions. `lists` in
+ * priority order (recents, likes, playlists); one row per song, at most `max`.
+ * The title only: matching artists too put two of your Arijit songs above
+ * Arijit Singh himself for "arij".
+ */
+export function ownSongMatches(
+  typed: string,
+  lists: Track[][],
+  max = 2,
+): Track[] {
+  const q = fold(typed.trim());
+  if (q.length < 2) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: Track[] = [];
+  for (const list of lists) {
+    for (const t of list) {
+      const title = fold(cleanText(t.title));
+      const id = getTrackId(t);
+      if ((title.startsWith(q) || title.includes(` ${q}`)) && !seen.has(id)) {
+        seen.add(id);
+        out.push(t);
+        if (out.length >= max) {
+          return out;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 export function getTrackId(track: Track | null | undefined): string {
   return [
     cleanText(track?.title).toLowerCase(),
