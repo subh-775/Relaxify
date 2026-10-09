@@ -1,5 +1,6 @@
 /**
- * Home's "Tune to your taste" banner, between Charts and Top playlists.
+ * Home's "Tune to your taste" banner, above Charts and Top playlists: the
+ * rows the languages change.
  *
  * Two boxes at the top right, the first and the second language. Tap a box
  * and the dial below sets that one: the languages, each in its own script,
@@ -8,7 +9,14 @@
  * it. No note pops up: the boxes already say what Home plays.
  */
 import React, {useEffect, useRef, useState} from 'react';
-import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import {C, S, T} from '../theme';
 import {readSettings, setSlot, useSettings, writeSetting} from '../store';
 import {LANGUAGES, languageName} from './LanguageChips';
@@ -19,7 +27,8 @@ const TICKS = 9;
 
 const indexOf = (lang?: string) => LANGUAGES.findIndex(([l]) => l === lang);
 
-export function LanguageDial() {
+/** `busy`: the new languages' rows are loading. */
+export function LanguageDial({busy = false}: {busy?: boolean}) {
   const pair = useSettings().homeLanguages.slice(0, 2);
   /** The box the dial is setting: 0 = first language, 1 = second. */
   const [slot, setSlotOn] = useState<0 | 1>(0);
@@ -126,7 +135,10 @@ export function LanguageDial() {
       <View style={styles.head}>
         <View style={styles.headText}>
           <Text style={styles.title}>Tune to your taste</Text>
-          <Text style={styles.sub}>Select your style</Text>
+          <View style={styles.subLine}>
+            <Text style={styles.sub}>Select your style</Text>
+            {busy && <ActivityIndicator size={11} color={C.sub} />}
+          </View>
         </View>
         <View style={styles.boxes}>
           {box(0)}
@@ -219,7 +231,8 @@ const styles = StyleSheet.create({
   },
   headText: {flexShrink: 0},
   title: {...T.rowTitle, color: C.text},
-  sub: {...T.sub, color: C.sub, marginTop: 2},
+  sub: {...T.sub, color: C.sub},
+  subLine: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2},
   boxes: {
     flex: 1,
     flexDirection: 'row',
