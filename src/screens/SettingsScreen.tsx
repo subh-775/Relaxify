@@ -1364,6 +1364,12 @@ export function SettingsScreen({
             value={settings.showQualityBadge}
             onChange={v => writeSetting('showQualityBadge', v)}
           />
+          <ToggleRow
+            label="Show playlist source"
+            hint="Marks playlists from Spotify, YouTube or a friend's link"
+            value={settings.showPlaylistSource}
+            onChange={v => writeSetting('showPlaylistSource', v)}
+          />
         </Section>
 
         <Section title="About">

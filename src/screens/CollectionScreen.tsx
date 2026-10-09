@@ -81,6 +81,7 @@ import {
   addTracksToPlaylist,
   deletePlaylist,
   playlistFromLink,
+  playlistSource,
   renamePlaylist,
   setImportedFrom,
   setPlaylistImage,
@@ -89,6 +90,7 @@ import {
 import {importSourceName, isImportUrl, useLastImport} from '../spotifyImport';
 import {syncImport} from '../backend';
 import {sharePlaylist} from '../sharedPlaylists';
+import {PlaylistSourceBadge} from '../components/Badges';
 import {shareMessage} from '../links';
 import {getLocalLibrary} from '../backend';
 import {ConfirmModal} from '../components/ConfirmModal';
@@ -689,7 +691,10 @@ export function CollectionScreen({
                 <CollectionArt collection={shownCollection} size={128} />
               </Animated.View>
               <View style={styles.meta}>
-                <Text style={styles.kind}>{kindLabel(collection.kind)}</Text>
+                <View style={styles.kindLine}>
+                  <Text style={styles.kind}>{kindLabel(collection.kind)}</Text>
+                  <PlaylistSourceBadge source={playlistSource(livePlaylist)} />
+                </View>
                 <Text style={styles.name} numberOfLines={3}>
                   {displayName}
                 </Text>
@@ -1123,6 +1128,7 @@ const styles = StyleSheet.create({
   },
   meta: {flex: 1, minWidth: 0, gap: 3},
   kind: {color: C.sub, fontSize: 12, fontWeight: '700'},
+  kindLine: {flexDirection: 'row', alignItems: 'center', gap: 8},
   by: {color: C.text, fontSize: 14, fontWeight: '700'},
   bigRow: {
     flexDirection: 'row',

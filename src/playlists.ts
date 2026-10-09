@@ -226,6 +226,28 @@ export function usePlaylists(): Playlist[] {
   return useStoreValue(store);
 }
 
+/**
+ * Where a playlist came from, for its label: an import's link (Spotify, YouTube
+ * Music, YouTube), a friend's Relaxify link, or '' for one made in the app.
+ * Exported for the test.
+ */
+export function playlistSource(p: Playlist | undefined): string {
+  if (!p) {
+    return '';
+  }
+  if (p.from) {
+    return 'relaxify';
+  }
+  const url = p.importedFrom?.url ?? '';
+  if (/music\.youtube\.com/i.test(url)) {
+    return 'youtube_music';
+  }
+  if (/youtube\.com|youtu\.be/i.test(url)) {
+    return 'youtube';
+  }
+  return /spotify/i.test(url) ? 'spotify' : '';
+}
+
 /** Remember (or update) the original a playlist was imported from. */
 export function setImportedFrom(
   id: string,

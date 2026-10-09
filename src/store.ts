@@ -30,6 +30,8 @@ export type Settings = {
   audioQuality: number; // 0 = auto, else kbps
   showSourceBadge: boolean;
   showQualityBadge: boolean;
+  /** Where a playlist came from (Spotify, YouTube, a friend's link). */
+  showPlaylistSource: boolean;
   /** Check GitHub for a new release on launch (at most once a day). */
   autoUpdateCheck: boolean;
   autoplay: boolean;
@@ -70,6 +72,7 @@ export const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
   showSourceBadge: true,
   showQualityBadge: true,
+  showPlaylistSource: true,
   autoUpdateCheck: true,
   autoplay: true,
   crossfadeDuration: 0,

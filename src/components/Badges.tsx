@@ -22,6 +22,23 @@ export const SOURCE_META: Record<string, {label: string; tint: string}> = {
   local: {label: 'Offline', tint: '#8b7bd8'},
 };
 
+/** Where a playlist came from: the same coloured word as a song's source. */
+const PLAYLIST_SOURCE: Record<string, {label: string; tint: string}> = {
+  spotify: {label: 'Spotify', tint: '#1ed760'},
+  youtube_music: SOURCE_META.youtube_music,
+  youtube: SOURCE_META.youtube,
+  relaxify: {label: 'Relaxify', tint: C.brand},
+};
+
+export function PlaylistSourceBadge({source}: {source: string}) {
+  const {showPlaylistSource} = useSettings();
+  const meta = PLAYLIST_SOURCE[source];
+  if (!showPlaylistSource || !meta) {
+    return null;
+  }
+  return <Text style={[styles.text, {color: meta.tint}]}>{meta.label}</Text>;
+}
+
 export function SourceBadge({track}: {track: Track | null}) {
   const {showSourceBadge} = useSettings();
   if (!showSourceBadge || !track) {
