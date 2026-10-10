@@ -94,12 +94,33 @@ const TILE_BLOBS = BRIGHT_PALS.map((_, k) => blob(55, 55, 46, 0.22, 8, k + 1));
  * not work being done, but work being redone. Every prop below is
  * useCallback-stable in App, so this actually holds.
  */
-/** A song suggestion's title, coral while that song is the one playing, as a
- *  song row is anywhere else in the app. */
-function SuggestionTitle({item}: {item: Suggestion}) {
-  const playing = useIsActiveTrack(
-    item.track ?? ({title: item.title, artist: item.artist} as Track),
+/**
+ * A song tapped in Search plays from its online source, never from a
+ * downloaded file, which may since have been deleted ("can't play,
+ * skipped"). Your own songs are only used to show results instantly. A copy
+ * read off the Downloads folder has no online source at all, so it is found
+ * again by title and artist. Null when nothing online matches.
+ */
+async function onlineCopy(t: Track): Promise<Track | null> {
+  if (t.sources && Object.keys(t.sources).length) {
+    return {...t, file_path: undefined};
+  }
+  const [hit] = normalizeTracks(
+    await search(`${cleanText(t.title)} ${cleanText(t.artist)}`, 1).catch(
+      () => [],
+    ),
   );
+  return hit ?? null;
+}
+
+/** A song suggestion's title, coral while that song is the one playing, as a
+ *  song row is anywhere else in the app. By title and artist: the copy that
+ *  plays is the online one, not the file a row of yours may point at. */
+function SuggestionTitle({item}: {item: Suggestion}) {
+  const playing = useIsActiveTrack({
+    title: item.track?.title ?? item.title,
+    artist: item.track?.artist ?? item.artist,
+  } as Track);
   return (
     <Text
       style={[styles.suggestionTitle, playing && styles.suggestionPlaying]}
@@ -514,7 +535,11 @@ export const SearchScreen = React.memo(function SearchScreen({
                 // Your song plays; an artist opens; a song is searched for.
                 if (item.kind === 'own' && item.track) {
                   Keyboard.dismiss();
-                  onPickTrack(item.track);
+                  onlineCopy(item.track).then(t =>
+                    t
+                      ? onPickTrack(t)
+                      : toast("Couldn't find that song online."),
+                  );
                   return;
                 }
                 if (item.kind === 'artist' && onOpenArtist) {
