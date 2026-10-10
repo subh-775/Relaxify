@@ -413,7 +413,9 @@ export const SearchScreen = React.memo(function SearchScreen({
         <View style={styles.field}>
           <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
           <View style={styles.inputBox}>
-            {!query && <SearchHints />}
+            {/* The tab stays mounted, and leaving it empties the field: on
+                its own this ticker ran behind Home and Library all session. */}
+            {!query && visible && <SearchHints />}
             <TextInput
             ref={inputRef}
             value={query}
