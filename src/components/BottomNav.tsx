@@ -1,13 +1,13 @@
 /**
- * Primary navigation — three thumb-reachable destinations with a label under
- * each icon (Spotify's own pattern; a bare icon makes "Library" ambiguous).
+ * Primary navigation — three thumb-reachable destinations, icons only.
  *
- * Active state is a BOLDER stroke plus the label, in the logo's red (C.brand),
- * not a filled glyph — a solid blob reads as a different icon rather than the
- * same one selected.
+ * Active state is white with a BOLDER stroke, not a filled glyph — a solid
+ * blob reads as a different icon rather than the same one selected. No dot,
+ * no label: the white icon is the whole signal.
  */
 import React from 'react';
-import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {StyleSheet, TouchableOpacity, View} from 'react-native';
+import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {Home, Search, Library} from '../icons';
 import {C} from '../theme';
 
@@ -28,6 +28,19 @@ export function BottomNav({
 }) {
   return (
     <View style={styles.bar}>
+      {/* No slab and no top border: the bar melts into the page, transparent
+          at its top edge and near-black at the bottom, so content scrolls
+          under the icons. BodyFade in App.tsx carries it up past the bar. */}
+      <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Defs>
+          <LinearGradient id="navfade" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={C.bg} stopOpacity="0" />
+            <Stop offset="0.45" stopColor={C.bg} stopOpacity="0.88" />
+            <Stop offset="1" stopColor={C.bg} stopOpacity="0.97" />
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#navfade)" />
+      </Svg>
       {TABS.map(({id, label, Icon}) => {
         const on = active === id;
         return (
@@ -36,14 +49,14 @@ export function BottomNav({
             style={styles.tab}
             activeOpacity={0.7}
             accessibilityRole="button"
+            accessibilityLabel={label}
             accessibilityState={{selected: on}}
             onPress={() => onChange(id)}>
             <Icon
-              size={23}
-              strokeWidth={on ? 2.6 : 1.8}
-              color={on ? C.text : C.faint}
+              size={25}
+              strokeWidth={on ? 2.4 : 2}
+              color={on ? C.text : INACTIVE}
             />
-            <Text style={[styles.label, on && styles.labelOn]}>{label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -51,23 +64,13 @@ export function BottomNav({
   );
 }
 
+// Brighter than C.faint: with no label beside it, a resting icon has to be
+// readable on its own.
+const INACTIVE = '#7A7F8A';
+
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(10,10,10,0.82)',
-    // Translucent, and no top border. A hairline across the screen is a hard
-    // edge that says "the page stops here", and it does not — it carries on
-    // behind the bar, which is now something you can faintly see. The fade
-    // above (BodyFade in App.tsx) is what stops that reading as clutter.
-    paddingBottom: 2,
-  },
-  tab: {flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8},
-  label: {
-    fontSize: 10,
-    letterSpacing: 0.3,
-    fontWeight: '500',
-    color: C.faint,
-  },
-  // White when on: the tab you are in is plain, not branded.
-  labelOn: {color: C.text, fontWeight: '700'},
+  bar: {flexDirection: 'row', paddingBottom: 2},
+  // 25 + 2 × 16 + 2 = 59, the height the labelled bar had (8 + 23 + 4 + a
+  // 13px label + 8 + 2), so the mini player and toasts stay where they were.
+  tab: {flex: 1, alignItems: 'center', paddingVertical: 16},
 });

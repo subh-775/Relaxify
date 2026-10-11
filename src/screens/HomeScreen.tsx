@@ -36,6 +36,7 @@ import {
   shouldOpen,
 } from '../drawer';
 import {BOTTOM_INSET} from '../layout';
+import {TOP_FADE, TopFade} from '../components/TopFade';
 import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
 import {checkOnline, useOffline} from '../offline';
@@ -431,6 +432,7 @@ export const HomeScreen = React.memo(function HomeScreen({
               rather than in the space the mark leaves. */}
           <View style={styles.markSpacer} />
         </View>
+        <TopFade />
         <GestureDetector gesture={listScroll}>
           <FlatList
             data={rows}
@@ -550,14 +552,15 @@ const styles = StyleSheet.create({
   fill: {flex: 1},
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
-  scroll: {paddingBottom: BOTTOM_INSET},
+  scroll: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   // The pinned row, spaced like the title bars of Search and Your Library.
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: S.gutter,
     paddingTop: 14,
-    paddingBottom: 10,
+    // The list's TOP_FADE padding is the gap under the greeting now.
+    paddingBottom: 0,
     gap: 12,
   },
   headerText: {flex: 1, minWidth: 0},

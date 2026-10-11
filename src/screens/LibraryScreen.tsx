@@ -68,6 +68,7 @@ import {Sheet} from '../components/Sheet';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {listWindowing} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
+import {TOP_FADE, TopFade} from '../components/TopFade';
 import Animated, {useAnimatedRef} from 'react-native-reanimated';
 import {FastScroll, useFastScroll} from '../components/FastScroll';
 import {MenuMark} from '../components/MenuMark';
@@ -408,6 +409,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           );
         })}
       </View>
+      <TopFade />
 
       {loading ? (
         <View style={styles.center}>
@@ -700,7 +702,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 9,
     paddingHorizontal: S.gutter,
-    paddingBottom: 12,
+    // The list's TOP_FADE padding is the gap under the chips now.
+    paddingBottom: 0,
   },
   chip: {
     flexDirection: 'row',
@@ -727,7 +730,7 @@ const styles = StyleSheet.create({
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   listBox: {flex: 1},
-  list: {paddingBottom: BOTTOM_INSET},
+  list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   row: {
     flexDirection: 'row',
     alignItems: 'center',

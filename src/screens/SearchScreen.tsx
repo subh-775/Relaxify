@@ -53,6 +53,7 @@ import {readPlaylists} from '../playlists';
 import {TrackRow, listWindowing} from '../components/TrackRow';
 import {forgetSearch, rememberSearch, useSearchHistory} from '../searchHistory';
 import {BOTTOM_INSET} from '../layout';
+import {TOP_FADE, TopFade} from '../components/TopFade';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
@@ -485,6 +486,10 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       {!!error && !busy && <Text style={styles.error}>{error}</Text>}
 
+      {/* Over the lists below, not under the field: the import card sits
+          right under the field and would be dimmed. */}
+      <TopFade />
+
       {showHistory && (
         <FlatList
           data={history}
@@ -811,7 +816,7 @@ const styles = StyleSheet.create({
   },
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
-  list: {paddingTop: 8, paddingBottom: BOTTOM_INSET},
+  list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   section: {
     ...T.rowTitle,
     color: C.text,
