@@ -167,3 +167,20 @@ test('a single track plays on its own', async () => {
   expect(titles()).toEqual(['Song 2']);
   expect(engine.__active()).toBe(0);
 });
+
+test('a second tap while the first song is starting queues one list, not both', async () => {
+  // A double-tap on a row, or a quick tap on the row below: the second
+  // playTrack begins while the first is still between its awaits.
+  const first = playTrack(album[3], album);
+  const second = playTrack(album[1], album);
+  await Promise.all([first, second]);
+  expect(titles()).toEqual([
+    'Song 0',
+    'Song 1',
+    'Song 2',
+    'Song 3',
+    'Song 4',
+    'Song 5',
+  ]);
+  expect(engine.__active()).toBe(1);
+});
