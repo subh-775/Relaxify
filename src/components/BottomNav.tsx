@@ -2,11 +2,13 @@
  * Primary navigation — three thumb-reachable destinations, icons only.
  *
  * Active state is white with a BOLDER stroke, not a filled glyph — a solid
- * blob reads as a different icon rather than the same one selected. No dot,
- * no label: the white icon is the whole signal.
+ * blob reads as a different icon rather than the same one selected — plus a
+ * small coral dot under it (C.brand, the logo's red). No label: the white icon
+ * and the dot are the whole signal.
  */
 import React from 'react';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
+import Animated, {ZoomIn} from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {Home, Search, Library} from '../icons';
 import {C} from '../theme';
@@ -57,6 +59,14 @@ export function BottomNav({
               strokeWidth={on ? 2.4 : 2}
               color={on ? C.text : INACTIVE}
             />
+            {/* Mounted only under the active tab, so a tap remounts it there
+                and it pops in rather than sliding across from the old tab. */}
+            {on && (
+              <Animated.View
+                entering={ZoomIn.duration(180)}
+                style={styles.dot}
+              />
+            )}
           </TouchableOpacity>
         );
       })}
@@ -73,4 +83,14 @@ const styles = StyleSheet.create({
   // 25 + 2 × 16 + 2 = 59, the height the labelled bar had (8 + 23 + 4 + a
   // 13px label + 8 + 2), so the mini player and toasts stay where they were.
   tab: {flex: 1, alignItems: 'center', paddingVertical: 16},
+  // Out of flow so the bar keeps its 59px: 5px under the 25px icon, in the
+  // bottom padding.
+  dot: {
+    position: 'absolute',
+    top: 16 + 25 + 5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.brand,
+  },
 });

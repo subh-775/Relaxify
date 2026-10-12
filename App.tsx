@@ -752,8 +752,17 @@ function Shell() {
         {/* All three tabs stay MOUNTED; switching shows/hides them. Unmounting
             threw away each screen's state, so coming back to Home replayed
             "Starting the music engine…" and Library re-fetched everything —
-            the single biggest "why is it reloading" complaint. */}
-        <View style={tab === 'home' ? styles.tabShown : styles.tabHidden}>
+            the single biggest "why is it reloading" complaint.
+
+            collapsable={false} on each: with only layout in its style, Android
+            drops the wrapper (and the screen's own bare root) from the native
+            tree, so the tab's children land straight in this body beside the
+            overlays. TopFade's zIndex then outranked the Equalizer, Settings
+            and the rest, and its band painted across their headers. A real
+            view keeps a tab's zIndex inside the tab. */}
+        <View
+          collapsable={false}
+          style={tab === 'home' ? styles.tabShown : styles.tabHidden}>
           <HomeScreen
             onPickTrack={pickHomeItem}
             onPlayTrack={play}
@@ -769,7 +778,9 @@ function Shell() {
             visible={tab === 'home'}
           />
         </View>
-        <View style={tab === 'search' ? styles.tabShown : styles.tabHidden}>
+        <View
+          collapsable={false}
+          style={tab === 'search' ? styles.tabShown : styles.tabHidden}>
           <SearchScreen
             visible={tab === 'search'}
             onPickTrack={play}
@@ -781,7 +792,9 @@ function Shell() {
             onOpenCollection={openFromLibrary}
           />
         </View>
-        <View style={tab === 'library' ? styles.tabShown : styles.tabHidden}>
+        <View
+          collapsable={false}
+          style={tab === 'library' ? styles.tabShown : styles.tabHidden}>
           <LibraryScreen
             key={libraryNonce}
             visible={tab === 'library'}

@@ -32,7 +32,9 @@ export function TopFade() {
 }
 
 const styles = StyleSheet.create({
-  // zIndex: above the list, its later sibling.
+  // zIndex: above the list, its later sibling. It only stays inside the tab
+  // because App.tsx gives each tab wrapper collapsable={false}; without that it
+  // lifted above every overlay drawn over the tabs (the Equalizer's header).
   anchor: {height: 0, zIndex: 1},
   fade: {position: 'absolute', left: 0, right: 0, top: 0, height: TOP_FADE},
 });
