@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
+  AppState,
   FlatList,
   Image,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -23,7 +25,8 @@ import {useRecentlyPlayed} from '../recentlyPlayed';
 import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
-import {RecentsGrid} from '../components/RecentsGrid';
+import {HomeGrids} from '../components/HomeGrids';
+import {RETURN_MS, openDiscover, shuffle, useDiscover} from '../discover';
 import {HomeCardCarousel} from '../components/HomeCards';
 import {shapedRow} from '../components/HomeRows';
 import type {Collection} from '../collections';
@@ -165,6 +168,7 @@ export const HomeScreen = React.memo(function HomeScreen({
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
+  const discover = useDiscover();
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
   // Subscribed, so cached rows appear the moment disk hydration finishes even
@@ -278,14 +282,14 @@ export const HomeScreen = React.memo(function HomeScreen({
   /** The latest load: an older one finishing late must not land. */
   const lastLoad = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (skipCache = false) => {
     const n = ++lastLoad.current;
     setError('');
     try {
       if (!(await waitForBackend())) {
         throw new Error('The music engine did not start.');
       }
-      const data = await getHome(homeLanguageParam());
+      const data = await getHome(homeLanguageParam(), skipCache);
       if (!data.length) {
         checkOnline().catch(() => {});
       }
@@ -327,6 +331,51 @@ export const HomeScreen = React.memo(function HomeScreen({
       load();
     }
   }, [load, langs, offline]);
+
+  // An open of the app is a new Discover set (see src/discover.ts), and so is
+  // coming back to it after RETURN_MS away: the playback service keeps the
+  // app alive for days, and Home, mounted the whole time, never re-asked for
+  // its rows either. Both are cheap when nothing changed: the rows come from
+  // the engine's cache, and Discover's next set was built last time.
+  useEffect(() => {
+    openDiscover();
+    let away = 0;
+    const sub = AppState.addEventListener('change', next => {
+      if (next !== 'active') {
+        away = away || Date.now();
+        return;
+      }
+      if (away && Date.now() - away >= RETURN_MS) {
+        openDiscover();
+        load();
+      }
+      away = 0;
+    });
+    return () => sub.remove();
+  }, [load]);
+
+  // Pull to refresh: the rows past the engine's cache, and the next Discover.
+  // The spinner waits on the rows only: Discover's put-by set goes on screen
+  // at once, and the one built behind it takes seconds nobody should watch.
+  const [pulling, setPulling] = useState(false);
+  const refresh = useCallback(() => {
+    setPulling(true);
+    openDiscover();
+    load(true).finally(() => setPulling(false));
+  }, [load]);
+
+  // Before there is any history to build Discover from (or while the very
+  // first set is built), the trending songs stand in.
+  const trending = useMemo(
+    () =>
+      shuffle(
+        (rows.find(r => r.title.trim().toLowerCase() === 'trending now')
+          ?.items ?? [])
+          .map(i => (i.type === 'track' ? i.track : undefined))
+          .filter((t): t is Track => !!t),
+      ).slice(0, 9),
+    [rows],
+  );
 
   // The rows the languages change (Charts on) dim while the new ones load,
   // and come back up with them, instead of snapping over.
@@ -398,8 +447,12 @@ export const HomeScreen = React.memo(function HomeScreen({
           onOpenStarter={onPickTrack}
         />
       )}
-      {/* Recents: the last nine songs, as the YouTube Music speed dial. */}
-      <RecentsGrid recent={recent} onPlay={onPlayTrack} />
+      {/* Discover, then Recents: nine songs each, swiped, with dots. */}
+      <HomeGrids
+        discover={discover.length ? discover : trending}
+        recent={recent}
+        onPlay={onPlayTrack}
+      />
     </>
   );
 
@@ -459,6 +512,14 @@ export const HomeScreen = React.memo(function HomeScreen({
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             bounces={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={pulling}
+                onRefresh={refresh}
+                colors={[C.brand]}
+                progressBackgroundColor={C.surfaceHi}
+              />
+            }
             ListHeaderComponent={header}
             ListFooterComponent={<View style={styles.tail} />}
             {...HOME_WINDOWING}

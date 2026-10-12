@@ -45,7 +45,10 @@ jest.mock('../src/store', () => ({currentQuality: () => 320, readSettings: () =>
 jest.mock('../src/audioEffects', () => ({guardTask: () => undefined}));
 jest.mock('../src/duckState', () => ({setPausedByDuck: () => undefined}));
 jest.mock('../src/sleepTimer', () => ({sleepMode: () => 'off'}));
-jest.mock('../src/recentlyPlayed', () => ({remember: () => undefined}));
+jest.mock('../src/recentlyPlayed', () => ({
+  remember: () => undefined,
+  readRecentlyPlayed: () => [],
+}));
 jest.mock('../src/resume', () => ({}));
 jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
 jest.mock('../src/toast', () => ({toast: () => undefined}));

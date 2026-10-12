@@ -51,7 +51,7 @@ import {
   sleepMode,
   sleepTimerOnTrackChange,
 } from './sleepTimer';
-import {remember} from './recentlyPlayed';
+import {readRecentlyPlayed, remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
@@ -1822,14 +1822,22 @@ export async function topUpFromRadio(force = false): Promise<void> {
     // came from a catalogue lookup WITH one. Two ids for one song is a dedupe
     // that passes everything through.
     const seen = new Set(queueSource.map(getDownloadKey));
+    // The last twenty played go to the back rather than out: the same few
+    // songs coming round again is what made radio feel like a loop, but a
+    // seed with thin data may have little else, and some music beats none.
+    const lately = new Set(readRecentlyPlayed().map(getDownloadKey));
     let picks: Track[] = [];
     for (const seed of seeds) {
-      picks = (await getRadio(cleanText(seed.title), cleanText(seed.artist)))
+      const fresh = (
+        await getRadio(cleanText(seed.title), cleanText(seed.artist), 16)
+      )
         .map(raw => normalizeTrack(raw))
         .filter(
           (t): t is Track =>
             !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
-        )
+        );
+      const played = (t: Track) => lately.has(getDownloadKey(t));
+      picks = [...fresh.filter(t => !played(t)), ...fresh.filter(played)]
         .slice(0, 8)
         .map(t => ({...chosenCopy(t), _autoplay: true}));
       if (picks.length) {

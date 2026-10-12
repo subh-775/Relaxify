@@ -167,6 +167,10 @@ export type HomeItem = {
   image?: string;
   perma_url?: string;
   track?: Track;
+  /** Albums: JioSaavn's id (opens it exactly) and song count (0 = unknown). */
+  album_id?: string;
+  songs?: number;
+  artist?: string;
 };
 export type HomeRow = {title: string; items: HomeItem[]};
 
@@ -218,9 +222,13 @@ export async function getFollowedReleases(
   return Array.isArray(data.releases) ? data.releases : [];
 }
 
-export async function getHome(language = 'hindi,english'): Promise<HomeRow[]> {
+export async function getHome(
+  language = 'hindi,english',
+  /** Past the engine's cache: Home's pull-to-refresh. */
+  fresh = false,
+): Promise<HomeRow[]> {
   const data = await apiGet<{rows?: HomeRow[]}>(
-    `/home?language=${encodeURIComponent(language)}`,
+    `/home?language=${encodeURIComponent(language)}${fresh ? '&fresh=1' : ''}`,
   );
   return Array.isArray(data.rows) ? data.rows : [];
 }
@@ -459,6 +467,19 @@ export async function getRadio(
     `/radio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(
       artist,
     )}&limit=${limit}`,
+  );
+  return Array.isArray(data.tracks) ? data.tracks : [];
+}
+
+/** Home's Discover: songs similar to these [title, artist] seeds, in a new
+ *  order each call. More than the grid shows: the caller drops what the
+ *  listener has already heard. */
+export async function getDiscover(
+  seeds: [string, string][],
+  limit = 16,
+): Promise<Track[]> {
+  const data = await apiGet<{tracks?: Track[]}>(
+    `/discover?seeds=${encodeURIComponent(JSON.stringify(seeds))}&limit=${limit}`,
   );
   return Array.isArray(data.tracks) ? data.tracks : [];
 }

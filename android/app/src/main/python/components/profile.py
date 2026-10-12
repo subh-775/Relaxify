@@ -27,6 +27,7 @@ import re
 import json
 import html
 import threading
+import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 
@@ -1086,13 +1087,21 @@ def _parse_albums(raw_albums):
     return out
 
 
+_RELEASES_TTL = 6 * 3600
+
+
 def _artist_releases(name, this_year):
     """One followed artist's newest releases: JioSaavn's own "latest release"
     first, then singles and albums by year."""
     key = ("releases", (name or "").strip().lower())
     with _cache_lock:
-        if key in _cache:
-            return _cache[key]
+        hit = _cache.get(key)
+        # Six hours, unlike the rest of _cache: a profile does not change, an
+        # artist's newest release does, and the music service keeps this
+        # process alive for days, so "From artists you love" stayed as it was
+        # the first time it loaded.
+        if hit and time.time() - hit[0] < _RELEASES_TTL:
+            return hit[1]
     d = _fetch_jiosaavn_artist(name)
     releases, seen = [], set()
     for group, latest in (("latest_release", True), ("singles", False), ("topAlbums", False)):
@@ -1115,7 +1124,11 @@ def _artist_releases(name, this_year):
             releases.append({
                 "type": "album",
                 "title": _clean(it.get("title")),
-                "subtitle": f"{name} · {'single' if group == 'singles' else 'album'}",
+                # By its song count when JioSaavn gives one, the same field the
+                # tap goes by (one song plays, more open), so the word and what
+                # a tap does agree. The group is only a guess without it: a
+                # one-song latest release was labelled "album" and played.
+                "subtitle": f"{name} · {'single' if (count == 1 or (not count and group == 'singles')) else 'album'}",
                 "image": it.get("image", ""),
                 "perma_url": it["perma_url"],
                 # Opened by id (its link is an album page, which the playlist
@@ -1130,7 +1143,7 @@ def _artist_releases(name, this_year):
     result = releases[:2]
     if d:
         with _cache_lock:
-            _cache[key] = result
+            _cache[key] = (time.time(), result)
     return result
 
 

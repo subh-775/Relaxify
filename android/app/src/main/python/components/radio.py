@@ -19,6 +19,7 @@ common case costs exactly what it did before.
 """
 
 import os
+import random
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -149,6 +150,45 @@ def _diversify(tracks, limit, max_per_artist=3):
     return out[:limit]
 
 
+def _weighted_shuffle(items, rng=random, falloff=0.12):
+    """A new order on every call that still leans to the front.
+
+    Last.fm returns similar songs in a fixed order, and everything after it is
+    deterministic, so the same seed always gave the same eight songs in the
+    same order. This draws an order where each item's chance of coming early
+    falls with its original rank (weighted sampling without replacement,
+    Efraimidis-Spirakis: key = u ** (1 / w)). The closest matches still tend
+    to lead; the tail gets its turn.
+    """
+    keyed = []
+    for i, it in enumerate(items):
+        w = 1.0 / (1.0 + falloff * i)
+        keyed.append((rng.random() ** (1.0 / w), it))
+    keyed.sort(key=lambda kv: kv[0], reverse=True)
+    return [it for _, it in keyed]
+
+
+def _in_order_of(raw, merged):
+    """Merged tracks put back in the order their copies had in `raw`.
+
+    The merger sorts by metadata quality, which would undo the shuffle and
+    hand back the same order every time. A track's place is its earliest
+    copy's; one with no known copy goes last.
+    """
+    at = {}
+    for i, r in enumerate(raw):
+        u = r.get("url")
+        if u and u not in at:
+            at[u] = i
+    big = len(raw)
+
+    def place(t):
+        urls = [(v or {}).get("url") for v in (t.get("sources") or {}).values()]
+        return min([at[u] for u in urls if u in at] or [big])
+
+    return sorted(merged, key=place)
+
+
 _service = None
 
 
@@ -214,10 +254,15 @@ def _resolve_elsewhere(pair):
     return None
 
 
-def resolve_radio(title, artist, limit=12):
+def resolve_radio(title, artist, limit=12, shuffle=True):
     """Return up to `limit` playable similar tracks as plain dicts
-    (UnifiedTrack.to_dict shape, ready for the frontend to queue)."""
+    (UnifiedTrack.to_dict shape, ready for the frontend to queue).
+
+    `shuffle` (the default) draws a fresh, front-weighted order each call, so
+    the same seed does not give the same list twice; see _weighted_shuffle."""
     pairs = lastfm_similar(title, artist, limit + 12)  # over-fetch for skips + diversity
+    if shuffle:
+        pairs = _weighted_shuffle(pairs)
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         resolved = list(ex.map(_resolve, pairs)) if pairs else []
@@ -266,8 +311,57 @@ def resolve_radio(title, artist, limit=12):
     merged = SourceMerger().merge_search_results(**buckets)
     # Keep only tracks that ended up with a real playable source
     out = [t.to_dict() for t in merged if getattr(t, "primary_source", None)]
+    if shuffle:
+        out = _in_order_of(raw, out)
     # Interleave artists + cap per-artist so the radio doesn't loop one artist.
     return _diversify(out, limit)
+
+
+def resolve_discover(seeds, limit=16):
+    """Home's Discover: songs similar to a few of the listener's own, in a new
+    order every time.
+
+    `seeds` is a short list of (title, artist), chosen on the phone from what
+    they play most, played last and liked. Each seed's similar songs are
+    gathered in parallel and dealt out in turn (seed 1's best, seed 2's best,
+    ...) so no one seed fills the grid, then shuffled front-weighted and
+    resolved on JioSaavn alone: Discover is shown at once on Home, and the
+    slower sources would hold every tile up for the few names it misses.
+
+    The phone filters out what the listener has already heard, so this
+    over-fetches; `limit` is what it asks for, not what it shows.
+    """
+    seeds = [(t, a) for t, a in (seeds or []) if t][:3]
+    if not seeds:
+        return []
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        pools = list(ex.map(lambda sa: lastfm_similar(sa[0], sa[1], 12), seeds))
+
+    seen_seed = {(t.lower().strip(), _primary_artist(a).lower()) for t, a in seeds}
+    pairs, seen = [], set()
+    for rank in range(max((len(p) for p in pools), default=0)):
+        for pool in pools:
+            if rank >= len(pool):
+                continue
+            name, art = pool[rank]
+            key = (name.lower().strip(), _primary_artist(art).lower())
+            if key in seen or key in seen_seed:
+                continue
+            seen.add(key)
+            pairs.append((name, art))
+
+    pairs = _weighted_shuffle(pairs, falloff=0.06)[: limit + 6]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        raw = [r for r in ex.map(_resolve, pairs) if r]
+    if not raw:
+        return []
+
+    merged = SourceMerger().merge_search_results(jiosaavn_results=raw)
+    out = [t.to_dict() for t in merged if getattr(t, "primary_source", None)]
+    # Two per artist, not radio's three: nine tiles with three by one artist
+    # read as that artist's page.
+    return _diversify(_in_order_of(raw, out), limit, max_per_artist=2)
 
 
 if __name__ == "__main__":
@@ -302,3 +396,21 @@ if __name__ == "__main__":
     assert all(v <= 3 for v in counts.values()), f"per-artist cap violated: {counts}"
     assert div[0]["artist"] != div[1]["artist"], "not interleaved"
     print("diversify self-check OK:", [x["title"] for x in div])
+
+    # _weighted_shuffle: a permutation, varies between calls, leans to the front.
+    import random as _r
+    items = list(range(20))
+    rng = _r.Random(7)
+    orders = [_weighted_shuffle(items, rng) for _ in range(200)]
+    assert all(sorted(o) == items for o in orders), "not a permutation"
+    assert len({tuple(o) for o in orders}) > 150, "orders barely vary"
+    firsts = [o[0] for o in orders]
+    assert sum(f < 5 for f in firsts) > sum(f >= 15 for f in firsts), "no lean to the front"
+    print("weighted shuffle self-check OK")
+
+    # _in_order_of: the merger's quality sort must not undo the shuffle.
+    raw_o = [{"url": "u2"}, {"url": "u1"}, {"url": "u3"}]
+    merged_o = [{"title": n, "sources": {"jiosaavn": {"url": u}}}
+                for n, u in (("one", "u1"), ("two", "u2"), ("x", "zz"), ("three", "u3"))]
+    assert [t["title"] for t in _in_order_of(raw_o, merged_o)] == ["two", "one", "three", "x"]
+    print("order restore self-check OK")

@@ -1644,6 +1644,20 @@ def radio():
         return jsonify({"tracks": [], "error": str(e)})
 
 
+@app.get("/api/discover")
+def discover():
+    """Home's Discover grid. `seeds` is a JSON list of [title, artist]."""
+    try:
+        from components.radio import resolve_discover
+        seeds = json.loads(_arg("seeds") or "[]")
+        seeds = [(str(s[0]), str(s[1] if len(s) > 1 else ""))
+                 for s in seeds if isinstance(s, list) and s]
+        limit = min(max(_int_arg("limit", 16), 1), 24)
+        return jsonify({"tracks": resolve_discover(seeds, limit)})
+    except Exception as e:
+        return jsonify({"tracks": [], "error": str(e)})
+
+
 @app.get("/api/artist")
 def artist_profile():
     name = _arg("name")
@@ -1696,7 +1710,7 @@ def search_albums_ep():
 def home_feed():
     try:
         from components.home import get_home
-        return jsonify(get_home(_arg("language", "hindi,english")))
+        return jsonify(get_home(_arg("language", "hindi,english"), _arg("fresh") == "1"))
     except Exception as e:
         return jsonify({"rows": [], "error": str(e)})
 

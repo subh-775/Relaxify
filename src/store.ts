@@ -220,8 +220,12 @@ export function homeLanguageParam(): string {
  * Importing the modules for side effect is what puts them in that registry;
  * without these, a store nothing has rendered yet would never be loaded.
  */
-export async function hydrate(): Promise<void> {
-  await hydrateAll();
+let hydrating: Promise<void> | null = null;
+export function hydrate(): Promise<void> {
+  // One load, however many ask: Discover waits on the same one the app
+  // started, rather than reading every store off disk a second time.
+  hydrating ??= hydrateAll().then(() => undefined);
+  return hydrating;
 }
 
 export const useSettings = () => useStoreValue(settingsStore);

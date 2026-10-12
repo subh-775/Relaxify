@@ -393,15 +393,37 @@ function Shell() {
         return;
       }
       try {
-        let data = await getCollection(item.perma_url);
-        // Not every album URL resolves through /api/playlist; fall back to the
-        // album endpoint before reporting failure, rather than opening empty.
-        if (!data.tracks.length && item.type === 'album') {
-          data = await getAlbum(item.name || item.title || '', item.subtitle);
+        const album = item.type === 'album';
+        const name = item.name || item.title || '';
+        const by = item.artist || item.subtitle || '';
+        // An album opens by its JioSaavn id: its link is an album page, which
+        // the playlist lookup cannot read, and by name a soundtrack or a
+        // "(From ...)" title often matched nothing — "no playable songs" on a
+        // card that plainly has them. The link and then the name are what is
+        // left when the id finds nothing, or a card cached before there was
+        // one has none.
+        const byId = album && !!item.album_id;
+        let data = byId
+          ? await getAlbum(name, by, '', item.album_id)
+          : await getCollection(item.perma_url);
+        if (!data.tracks.length && byId) {
+          data = await getCollection(item.perma_url);
+        }
+        if (!data.tracks.length && album) {
+          data = await getAlbum(name, by);
         }
         if (!data.tracks.length) {
           toast('That one has no playable songs right now.');
           return;
+        }
+        // A single is filed as an album with one song on it. It plays, with
+        // similar songs after it, rather than opening a page of one.
+        if (album && data.tracks.length === 1) {
+          const [only] = normalizeTracks(data.tracks);
+          if (only) {
+            play(only);
+            return;
+          }
         }
         openCollection({
           id: item.perma_url,
