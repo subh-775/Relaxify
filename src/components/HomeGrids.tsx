@@ -15,10 +15,9 @@
  *
  * A tap on either plays that song alone and lets autoplay find similar ones,
  * as a search result does: neither grid is a playlist. The sheet's "Play all"
- * is the one way to queue the recents. The song playing now wears a ring in
- * the greeting's colour and a little equalizer that dances while it plays and
- * lies flat when paused, so the grid also answers "what is on, and is it
- * playing" at a glance.
+ * is the one way to queue the recents. The song playing now wears a plain
+ * grey ring: no colour of its own and no moving bars, so the grid stays a
+ * calm speed dial and still shows which one is on.
  *
  * Each tile's title sits on a soft fade rather than a solid bar, so a cover
  * keeps its whole picture and the name stays readable over a light one. Each
@@ -45,9 +44,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {C, S, T} from '../theme';
 import {cleanText, getBestArtworkUrl, getTrackId} from '../tracks';
-import {useIsActiveTrack, useIsPlaying} from '../player';
-import {useAccent} from '../accent';
-import {EqBars} from './EqBars';
+import {useIsActiveTrack} from '../player';
 import {Sheet} from './Sheet';
 import {TrackRow} from './TrackRow';
 import type {Track} from '../backend';
@@ -391,28 +388,10 @@ const Tile = React.memo(function Tile({
       <Text style={styles.name} numberOfLines={1}>
         {cleanText(track.title)}
       </Text>
-      {playing && <NowPlaying />}
+      {playing && <View style={styles.playing} pointerEvents="none" />}
     </TouchableOpacity>
   );
 });
-
-/** The ring and the bars. Its own component, so only the playing tile
- *  follows the play state. */
-function NowPlaying() {
-  const [lead, second] = useAccent();
-  const on = useIsPlaying();
-  return (
-    <>
-      <View
-        style={[styles.playing, {borderColor: lead}]}
-        pointerEvents="none"
-      />
-      <View style={styles.eq} pointerEvents="none">
-        <EqBars colors={[lead, second, lead]} active={on} height={13} />
-      </View>
-    </>
-  );
-}
 
 const styles = StyleSheet.create({
   section: {marginTop: 6},
@@ -480,18 +459,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  // The song playing now: a grey ring, the same on every greeting colour.
   playing: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 8,
-    borderWidth: 3,
-  },
-  eq: {
-    position: 'absolute',
-    top: 7,
-    right: 7,
-    paddingHorizontal: 4,
-    paddingVertical: 3,
-    borderRadius: 5,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
 });
