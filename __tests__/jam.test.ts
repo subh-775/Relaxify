@@ -21,6 +21,7 @@ import {
   newCode,
   normalizeCode,
   seekTarget,
+  shareable,
   validCode,
 } from '../src/jam';
 
@@ -91,4 +92,22 @@ test('a correction never jumps to the end of the song, which skips to the next',
   expect(seekTarget(199.5, 200)).toBeNull();
   expect(seekTarget(260, 200)).toBeNull(); // a timeline left running while paused
   expect(seekTarget(12, 0)).toBeCloseTo(12.08); // length not known yet
+});
+
+test('a downloaded song goes to the Jam without this phone\'s path, token or cover URL', () => {
+  const local =
+    'http://127.0.0.1:8771/api/local/artwork?path=%2Fstorage%2Femulated%2F0%2FMusic%2Fa.m4a&_t=secret';
+  const out = shareable({
+    title: 'A',
+    artist: 'B',
+    file_path: '/storage/emulated/0/Music/a.m4a',
+    has_embedded_art: true,
+    artwork_url: local,
+  });
+  expect(JSON.stringify(out)).not.toContain('secret');
+  expect(JSON.stringify(out)).not.toContain('/storage/');
+  expect(out).toEqual({title: 'A', artist: 'B'});
+  // An online cover still travels.
+  const web = 'https://c.saavncdn.com/a-500x500.jpg';
+  expect(shareable({title: 'A', artist: 'B', artwork_url: web}).artwork_url).toBe(web);
 });

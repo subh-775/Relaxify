@@ -234,10 +234,17 @@ export function validCode(code: string): boolean {
 }
 
 /** What travels for a song: enough to play it, nothing from this phone's disk. */
-function shareable(t: Track): Track {
+export function shareable(t: Track): Track {
   const rest = {...t};
   delete rest.file_path;
   delete rest.has_embedded_art;
+  // A downloaded song's cover is this phone's own backend
+  // (http://127.0.0.1:…/api/local/artwork?path=…&_t=<token>): it carries the
+  // file's path and the API token, and on a friend's phone it asks THEIR
+  // backend, which refuses it, so they see no cover anyway.
+  if (/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/i.test(rest.artwork_url ?? '')) {
+    delete rest.artwork_url;
+  }
   return rest;
 }
 
