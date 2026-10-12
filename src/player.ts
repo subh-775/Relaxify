@@ -641,6 +641,16 @@ export async function restoreSession(): Promise<boolean> {
   if (!(await setupPlayer())) {
     return false;
   }
+  // The engine already holds a song: the shell has mounted before in this
+  // process (the error screen's Reload, or Android recreating the activity
+  // for a wallpaper, font-size or language change) and the music may still
+  // be playing. Rebuilding from the saved point reset it: the song stopped
+  // and went back up to ten seconds. Show what is there instead.
+  if (await TrackPlayer.getActiveTrack().catch(() => undefined)) {
+    await refreshEngineMirror();
+    publishTrack(engineQueue[activeIndex] ?? null);
+    return true;
+  }
   const s = await readResume();
   if (!s?.queue?.length) {
     return false;
