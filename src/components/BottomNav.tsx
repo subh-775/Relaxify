@@ -55,7 +55,7 @@ export function BottomNav({
             accessibilityState={{selected: on}}
             onPress={() => onChange(id)}>
             <Icon
-              size={25}
+              size={ICON}
               strokeWidth={on ? 2.4 : 2}
               color={on ? C.text : INACTIVE}
             />
@@ -74,20 +74,27 @@ export function BottomNav({
   );
 }
 
+// 27, up from 25: Spotify's bar pairs a ~24dp icon with a label under it, and
+// with no label here the icon alone has to carry the same weight under the
+// thumb. Two more reads as the same bar, not a bigger one.
+const ICON = 27;
+// The bar stays 59px: the 2px the icon gained come out of the padding.
+const PAD = 16 - (ICON - 25) / 2;
+
 // Brighter than C.faint: with no label beside it, a resting icon has to be
 // readable on its own.
 const INACTIVE = '#7A7F8A';
 
 const styles = StyleSheet.create({
   bar: {flexDirection: 'row', paddingBottom: 2},
-  // 25 + 2 × 16 + 2 = 59, the height the labelled bar had (8 + 23 + 4 + a
+  // 27 + 2 × 15 + 2 = 59, the height the labelled bar had (8 + 23 + 4 + a
   // 13px label + 8 + 2), so the mini player and toasts stay where they were.
-  tab: {flex: 1, alignItems: 'center', paddingVertical: 16},
-  // Out of flow so the bar keeps its 59px: 5px under the 25px icon, in the
-  // bottom padding.
+  tab: {flex: 1, alignItems: 'center', paddingVertical: PAD},
+  // Out of flow so the bar keeps its 59px: 5px under the icon, in the bottom
+  // padding.
   dot: {
     position: 'absolute',
-    top: 16 + 25 + 5,
+    top: PAD + ICON + 5,
     width: 4,
     height: 4,
     borderRadius: 2,
