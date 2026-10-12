@@ -167,6 +167,10 @@ export type HomeItem = {
   image?: string;
   perma_url?: string;
   track?: Track;
+  /** Albums: JioSaavn's id (opens it exactly) and song count (0 = unknown). */
+  album_id?: string;
+  songs?: number;
+  artist?: string;
 };
 export type HomeRow = {title: string; items: HomeItem[]};
 
@@ -463,6 +467,19 @@ export async function getRadio(
   return Array.isArray(data.tracks) ? data.tracks : [];
 }
 
+/** Home's Discover: songs similar to these [title, artist] seeds, in a new
+ *  order each call. More than the grid shows: the caller drops what the
+ *  listener has already heard. */
+export async function getDiscover(
+  seeds: [string, string][],
+  limit = 16,
+): Promise<Track[]> {
+  const data = await apiGet<{tracks?: Track[]}>(
+    `/discover?seeds=${encodeURIComponent(JSON.stringify(seeds))}&limit=${limit}`,
+  );
+  return Array.isArray(data.tracks) ? data.tracks : [];
+}
+
 export type YouTubeExperimental = {supported: boolean; enabled: boolean};
 
 export const getYouTubeExperimental = () =>
@@ -482,6 +499,12 @@ export async function setYouTubeExperimental(
 // ─── Search suggestions ─────────────────────────────────────────────────────
 
 export type Suggestion = {
+  /** 'artist': JioSaavn's own top match was an artist (opens the artist).
+   *  'own': a song of yours, matched on the phone (`track` plays it).
+   *  'lyric': the song a typed lyric line is from (YouTube Music).
+   *  Absent from an older backend: a song. */
+  kind?: 'song' | 'artist' | 'own' | 'lyric';
+  track?: Track;
   title: string;
   artist: string;
   album?: string;
@@ -490,8 +513,8 @@ export type Suggestion = {
   artwork_url?: string;
 };
 
-/** Autocomplete for the search field. Cheap by design — the backend restricts
- *  this to JioSaavn and ranks prefix matches above contains above fuzzy. */
+/** Autocomplete for the search field. Cheap by design — JioSaavn only, in its
+ *  own popularity order, led by an artist row when the typing names one. */
 export async function getSuggestions(
   q: string,
   limit = 8,
@@ -503,6 +526,22 @@ export async function getSuggestions(
     `/search/suggestions?q=${encodeURIComponent(q)}&limit=${limit}`,
   );
   return Array.isArray(data.suggestions) ? data.suggestions : [];
+}
+
+/** A typed line of lyrics (four words or more) -> the song it is from, by
+ *  YouTube Music's song search; null when it names none. */
+export async function getLyricHint(q: string): Promise<Suggestion | null> {
+  const data = await apiGet<{title?: string; artist?: string; artwork_url?: string}>(
+    `/search/lyric?q=${encodeURIComponent(q)}`,
+  );
+  return data.title
+    ? {
+        kind: 'lyric',
+        title: data.title,
+        artist: data.artist ?? '',
+        artwork_url: data.artwork_url || undefined,
+      }
+    : null;
 }
 
 // ─── Spotify import ─────────────────────────────────────────────────────────

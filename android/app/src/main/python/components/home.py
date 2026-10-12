@@ -11,7 +11,8 @@ merge code (ponytail rung 2: it already exists here).
 
 Each row is `{title, items: [...]}`; each item is a self-describing card:
   - {"type": "track",    "track": <playable frontend track dict>, ...}
-  - {"type": "album",    "name", "artist", "image", "perma_url"}
+  - {"type": "album",    "name", "artist", "image", "perma_url", "album_id",
+     "songs"}
   - {"type": "playlist", "name", "image", "subtitle", "perma_url"}
 so the frontend stays dumb and dispatches a click by `item.type`.
 
@@ -35,9 +36,11 @@ _cache_lock = threading.Lock()
 # ponytail: the Home feed (trending / new / charts / playlists) is TIME-SENSITIVE
 # — JioSaavn refreshes it ~daily. Unlike static artist/album profiles, caching it
 # for the whole process lifetime would freeze "Trending now" until a backend
-# restart (in the EXE that's the entire app session). So entries carry a 6h TTL.
-# Ceiling: a feed up to 6h stale; upgrade path = a daily cron / push refresh.
-_TTL_SECONDS = 6 * 3600
+# restart (in the EXE that's the entire app session). So entries carry a TTL:
+# 2h, down from 6h. On a phone the music service keeps this process alive for
+# days, and six hours meant a release out at breakfast was not on Home until
+# the evening.
+_TTL_SECONDS = 2 * 3600
 
 
 def _disk_path(key):
@@ -65,11 +68,11 @@ def _cache_get(key):
 
     # Fall back to disk before going to the network.
     #
-    # The cache was process-local, so the 6h TTL only ever helped WITHIN one
+    # The cache was process-local, so the TTL only ever helped WITHIN one
     # run — and on Android the process is killed constantly, so in practice
     # every launch refetched getLaunchData and re-normalised every card, during
     # the exact seconds Chaquopy is already competing for CPU. Surviving the
-    # process is the whole point of a 6h TTL.
+    # process is the whole point of a TTL.
     path = _disk_path(key)
     if path:
         try:
@@ -151,8 +154,16 @@ def _card(it):
                 "image": image or t.get("image", "")}
 
     if typ == "album" or "/album/" in url:
+        mi = it.get("more_info") or {}
+        cnt = str(mi.get("song_count") or "")
+        # The id opens the album exactly (by name, a soundtrack or a
+        # "(From ...)" title often matched nothing: "no playable songs"), and
+        # the count lets a one-song release play instead of opening a page
+        # with one song on it.
         return {"type": "album", "name": title, "artist": _artist_of(it),
                 "image": image, "perma_url": url,
+                "album_id": str(it.get("id") or mi.get("album_id") or ""),
+                "songs": int(cnt) if cnt.isdigit() else 0,
                 "subtitle": _artist_of(it)}
 
     if typ == "playlist" or "/featured/" in url or "/playlist/" in url:
@@ -194,7 +205,7 @@ def _build_home(language="hindi,english"):
 
 
 def get_home(language="hindi,english"):
-    """Cached Home feed (6h TTL — see _TTL_SECONDS). See _build_home."""
+    """Cached Home feed (see _TTL_SECONDS). See _build_home."""
     key = ("home", language)
     hit = _cache_get(key)
     if hit is not None:
@@ -231,7 +242,7 @@ def _build_playlist(url):
 
 
 def get_playlist(url):
-    """Cached playlist resolution (6h TTL — charts refresh daily). See
+    """Cached playlist resolution (see _TTL_SECONDS — charts refresh daily). See
     _build_playlist."""
     key = ("playlist", (url or "").strip())
     hit = _cache_get(key)
@@ -265,7 +276,7 @@ def _build_genres(language="hindi,english", limit=50):
 
 
 def get_genres(language="hindi,english"):
-    """Cached browse/genre tiles (6h TTL — curated feed refreshes ~daily). See
+    """Cached browse/genre tiles (see _TTL_SECONDS — curated feed refreshes ~daily). See
     _build_genres."""
     key = ("genres", language)
     hit = _cache_get(key)

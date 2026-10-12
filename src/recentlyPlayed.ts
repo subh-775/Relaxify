@@ -26,6 +26,8 @@ export function remember(track: Track): void {
   // now lives in player.ts (countListened) and waits for 30 s of listening.
 }
 
+export const readRecentlyPlayed = store.get;
+
 export function useRecentlyPlayed(): Track[] {
   return useStoreValue(store);
 }

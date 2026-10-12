@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
+  AppState,
   FlatList,
   Image,
   StyleSheet,
@@ -23,7 +24,13 @@ import {useRecentlyPlayed} from '../recentlyPlayed';
 import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
-import {RecentsGrid} from '../components/RecentsGrid';
+import {HomeGrids} from '../components/HomeGrids';
+import {
+  RETURN_MS,
+  openDiscover,
+  trendingStandIn,
+  useDiscover,
+} from '../discover';
 import {HomeCardCarousel} from '../components/HomeCards';
 import {shapedRow} from '../components/HomeRows';
 import type {Collection} from '../collections';
@@ -36,6 +43,7 @@ import {
   shouldOpen,
 } from '../drawer';
 import {BOTTOM_INSET} from '../layout';
+import {TOP_FADE, TopFade} from '../components/TopFade';
 import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
 import {checkOnline, useOffline} from '../offline';
@@ -164,6 +172,7 @@ export const HomeScreen = React.memo(function HomeScreen({
   visible,
 }: Props) {
   const recent = useRecentlyPlayed();
+  const discover = useDiscover();
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
   // Subscribed, so cached rows appear the moment disk hydration finishes even
@@ -327,6 +336,31 @@ export const HomeScreen = React.memo(function HomeScreen({
     }
   }, [load, langs, offline]);
 
+  // An open of the app is a new Discover set (see src/discover.ts), and so is
+  // coming back to it after RETURN_MS away: the playback service keeps the
+  // app alive for days, and Home, mounted the whole time, never re-asked for
+  // its rows either. Both are cheap when nothing changed: the rows come from
+  // the engine's cache, and Discover's next set was built last time.
+  useEffect(() => {
+    openDiscover();
+    let away = 0;
+    const sub = AppState.addEventListener('change', next => {
+      if (next !== 'active') {
+        away = away || Date.now();
+        return;
+      }
+      if (away && Date.now() - away >= RETURN_MS) {
+        openDiscover();
+        load();
+      }
+      away = 0;
+    });
+    return () => sub.remove();
+  }, [load]);
+
+  // Discover's stand-in until it has a set of its own (see discover.ts).
+  const trending = useMemo(() => trendingStandIn(rows), [rows]);
+
   // The rows the languages change (Charts on) dim while the new ones load,
   // and come back up with them, instead of snapping over.
   const dim = useRef(new Animated.Value(1)).current;
@@ -397,8 +431,12 @@ export const HomeScreen = React.memo(function HomeScreen({
           onOpenStarter={onPickTrack}
         />
       )}
-      {/* Recents: the last nine songs, as the YouTube Music speed dial. */}
-      <RecentsGrid recent={recent} onPlay={onPlayTrack} />
+      {/* Discover, then Recents: nine songs each, swiped, with dots. */}
+      <HomeGrids
+        discover={discover.length ? discover : trending}
+        recent={recent}
+        onPlay={onPlayTrack}
+      />
     </>
   );
 
@@ -431,6 +469,7 @@ export const HomeScreen = React.memo(function HomeScreen({
               rather than in the space the mark leaves. */}
           <View style={styles.markSpacer} />
         </View>
+        <TopFade />
         <GestureDetector gesture={listScroll}>
           <FlatList
             data={rows}
@@ -550,14 +589,15 @@ const styles = StyleSheet.create({
   fill: {flex: 1},
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
-  scroll: {paddingBottom: BOTTOM_INSET},
+  scroll: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   // The pinned row, spaced like the title bars of Search and Your Library.
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: S.gutter,
     paddingTop: 14,
-    paddingBottom: 10,
+    // The list's TOP_FADE padding is the gap under the greeting now.
+    paddingBottom: 0,
     gap: 12,
   },
   headerText: {flex: 1, minWidth: 0},

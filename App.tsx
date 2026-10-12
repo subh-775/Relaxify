@@ -79,7 +79,7 @@ import {
   type HomeItem,
   type Track,
 } from './src/backend';
-import {downloadsCollection} from './src/collections';
+import {collectionKey, downloadsCollection} from './src/collections';
 import {overlayDownloadArtwork} from './src/downloads';
 import {
   playTrack,
@@ -393,15 +393,37 @@ function Shell() {
         return;
       }
       try {
-        let data = await getCollection(item.perma_url);
-        // Not every album URL resolves through /api/playlist; fall back to the
-        // album endpoint before reporting failure, rather than opening empty.
-        if (!data.tracks.length && item.type === 'album') {
-          data = await getAlbum(item.name || item.title || '', item.subtitle);
+        const album = item.type === 'album';
+        const name = item.name || item.title || '';
+        const by = item.artist || item.subtitle || '';
+        // An album opens by its JioSaavn id: its link is an album page, which
+        // the playlist lookup cannot read, and by name a soundtrack or a
+        // "(From ...)" title often matched nothing — "no playable songs" on a
+        // card that plainly has them. The link and then the name are what is
+        // left when the id finds nothing, or a card cached before there was
+        // one has none.
+        const byId = album && !!item.album_id;
+        let data = byId
+          ? await getAlbum(name, by, '', item.album_id)
+          : await getCollection(item.perma_url);
+        if (!data.tracks.length && byId) {
+          data = await getCollection(item.perma_url);
+        }
+        if (!data.tracks.length && album) {
+          data = await getAlbum(name, by);
         }
         if (!data.tracks.length) {
           toast('That one has no playable songs right now.');
           return;
+        }
+        // A single is filed as an album with one song on it. It plays, with
+        // similar songs after it, rather than opening a page of one.
+        if (album && data.tracks.length === 1) {
+          const [only] = normalizeTracks(data.tracks);
+          if (only) {
+            play(only);
+            return;
+          }
         }
         openCollection({
           id: item.perma_url,
@@ -752,8 +774,17 @@ function Shell() {
         {/* All three tabs stay MOUNTED; switching shows/hides them. Unmounting
             threw away each screen's state, so coming back to Home replayed
             "Starting the music engine…" and Library re-fetched everything —
-            the single biggest "why is it reloading" complaint. */}
-        <View style={tab === 'home' ? styles.tabShown : styles.tabHidden}>
+            the single biggest "why is it reloading" complaint.
+
+            collapsable={false} on each: with only layout in its style, Android
+            drops the wrapper (and the screen's own bare root) from the native
+            tree, so the tab's children land straight in this body beside the
+            overlays. TopFade's zIndex then outranked the Equalizer, Settings
+            and the rest, and its band painted across their headers. A real
+            view keeps a tab's zIndex inside the tab. */}
+        <View
+          collapsable={false}
+          style={tab === 'home' ? styles.tabShown : styles.tabHidden}>
           <HomeScreen
             onPickTrack={pickHomeItem}
             onPlayTrack={play}
@@ -769,7 +800,9 @@ function Shell() {
             visible={tab === 'home'}
           />
         </View>
-        <View style={tab === 'search' ? styles.tabShown : styles.tabHidden}>
+        <View
+          collapsable={false}
+          style={tab === 'search' ? styles.tabShown : styles.tabHidden}>
           <SearchScreen
             visible={tab === 'search'}
             onPickTrack={play}
@@ -781,7 +814,9 @@ function Shell() {
             onOpenCollection={openFromLibrary}
           />
         </View>
-        <View style={tab === 'library' ? styles.tabShown : styles.tabHidden}>
+        <View
+          collapsable={false}
+          style={tab === 'library' ? styles.tabShown : styles.tabHidden}>
           <LibraryScreen
             key={libraryNonce}
             visible={tab === 'library'}
@@ -804,7 +839,7 @@ function Shell() {
               onPlay={(t, ctx) => {
                 // Home's Continue card reopens whatever was played from last.
                 rememberCollection(collection);
-                play(t, ctx, collection.id);
+                play(t, ctx, collectionKey(collection));
               }}
               onMenu={openSheet}
               onOpenAlbum={openAlbumByName}

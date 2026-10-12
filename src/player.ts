@@ -51,7 +51,7 @@ import {
   sleepMode,
   sleepTimerOnTrackChange,
 } from './sleepTimer';
-import {remember} from './recentlyPlayed';
+import {readRecentlyPlayed, remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
 import {pushWidget, pushWidgetPlaying} from './widget';
@@ -641,6 +641,16 @@ export async function restoreSession(): Promise<boolean> {
   if (!(await setupPlayer())) {
     return false;
   }
+  // The engine already holds a song: the shell has mounted before in this
+  // process (the error screen's Reload, or Android recreating the activity
+  // for a wallpaper, font-size or language change) and the music may still
+  // be playing. Rebuilding from the saved point reset it: the song stopped
+  // and went back up to ten seconds. Show what is there instead.
+  if (await TrackPlayer.getActiveTrack().catch(() => undefined)) {
+    await refreshEngineMirror();
+    publishTrack(engineQueue[activeIndex] ?? null);
+    return true;
+  }
   const s = await readResume();
   if (!s?.queue?.length) {
     return false;
@@ -876,6 +886,12 @@ export async function playTrack(
   // of only after the RNTP calls below have all been awaited.
   warmStream(items[startAt].t, bitrate);
 
+  // From here on this tap owns the queue. A second tap landing while this one
+  // is still between its awaits (a double-tap on a row, or the row below) used
+  // to let both carry on: the second's reset ran, then the first's appends
+  // landed on top of it, and the list was queued twice. The older one now
+  // stops at its next step instead.
+  const gen = ++playGen;
   buildingQueue = true;
 
   cancelCrossfade(); // and guarantee full volume for the fresh track
@@ -886,6 +902,9 @@ export async function playTrack(
 
   try {
     await TrackPlayer.reset();
+    if (gen !== playGen) {
+      return;
+    }
 
     // ONLY the tapped track goes over the bridge before play() — the rest of the
     // queue follows after the music has already started.
@@ -900,6 +919,9 @@ export async function playTrack(
     // ExoPlayer appends and prepends to a playing queue perfectly happily, so the
     // rest costs nothing once sound is out.
     await TrackPlayer.add([items[startAt].q]);
+    if (gen !== playGen) {
+      return;
+    }
 
     // Full volume, always — but the RISE is native.
     //
@@ -922,6 +944,9 @@ export async function playTrack(
     publishTrack(engineQueue[startAt] ?? null);
     warmArtwork(startAt);
     await playWithFade();
+    if (gen !== playGen) {
+      return;
+    }
 
     // The rest of the queue, now that the song is audible. After: everything the
     // tapped track came before. Before: the earlier tracks, so Previous works —
@@ -929,6 +954,9 @@ export async function playTrack(
     if (items.length > 1) {
       if (startAt < items.length - 1) {
         await TrackPlayer.add(items.slice(startAt + 1).map(x => x.q));
+        if (gen !== playGen) {
+          return;
+        }
       }
       if (startAt > 0) {
         await TrackPlayer.add(
@@ -942,8 +970,11 @@ export async function playTrack(
       await refreshEngineMirror();
     }
   } finally {
-    // Whatever happened, autoplay must be allowed to top the queue up again.
-    buildingQueue = false;
+    // Whatever happened, autoplay must be allowed to top the queue up again —
+    // once the newest tap is done; an older one leaves the flag to it.
+    if (gen === playGen) {
+      buildingQueue = false;
+    }
   }
 
   // Recorded at play-START, before enrichment runs. remember() replaces an
@@ -1720,6 +1751,8 @@ function onTrackSettled(fn: () => void): void {
 /** True only for the few milliseconds playTrack spends filling the queue in
  *  behind an already-playing first track. */
 let buildingQueue = false;
+/** Counts playTrack calls that reached the queue; only the newest goes on. */
+let playGen = 0;
 
 /** Exported for the playback service's PlaybackQueueEnded backstop — that
  *  runs outside the UI, which is exactly when the JS timer is frozen. */
@@ -1789,14 +1822,22 @@ export async function topUpFromRadio(force = false): Promise<void> {
     // came from a catalogue lookup WITH one. Two ids for one song is a dedupe
     // that passes everything through.
     const seen = new Set(queueSource.map(getDownloadKey));
+    // The last twenty played go to the back rather than out: the same few
+    // songs coming round again is what made radio feel like a loop, but a
+    // seed with thin data may have little else, and some music beats none.
+    const lately = new Set(readRecentlyPlayed().map(getDownloadKey));
     let picks: Track[] = [];
     for (const seed of seeds) {
-      picks = (await getRadio(cleanText(seed.title), cleanText(seed.artist)))
+      const fresh = (
+        await getRadio(cleanText(seed.title), cleanText(seed.artist), 16)
+      )
         .map(raw => normalizeTrack(raw))
         .filter(
           (t): t is Track =>
             !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
-        )
+        );
+      const played = (t: Track) => lately.has(getDownloadKey(t));
+      picks = [...fresh.filter(t => !played(t)), ...fresh.filter(played)]
         .slice(0, 8)
         .map(t => ({...chosenCopy(t), _autoplay: true}));
       if (picks.length) {

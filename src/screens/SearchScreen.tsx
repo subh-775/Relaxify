@@ -3,7 +3,8 @@
  *
  * Three states, in the order you meet them:
  *   empty field  → recent searches
- *   typing       → suggestions (debounced, cheap, JioSaavn-only server-side)
+ *   typing       → your own matching songs at once, then suggestions
+ *                  (debounced, cheap, JioSaavn-only server-side)
  *   submitted    → full cross-source results, final as soon as they land
  *
  * A Spotify playlist/album link pasted into the field is detected and offered
@@ -26,6 +27,7 @@ import {Clock, Search as SearchIcon, X} from '../icons';
 import {C, S, T} from '../theme';
 import {
   getGenres,
+  getLyricHint,
   getSuggestions,
   search,
   searchArtists,
@@ -36,14 +38,26 @@ import {
   type Track,
 } from '../backend';
 import {useStats} from '../stats';
-import {getTrackId, normalizeTracks} from '../tracks';
+import {useIsActiveTrack} from '../player';
+import {
+  cleanText,
+  getBestArtworkUrl,
+  getTrackId,
+  normalizeTracks,
+  ownSongMatches,
+  withLyric,
+  thumbArtwork,
+} from '../tracks';
+import {readRecentlyPlayed} from '../recentlyPlayed';
+import {readPlaylists} from '../playlists';
 import {TrackRow, listWindowing} from '../components/TrackRow';
 import {forgetSearch, rememberSearch, useSearchHistory} from '../searchHistory';
 import {BOTTOM_INSET} from '../layout';
+import {TOP_FADE, TopFade} from '../components/TopFade';
 import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
-import {homeLanguageParam, useSettings} from '../store';
+import {homeLanguageParam, readLikes, useSettings} from '../store';
 import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
 import {OfflineScreen} from '../components/OfflineScreen';
@@ -81,6 +95,42 @@ const TILE_BLOBS = BRIGHT_PALS.map((_, k) => blob(55, 55, 46, 0.22, 8, k + 1));
  * not work being done, but work being redone. Every prop below is
  * useCallback-stable in App, so this actually holds.
  */
+/**
+ * A song tapped in Search plays from its online source, never from a
+ * downloaded file, which may since have been deleted ("can't play,
+ * skipped"). Your own songs are only used to show results instantly. A copy
+ * read off the Downloads folder has no online source at all, so it is found
+ * again by title and artist. Null when nothing online matches.
+ */
+async function onlineCopy(t: Track): Promise<Track | null> {
+  if (t.sources && Object.keys(t.sources).length) {
+    return {...t, file_path: undefined};
+  }
+  const [hit] = normalizeTracks(
+    await search(`${cleanText(t.title)} ${cleanText(t.artist)}`, 1).catch(
+      () => [],
+    ),
+  );
+  return hit ?? null;
+}
+
+/** A song suggestion's title, coral while that song is the one playing, as a
+ *  song row is anywhere else in the app. By title and artist: the copy that
+ *  plays is the online one, not the file a row of yours may point at. */
+function SuggestionTitle({item}: {item: Suggestion}) {
+  const playing = useIsActiveTrack({
+    title: item.track?.title ?? item.title,
+    artist: item.track?.artist ?? item.artist,
+  } as Track);
+  return (
+    <Text
+      style={[styles.suggestionTitle, playing && styles.suggestionPlaying]}
+      numberOfLines={1}>
+      {cleanText(item.title)}
+    </Text>
+  );
+}
+
 export const SearchScreen = React.memo(function SearchScreen({
   visible,
   onPickTrack,
@@ -221,23 +271,61 @@ export const SearchScreen = React.memo(function SearchScreen({
     }
   }, []);
 
-  // Debounced suggestions while typing.
+  // While typing: your own matching songs at once (no network, so offline
+  // too), then the debounced suggestions after them, and for a line of four
+  // words or more, the song those lyrics are from when YouTube Music answers.
   useEffect(() => {
     const text = query.trim();
     if (text.length < 2 || isImportUrl(text) || codeIn(text)) {
       setSuggestions([]);
       return;
     }
+    const own: Suggestion[] = ownSongMatches(text, [
+      readRecentlyPlayed(),
+      readLikes(),
+      ...readPlaylists().map(p => p.tracks),
+    ]).map(t => ({
+      kind: 'own',
+      track: t,
+      title: cleanText(t.title),
+      artist: cleanText(t.artist),
+      artwork_url: thumbArtwork(getBestArtworkUrl(t)) || undefined,
+    }));
+    const mine = new Set(own.map(o => `${o.title}|${o.artist}`.toLowerCase()));
+    const withOwn = (list: Suggestion[]) => [
+      ...own,
+      ...list.filter(
+        x =>
+          x.kind !== 'own' &&
+          !mine.has(`${x.title}|${x.artist}`.toLowerCase()),
+      ),
+    ];
+    // Over the last answer, which stays until the new one lands.
+    setSuggestions(withOwn);
+    // Set once the field has moved on: a late answer must not land.
+    let gone = false;
     const id = setTimeout(async () => {
+      const lyric =
+        text.split(/\s+/).length >= 4
+          ? getLyricHint(text).catch(() => null)
+          : null;
       try {
         const list = await getSuggestions(text);
-        // Only apply if the field still holds what we asked about.
-        setSuggestions(prev => (query.trim() === text ? list : prev));
+        if (!gone) {
+          setSuggestions(withOwn(list));
+        }
       } catch {
         // Suggestions are a convenience — a failure must stay silent.
       }
+      const hit = await lyric;
+      if (hit && !gone) {
+        setSuggestions(prev => withLyric(prev, hit));
+      }
     }, DEBOUNCE_MS);
-    return () => clearTimeout(id);
+    return () => {
+      gone = true;
+      clearTimeout(id);
+    };
   }, [query]);
 
   /**
@@ -326,7 +414,9 @@ export const SearchScreen = React.memo(function SearchScreen({
         <View style={styles.field}>
           <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
           <View style={styles.inputBox}>
-            {!query && <SearchHints />}
+            {/* The tab stays mounted, and leaving it empties the field: on
+                its own this ticker ran behind Home and Library all session. */}
+            {!query && visible && <SearchHints />}
             <TextInput
             ref={inputRef}
             value={query}
@@ -398,6 +488,10 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       {!!error && !busy && <Text style={styles.error}>{error}</Text>}
 
+      {/* Over the lists below, not under the field: the import card sits
+          right under the field and would be dimmed. */}
+      <TopFade />
+
       {showHistory && (
         <FlatList
           data={history}
@@ -434,7 +528,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       {showSuggestions && (
         <FlatList
           data={suggestions}
-          keyExtractor={s => `${s.title}|${s.artist}`}
+          keyExtractor={s => `${s.kind ?? 'song'}|${s.title}|${s.artist}`}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
@@ -444,28 +538,64 @@ export const SearchScreen = React.memo(function SearchScreen({
               style={styles.suggestion}
               activeOpacity={0.7}
               onPress={() => {
-                const q = `${item.title} ${item.artist}`.trim();
+                logEvent('suggestion_pick', {kind: item.kind ?? 'song'});
+                // Your song plays; an artist opens; a song is searched for.
+                if (item.kind === 'own' && item.track) {
+                  Keyboard.dismiss();
+                  onlineCopy(item.track).then(t =>
+                    t
+                      ? onPickTrack(t)
+                      : toast("Couldn't find that song online."),
+                  );
+                  return;
+                }
+                if (item.kind === 'artist' && onOpenArtist) {
+                  Keyboard.dismiss();
+                  onOpenArtist(item.title);
+                  return;
+                }
+                const title =
+                  item.kind === 'lyric' ? cleanText(item.title) : item.title;
+                const q = `${title} ${item.artist}`.trim();
                 setQuery(q);
                 runSearch(q);
               }}>
               {item.artwork_url ? (
                 <Image
                   source={{uri: item.artwork_url}}
-                  style={styles.suggestionArt}
+                  style={[
+                    styles.suggestionArt,
+                    item.kind === 'artist' && styles.suggestionRound,
+                  ]}
                 />
               ) : (
-                <View style={[styles.suggestionArt, styles.suggestionArtEmpty]}>
+                <View
+                  style={[
+                    styles.suggestionArt,
+                    styles.suggestionArtEmpty,
+                    item.kind === 'artist' && styles.suggestionRound,
+                  ]}>
                   <SearchIcon size={16} color={C.faint} />
                 </View>
               )}
               <View style={styles.suggestionText}>
-                <Text style={styles.suggestionTitle} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                {!!item.artist && (
-                  <Text style={styles.suggestionSub} numberOfLines={1}>
-                    {item.artist}
+                {item.kind === 'artist' ? (
+                  <Text style={styles.suggestionTitle} numberOfLines={1}>
+                    {cleanText(item.title)}
                   </Text>
+                ) : (
+                  <SuggestionTitle item={item} />
+                )}
+                {item.kind === 'artist' ? (
+                  <Text style={styles.suggestionSub} numberOfLines={1}>
+                    Artist
+                  </Text>
+                ) : (
+                  !!item.artist && (
+                    <Text style={styles.suggestionSub} numberOfLines={1}>
+                      {cleanText(item.artist)}
+                    </Text>
+                  )
                 )}
               </View>
             </TouchableOpacity>
@@ -688,7 +818,7 @@ const styles = StyleSheet.create({
   },
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
-  list: {paddingTop: 8, paddingBottom: BOTTOM_INSET},
+  list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   section: {
     ...T.rowTitle,
     color: C.text,
@@ -780,6 +910,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: C.surface,
   },
+  suggestionRound: {borderRadius: 22},
   suggestionArtEmpty: {
     backgroundColor: C.surfaceHi,
     alignItems: 'center',
@@ -788,6 +919,7 @@ const styles = StyleSheet.create({
   suggestionText: {flex: 1, minWidth: 0},
   suggestionTitle: {...T.body, color: C.text},
   suggestionSub: {...T.sub, color: C.sub, marginTop: 2},
+  suggestionPlaying: {color: C.accent, fontWeight: '800'},
   empty: {
     color: C.faint,
     textAlign: 'center',

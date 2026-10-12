@@ -33,6 +33,7 @@ import {getLocalLibrary, type Track} from '../backend';
 import {useLikes} from '../store';
 import {useFollowedArtists} from '../artists';
 import {
+  collectionKey,
   collectionSubtitle,
   useLibrary,
   type Collection,
@@ -67,12 +68,14 @@ import {Sheet} from '../components/Sheet';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {listWindowing} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
+import {TOP_FADE, TopFade} from '../components/TopFade';
 import Animated, {useAnimatedRef} from 'react-native-reanimated';
 import {FastScroll, useFastScroll} from '../components/FastScroll';
 import {MenuMark} from '../components/MenuMark';
 import {useListEnd} from '../components/UpdateModal';
 import {LibraryHeroes} from '../components/LibraryHeroes';
 import {EmptyState} from '../components/EmptyState';
+import {fold} from '../tracks';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
@@ -103,11 +106,6 @@ function idOf(c: Collection): string {
  * not work being done, but work being redone. Every prop below is
  * useCallback-stable in App, so this actually holds.
  */
-/** Lower case, accents removed: what the library search compares. */
-function fold(text: string): string {
-  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
-
 export const LibraryScreen = React.memo(function LibraryScreen({
   onOpen,
   onOpenMenu,
@@ -161,7 +159,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const origin = usePlaybackOrigin();
   const isPlayingFrom = useCallback(
     (c: Collection) => {
-      return !!origin && c.id === origin;
+      return !!origin && collectionKey(c) === origin;
     },
     [origin],
   );
@@ -411,6 +409,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           );
         })}
       </View>
+      <TopFade />
 
       {loading ? (
         <View style={styles.center}>
@@ -703,7 +702,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 9,
     paddingHorizontal: S.gutter,
-    paddingBottom: 12,
+    // The list's TOP_FADE padding is the gap under the chips now.
+    paddingBottom: 0,
   },
   chip: {
     flexDirection: 'row',
@@ -730,7 +730,7 @@ const styles = StyleSheet.create({
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   listBox: {flex: 1},
-  list: {paddingBottom: BOTTOM_INSET},
+  list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   row: {
     flexDirection: 'row',
     alignItems: 'center',

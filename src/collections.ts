@@ -84,6 +84,17 @@ export function savedId(c: {
   return String(c.source || `${c.name || ''}|${c.artist || ''}`).toLowerCase();
 }
 
+/**
+ * What the library knows a collection by, wherever it was opened from. A
+ * saved album or source playlist is stored under savedId (its link, lower
+ * case), but opened from Home or Search it carries the raw link or
+ * `album:Name` as its id, so "playing from" never matched its library row.
+ * Both sides of that highlight compare this.
+ */
+export function collectionKey(c: Collection): string {
+  return c.kind === 'album' || c.kind === 'sourcePlaylist' ? savedId(c) : c.id;
+}
+
 export function isSaved(c: Collection): boolean {
   const id = savedId(c);
   return saved.get().some(x => savedId(x) === id);

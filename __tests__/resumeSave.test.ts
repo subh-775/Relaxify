@@ -66,7 +66,10 @@ jest.mock('../src/audioEffects', () => ({
 }));
 jest.mock('../src/duckState', () => ({setPausedByDuck: () => undefined}));
 jest.mock('../src/sleepTimer', () => ({sleepMode: () => 'off', sleepTimerOnTrackChange: () => undefined}));
-jest.mock('../src/recentlyPlayed', () => ({remember: () => undefined}));
+jest.mock('../src/recentlyPlayed', () => ({
+  remember: () => undefined,
+  readRecentlyPlayed: () => [],
+}));
 jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
 jest.mock('../src/toast', () => ({toast: () => undefined}));
 jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));

@@ -7,7 +7,7 @@
  * drift apart the moment both exist — likes computed with one and dedup with
  * the other stop matching — so this is the only one.
  */
-import type {Track} from './backend';
+import type {Suggestion, Track} from './backend';
 
 const PLAYABLE_SOURCES = new Set([
   'jiosaavn',
@@ -92,6 +92,63 @@ export function cleanText(value: unknown): string {
 }
 
 /** Stable identity for a track. ISRC when known, else cleaned title+artist. */
+/** Lower case, accents removed: what the library search compares. */
+export function fold(text: string): string {
+  return text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/**
+ * Your own songs whose TITLE matches what is being typed, at the start of the
+ * title or of any word in it, for the top of Search's suggestions. `lists` in
+ * priority order (recents, likes, playlists); one row per song, at most `max`.
+ * The title only: matching artists too put two of your Arijit songs above
+ * Arijit Singh himself for "arij".
+ */
+export function ownSongMatches(
+  typed: string,
+  lists: Track[][],
+  max = 2,
+): Track[] {
+  const q = fold(typed.trim());
+  if (q.length < 2) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: Track[] = [];
+  for (const list of lists) {
+    for (const t of list) {
+      const title = fold(cleanText(t.title));
+      const id = getTrackId(t);
+      if ((title.startsWith(q) || title.includes(` ${q}`)) && !seen.has(id)) {
+        seen.add(id);
+        out.push(t);
+        if (out.length >= max) {
+          return out;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** The song a lyric line names, placed after your own songs, unless it is
+ *  already among the first songs listed. */
+export function withLyric(list: Suggestion[], hit: Suggestion): Suggestion[] {
+  const name = fold(cleanText(hit.title));
+  const known = list
+    .filter(x => x.kind !== 'artist')
+    .slice(0, 3)
+    .some(x => {
+      const t = fold(cleanText(x.title));
+      return !!t && (t.includes(name) || name.includes(t));
+    });
+  if (!name || known) {
+    return list;
+  }
+  const at = list.filter(x => x.kind === 'own').length;
+  return [...list.slice(0, at), hit, ...list.slice(at)];
+}
+
 export function getTrackId(track: Track | null | undefined): string {
   return [
     cleanText(track?.title).toLowerCase(),

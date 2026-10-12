@@ -634,10 +634,15 @@ class DownloadManager:
 
         # Failure path. Decide retry-vs-fail under the lock, but never sleep or
         # emit while holding it.
+        #
+        # `+ 1`: the attempt that just failed counts. Without it the LAST retry
+        # slept 16s and was requeued only for _process_queue to reject it as
+        # "Max retries (3) exceeded", so the user waited for nothing and saw
+        # that instead of the real error.
         with self._lock:
             task.error = result.error
             task.progress = 0.0
-            should_retry = task.retries < self.config.max_retries
+            should_retry = task.retries + 1 < self.config.max_retries
             if should_retry:
                 task.retries += 1
                 delay = min(
@@ -648,10 +653,16 @@ class DownloadManager:
                 task.status = DownloadStatus.FAILED
 
         if should_retry:
-            time.sleep(delay)
-            with self._lock:
-                task.status = DownloadStatus.PENDING
-                self._queue.put(task.id)
+            # Wait on a timer, not in this worker: there are only two, and a
+            # sleeping one held up every queued download behind it.
+            def _requeue():
+                with self._lock:
+                    task.status = DownloadStatus.PENDING
+                    self._queue.put(task.id)
+
+            timer = threading.Timer(delay, _requeue)
+            timer.daemon = True
+            timer.start()
             return
 
         self._emit_error(task, result.error)

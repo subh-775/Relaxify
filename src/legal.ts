@@ -34,7 +34,7 @@ export const SHARE_NOTE =
 /** The music services Relaxify plays from, credited wherever the terms are. */
 export const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
 
-export const LEGAL_UPDATED = '8 October 2026';
+export const LEGAL_UPDATED = '12 October 2026';
 
 export type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
@@ -164,9 +164,10 @@ export const PRIVACY: LegalDoc = {
       heading: '4. What stays on your phone',
       paras: [
         'Your likes, playlists (except those you share), the artists you ' +
-          'follow, downloads, search history, settings and your **Recap** are ' +
-          'kept only on your phone. The Recap is worked out on the phone and ' +
-          'sends nothing.',
+          'follow, downloads, search history, settings, your **Recap** and ' +
+          'the songs **Discover** picked for you are kept only on your phone. ' +
+          'The Recap is worked out on the phone and sends nothing. Discover ' +
+          'sends only what section 6 says about Last.fm.',
       ],
     },
     {
@@ -193,9 +194,13 @@ export const PRIVACY: LegalDoc = {
           'you follow and the right cover for songs you saved;',
         '**Spotify** or **YouTube**, when you import a playlist link from it or sync with it;',
         '**LRCLIB**, for lyrics;',
-        '**MusicBrainz**, **Cover Art Archive**, **Deezer**, **Apple iTunes**, ' +
-          '**TheAudioDB** and **Last.fm**, for song details, artist photos ' +
-          'and artwork;',
+        '**Last.fm**, to suggest songs: for **Autoplay**, the name and artist ' +
+          'of the song playing; for **Discover** on Home, the names and ' +
+          'artists of up to three songs you played or liked. The similar ' +
+          'songs it names are then looked up on JioSaavn. Last.fm is also ' +
+          'used for song details and artist photos;',
+        '**MusicBrainz**, **Cover Art Archive**, **Deezer**, **Apple iTunes** ' +
+          'and **TheAudioDB**, for song details, artist photos and artwork;',
         '**GitHub**, to check for and download updates;',
         '**Google** and **Cloudflare**, only to check whether the phone is ' +
           'online when something fails to load.',
