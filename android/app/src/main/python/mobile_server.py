@@ -1710,7 +1710,7 @@ def search_albums_ep():
 def home_feed():
     try:
         from components.home import get_home
-        return jsonify(get_home(_arg("language", "hindi,english"), _arg("fresh") == "1"))
+        return jsonify(get_home(_arg("language", "hindi,english")))
     except Exception as e:
         return jsonify({"rows": [], "error": str(e)})
 

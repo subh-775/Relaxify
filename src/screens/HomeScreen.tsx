@@ -4,7 +4,6 @@ import {
   AppState,
   FlatList,
   Image,
-  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -282,14 +281,14 @@ export const HomeScreen = React.memo(function HomeScreen({
   /** The latest load: an older one finishing late must not land. */
   const lastLoad = useRef(0);
 
-  const load = useCallback(async (skipCache = false) => {
+  const load = useCallback(async () => {
     const n = ++lastLoad.current;
     setError('');
     try {
       if (!(await waitForBackend())) {
         throw new Error('The music engine did not start.');
       }
-      const data = await getHome(homeLanguageParam(), skipCache);
+      const data = await getHome(homeLanguageParam());
       if (!data.length) {
         checkOnline().catch(() => {});
       }
@@ -352,16 +351,6 @@ export const HomeScreen = React.memo(function HomeScreen({
       away = 0;
     });
     return () => sub.remove();
-  }, [load]);
-
-  // Pull to refresh: the rows past the engine's cache, and the next Discover.
-  // The spinner waits on the rows only: Discover's put-by set goes on screen
-  // at once, and the one built behind it takes seconds nobody should watch.
-  const [pulling, setPulling] = useState(false);
-  const refresh = useCallback(() => {
-    setPulling(true);
-    openDiscover();
-    load(true).finally(() => setPulling(false));
   }, [load]);
 
   // Before there is any history to build Discover from (or while the very
@@ -512,14 +501,6 @@ export const HomeScreen = React.memo(function HomeScreen({
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             bounces={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={pulling}
-                onRefresh={refresh}
-                colors={[C.brand]}
-                progressBackgroundColor={C.surfaceHi}
-              />
-            }
             ListHeaderComponent={header}
             ListFooterComponent={<View style={styles.tail} />}
             {...HOME_WINDOWING}

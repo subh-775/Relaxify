@@ -222,13 +222,9 @@ export async function getFollowedReleases(
   return Array.isArray(data.releases) ? data.releases : [];
 }
 
-export async function getHome(
-  language = 'hindi,english',
-  /** Past the engine's cache: Home's pull-to-refresh. */
-  fresh = false,
-): Promise<HomeRow[]> {
+export async function getHome(language = 'hindi,english'): Promise<HomeRow[]> {
   const data = await apiGet<{rows?: HomeRow[]}>(
-    `/home?language=${encodeURIComponent(language)}${fresh ? '&fresh=1' : ''}`,
+    `/home?language=${encodeURIComponent(language)}`,
   );
   return Array.isArray(data.rows) ? data.rows : [];
 }

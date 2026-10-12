@@ -27,19 +27,21 @@
 import React, {useMemo, useState} from 'react';
 import {
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
 import Svg, {Circle, Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import Animated, {
+  Extrapolation,
+  interpolate,
+  interpolateColor,
   useAnimatedScrollHandler,
+  useAnimatedStyle,
   useSharedValue,
+  type SharedValue,
 } from 'react-native-reanimated';
 import {C, S, T} from '../theme';
 import {cleanText, getBestArtworkUrl, getTrackId} from '../tracks';
@@ -48,7 +50,6 @@ import {useAccent} from '../accent';
 import {EqBars} from './EqBars';
 import {Sheet} from './Sheet';
 import {TrackRow} from './TrackRow';
-import {Sparkles} from '../icons';
 import type {Track} from '../backend';
 
 const COLUMNS = 3;
@@ -57,6 +58,8 @@ const GAP = 8;
 /** The frame: its hairline and the room inside it. */
 const FRAME = 1;
 const PAD = 8;
+/** A resting dot, the cards carousel's. */
+const DOT = '#3a3a40';
 
 /** Three per row inside the frame, whatever the screen width. */
 function tileSize(width: number) {
@@ -64,6 +67,9 @@ function tileSize(width: number) {
     (width - 2 * (S.gutter + FRAME + PAD) - (COLUMNS - 1) * GAP) / COLUMNS,
   );
 }
+
+type Page = 'discover' | 'recents';
+const TITLES: Record<Page, string> = {discover: 'Discover', recents: 'Recents'};
 
 export function HomeGrids({
   discover,
@@ -75,23 +81,22 @@ export function HomeGrids({
   onPlay: (track: Track, context?: Track[]) => void;
 }) {
   const {width} = useWindowDimensions();
-  const [page, setPage] = useState(0);
   const size = tileSize(width);
+  // How far the pager has scrolled, on the UI thread: the title and the dots
+  // follow the finger frame by frame instead of switching when a page lands.
+  const x = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler(e => {
+    x.value = e.contentOffset.x;
+  });
   const pages = [
     discover.length ? 'discover' : null,
     recent.length ? 'recents' : null,
-  ].filter((p): p is string => !!p);
+  ].filter((p): p is Page => !!p);
   if (!pages.length) {
     return null;
   }
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const p = Math.round(e.nativeEvent.contentOffset.x / width);
-    if (p !== page) {
-      setPage(p);
-    }
-  };
-  const render = (k: string) =>
+  const render = (k: Page) =>
     k === 'discover' ? (
       <DiscoverPage key={k} songs={discover} size={size} onPlay={onPlay} />
     ) : (
@@ -99,18 +104,35 @@ export function HomeGrids({
     );
 
   if (pages.length === 1) {
-    return <View style={styles.section}>{render(pages[0])}</View>;
+    return (
+      <View style={styles.section}>
+        <View style={styles.head}>
+          <Text style={styles.title}>{TITLES[pages[0]]}</Text>
+        </View>
+        {render(pages[0])}
+      </View>
+    );
   }
   // One page per screen width: each page carries its own gutters, so a page
-  // at rest lines up with everything above and below it.
+  // at rest lines up with everything above and below it. The title is not in
+  // the pages: it stays where it is and cross-fades as the grids slide.
   return (
     <View style={styles.section}>
-      <ScrollView
+      <View
+        style={styles.head}
+        accessibilityLabel="Discover and Recents. Swipe the grid to switch.">
+        {pages.map((k, i) => (
+          <SlideTitle key={k} x={x} index={i} width={width}>
+            {TITLES[k]}
+          </SlideTitle>
+        ))}
+      </View>
+      <Animated.ScrollView
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
-        scrollEventThrottle={32}
+        scrollEventThrottle={16}
         overScrollMode="never"
         contentContainerStyle={styles.pager}>
         {pages.map(k => (
@@ -118,24 +140,88 @@ export function HomeGrids({
             {render(k)}
           </View>
         ))}
-      </ScrollView>
-      <View
-        style={styles.dots}
-        accessibilityLabel={`${page === 0 ? 'Discover' : 'Recents'}, ${
-          page + 1
-        } of ${pages.length}`}>
+      </Animated.ScrollView>
+      <View style={styles.dots}>
         {pages.map((k, i) => (
-          <View
-            key={k}
-            style={[
-              styles.dot,
-              i === Math.min(page, pages.length - 1) && styles.dotOn,
-            ]}
-          />
+          <SlideDot key={k} x={x} index={i} width={width} />
         ))}
       </View>
     </View>
   );
+}
+
+/**
+ * One page's title. Fully shown at its own page, gone halfway to the next,
+ * drifting a little the way the grid goes, so the swap reads as one motion
+ * with the tiles rather than a cut. Stacked: every title sits in the same
+ * place, and only the one the pager is on shows.
+ */
+function SlideTitle({
+  x,
+  index,
+  width,
+  children,
+}: {
+  x: SharedValue<number>;
+  index: number;
+  width: number;
+  children: string;
+}) {
+  const style = useAnimatedStyle(() => {
+    const at = index * width;
+    const range = [at - width, at - width / 2, at, at + width / 2, at + width];
+    return {
+      opacity: interpolate(
+        x.value,
+        range,
+        [0, 0, 1, 0, 0],
+        Extrapolation.CLAMP,
+      ),
+      transform: [
+        {
+          translateX: interpolate(
+            x.value,
+            [at - width, at, at + width],
+            [24, 0, -24],
+            Extrapolation.CLAMP,
+          ),
+        },
+      ],
+    };
+  });
+  return (
+    <Animated.Text
+      style={[styles.title, index > 0 && styles.stacked, style]}
+      importantForAccessibility="no">
+      {children}
+    </Animated.Text>
+  );
+}
+
+/** A dot that grows into the white pill as its page slides in. */
+function SlideDot({
+  x,
+  index,
+  width,
+}: {
+  x: SharedValue<number>;
+  index: number;
+  width: number;
+}) {
+  const style = useAnimatedStyle(() => {
+    const at = index * width;
+    const on = interpolate(
+      x.value,
+      [at - width, at, at + width],
+      [0, 1, 0],
+      Extrapolation.CLAMP,
+    );
+    return {
+      width: 6 + 12 * on,
+      backgroundColor: interpolateColor(on, [0, 1], [DOT, C.text]),
+    };
+  });
+  return <Animated.View style={[styles.dot, style]} />;
 }
 
 /** Nine picked for you: no "more" tile, the grid is the whole of it. */
@@ -148,13 +234,8 @@ function DiscoverPage({
   size: number;
   onPlay: (track: Track, context?: Track[]) => void;
 }) {
-  const [lead] = useAccent();
   return (
     <>
-      <View style={styles.head}>
-        <Text style={styles.title}>Discover</Text>
-        <Sparkles size={17} color={lead} strokeWidth={2.2} />
-      </View>
       <View style={styles.frame}>
         {songs.slice(0, MAX_TILES).map(t => (
           <Tile
@@ -187,9 +268,6 @@ function RecentsPage({
   );
   return (
     <>
-      <View style={styles.head}>
-        <Text style={styles.title}>Recents</Text>
-      </View>
       <View style={styles.frame}>
         {tiles.map(t => (
           <Tile
@@ -341,14 +419,10 @@ const styles = StyleSheet.create({
   // Top-aligned: a Recents page with fewer than nine songs is shorter than
   // Discover, and should not float in the middle of the row.
   pager: {alignItems: 'flex-start'},
-  head: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: S.gutter,
-    marginBottom: 10,
-  },
+  head: {paddingHorizontal: S.gutter, marginBottom: 10},
   title: {...T.rowTitle, color: C.text},
+  // Every title after the first sits on top of it, in the same place.
+  stacked: {position: 'absolute', left: S.gutter, top: 0},
   // The cards carousel's dots, so the two swiped rows on Home read alike.
   dots: {
     flexDirection: 'row',
@@ -356,8 +430,7 @@ const styles = StyleSheet.create({
     gap: 5,
     marginTop: 10,
   },
-  dot: {width: 6, height: 6, borderRadius: 3, backgroundColor: '#3a3a40'},
-  dotOn: {width: 18, backgroundColor: C.text},
+  dot: {width: 6, height: 6, borderRadius: 3, backgroundColor: DOT},
   frame: {
     flexDirection: 'row',
     flexWrap: 'wrap',

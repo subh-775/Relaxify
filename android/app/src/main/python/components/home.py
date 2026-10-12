@@ -39,7 +39,7 @@ _cache_lock = threading.Lock()
 # restart (in the EXE that's the entire app session). So entries carry a TTL:
 # 2h, down from 6h. On a phone the music service keeps this process alive for
 # days, and six hours meant a release out at breakfast was not on Home until
-# the evening. Pull-to-refresh on Home skips it altogether (get_home force).
+# the evening.
 _TTL_SECONDS = 2 * 3600
 
 
@@ -204,19 +204,15 @@ def _build_home(language="hindi,english"):
     return {"rows": rows}
 
 
-def get_home(language="hindi,english", force=False):
-    """Cached Home feed (see _TTL_SECONDS). See _build_home. `force` (Home's
-    pull-to-refresh) fetches anew; the cached feed stays if that comes back
-    empty."""
+def get_home(language="hindi,english"):
+    """Cached Home feed (see _TTL_SECONDS). See _build_home."""
     key = ("home", language)
-    hit = None if force else _cache_get(key)
+    hit = _cache_get(key)
     if hit is not None:
         return hit
     result = _build_home(language)
     if result.get("rows"):
         _cache_put(key, result)
-    elif force:
-        return _cache_get(key) or result
     return result
 
 
