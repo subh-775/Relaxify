@@ -25,7 +25,12 @@ import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
 import {HomeGrids} from '../components/HomeGrids';
-import {RETURN_MS, openDiscover, shuffle, useDiscover} from '../discover';
+import {
+  RETURN_MS,
+  openDiscover,
+  trendingStandIn,
+  useDiscover,
+} from '../discover';
 import {HomeCardCarousel} from '../components/HomeCards';
 import {shapedRow} from '../components/HomeRows';
 import type {Collection} from '../collections';
@@ -353,18 +358,8 @@ export const HomeScreen = React.memo(function HomeScreen({
     return () => sub.remove();
   }, [load]);
 
-  // Before there is any history to build Discover from (or while the very
-  // first set is built), the trending songs stand in.
-  const trending = useMemo(
-    () =>
-      shuffle(
-        (rows.find(r => r.title.trim().toLowerCase() === 'trending now')
-          ?.items ?? [])
-          .map(i => (i.type === 'track' ? i.track : undefined))
-          .filter((t): t is Track => !!t),
-      ).slice(0, 9),
-    [rows],
-  );
+  // Discover's stand-in until it has a set of its own (see discover.ts).
+  const trending = useMemo(() => trendingStandIn(rows), [rows]);
 
   // The rows the languages change (Charts on) dim while the new ones load,
   // and come back up with them, instead of snapping over.

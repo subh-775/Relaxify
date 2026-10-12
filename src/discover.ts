@@ -22,8 +22,8 @@
  * songs is played: a tile vanishing the moment you tap it reads as a fault.
  */
 import {createStore, useStoreValue} from './storage';
-import {getDiscover, waitForBackend, type Track} from './backend';
-import {getDownloadKey} from './tracks';
+import {getDiscover, waitForBackend, type HomeRow, type Track} from './backend';
+import {getDownloadKey, splitArtists} from './tracks';
 import {hydrate, readLikes} from './store';
 import {readStats, type TrackStat} from './stats';
 import {readRecentlyPlayed} from './recentlyPlayed';
@@ -53,6 +53,20 @@ export function useDiscover(): Track[] {
   return useStoreValue(store).shown;
 }
 
+/**
+ * What Discover shows before it has a set of its own: before there is any
+ * history to build one from, or while the very first is built. Home's
+ * trending songs, shuffled.
+ */
+export function trendingStandIn(rows: HomeRow[]): Track[] {
+  const row = rows.find(r => r.title.trim().toLowerCase() === 'trending now');
+  return shuffle(
+    (row?.items ?? [])
+      .map(i => (i.type === 'track' ? i.track : undefined))
+      .filter((t): t is Track => !!t),
+  ).slice(0, GRID);
+}
+
 type Rng = () => number;
 
 /** One item, more likely the higher its weight. */
@@ -76,7 +90,7 @@ function pickWeighted<T>(
   return items[items.length - 1];
 }
 
-export function shuffle<T>(items: T[], rng: Rng = Math.random): T[] {
+function shuffle<T>(items: T[], rng: Rng = Math.random): T[] {
   const a = items.slice();
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
@@ -85,11 +99,9 @@ export function shuffle<T>(items: T[], rng: Rng = Math.random): T[] {
   return a;
 }
 
+/** The lead artist, for telling seeds' artists apart. */
 const primary = (artist: string | undefined) =>
-  (artist || '')
-    .split(/\s*[,&/]\s*|\s+feat\.?\s+|\s+ft\.?\s+/i)[0]
-    .trim()
-    .toLowerCase();
+  (splitArtists(artist)[0] ?? '').toLowerCase();
 
 /**
  * Up to three songs to find similar ones to: one of the last few played
