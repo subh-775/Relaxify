@@ -373,9 +373,9 @@ export const GLYPHS = {
   /** Download: arrow in a ring; solid = done, the arrow cut out of a disc. */
   Download: {
     line: [
-      s(circle(12, 12, 9.1)),
-      s('M12 6.8v9'),
-      s('M8.3 12.1l3.7 3.7 3.7-3.7'),
+      s(circle(12, 12, 9.2), {w: 0.75}),
+      s('M12 7.2v8.6', {w: 0.75}),
+      s('M8.5 12.3l3.5 3.5 3.5-3.5', {w: 0.75}),
     ],
     solid: [f(circle(12, 12, 10) + 'M' + DOWN_ARROW.map(pt).join('L') + 'Z')],
   },
