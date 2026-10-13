@@ -187,6 +187,14 @@ const SKIP: Pt[] = [
   [15.6, 12],
   [5, 19.1],
 ];
+// One continuous line: in round the left cup, up the band, round the right
+// cup — so there is no seam where band meets cup.
+const HEADPHONES =
+  'M4 13.8h2.2a1.8 1.8 0 0 1 1.8 1.8v3.8a1.8 1.8 0 0 1-1.8 1.8h-.4A1.8 1.8 0 0 1 4 19.4V12.4a8 8 0 0 1 16 0v7a1.8 1.8 0 0 1-1.8 1.8h-.4a1.8 1.8 0 0 1-1.8-1.8v-3.8a1.8 1.8 0 0 1 1.8-1.8H20';
+const CUP_L =
+  'M4 13.8h2.2a1.8 1.8 0 0 1 1.8 1.8v3.8a1.8 1.8 0 0 1-1.8 1.8h-.4A1.8 1.8 0 0 1 4 19.4Z';
+const CUP_R =
+  'M20 13.8h-2.2a1.8 1.8 0 0 0-1.8 1.8v3.8a1.8 1.8 0 0 0 1.8 1.8h.4a1.8 1.8 0 0 0 1.8-1.8Z';
 const BOOK: Pt[] = [
   [13.1, 4.9],
   [16.3, 3.9],
@@ -204,11 +212,13 @@ export const GLYPHS = {
   },
   Search: {
     line: [s(circle(10.6, 10.6, 6.8)), s('M15.6 15.6 21 21')],
-    // Spotify's active search is the same lens, heavier — a filled lens would
+    // On: the same lens, a little heavier, with a second circle inside it —
+    // still a magnifier, but plainly the selected one. A filled lens would
     // read as a different object.
     solid: [
-      s(circle(10.6, 10.6, 6.6), {w: 1.55}),
-      s('M15.5 15.5 21 21', {w: 1.55}),
+      s(circle(10.6, 10.6, 6.8), {w: 1.2}),
+      s(circle(10.6, 10.6, 3.1), {w: 1.2}),
+      s('M15.6 15.6 21 21', {w: 1.2}),
     ],
   },
   Library: {
@@ -303,17 +313,10 @@ export const GLYPHS = {
       ),
     ],
   },
+  /** The band runs down the outside of each cup; solid fills the cups. */
   Headphones: {
-    line: [
-      s('M3.8 17.4v-5a8.2 8.2 0 0 1 16.4 0v5'),
-      s(rrect(3.8, 13.6, 4.2, 7, 1.4)),
-      s(rrect(16, 13.6, 4.2, 7, 1.4)),
-    ],
-    solid: [
-      s('M3.8 17.4v-5a8.2 8.2 0 0 1 16.4 0v5'),
-      b(rrect(3.8, 13.6, 4.2, 7, 1.4)),
-      b(rrect(16, 13.6, 4.2, 7, 1.4)),
-    ],
+    line: [s(HEADPHONES)],
+    solid: [s(HEADPHONES), f(CUP_L), f(CUP_R)],
   },
   Speaker: {
     line: [
@@ -349,12 +352,22 @@ export const GLYPHS = {
     solid: [b(HEART)],
   },
   /** Add (+) at rest; solid = the saved disc with the tick cut out. */
+  // Slimmer than the rest of the set (0.75×): a big ring at full weight
+  // shouts, and this one sits on every player. Its ring-shaped neighbours,
+  // the saved tick and download, match it.
   CirclePlus: {
-    line: [s(circle(12, 12, 9.1)), s('M12 7.6v8.8'), s('M7.6 12h8.8')],
+    line: [
+      s(circle(12, 12, 9.2), {w: 0.75}),
+      s('M12 8v8', {w: 0.75}),
+      s('M8 12h8', {w: 0.75}),
+    ],
     solid: [f(circle(12, 12, 10) + thick(CHECK, 2.1))],
   },
   CircleCheck: {
-    line: [s(circle(12, 12, 9.1)), s('M7.6 12.3l2.9 2.9 5.9-5.9')],
+    line: [
+      s(circle(12, 12, 9.2), {w: 0.75}),
+      s('M7.8 12.3l2.8 2.8 5.6-5.6', {w: 0.75}),
+    ],
     solid: [f(circle(12, 12, 10) + thick(CHECK, 2.1))],
   },
   /** Download: arrow in a ring; solid = done, the arrow cut out of a disc. */

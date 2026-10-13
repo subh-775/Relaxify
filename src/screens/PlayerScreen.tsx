@@ -382,7 +382,10 @@ export const PlayerScreen = React.memo(function PlayerScreen({
     // to add 20, 30… to the last progress sample, which may or may not have
     // caught up with the first seek yet: the same taps landed in different
     // places, sometimes behind where the previous tap had already gone.
-    const to = Math.max(0, stacking && prev ? prev.to + side * 10 : position + side * 10);
+    const to = Math.max(
+      0,
+      stacking && prev ? prev.to + side * 10 : position + side * 10,
+    );
     tapRef.current = {t: now, side, secs: stacked, to};
 
     progressApi.current?.seek(to);
@@ -1220,7 +1223,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               hitSlop={10}
               style={styles.tBtn}>
               <Shuffle size={24} color={shuffled ? C.accent : C.sub} />
-              <OnDot on={shuffled} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1261,7 +1263,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               ) : (
                 <RepeatOne size={26} color={C.accent} />
               )}
-              <OnDot on={repeat !== RepeatMode.Off} />
             </TouchableOpacity>
           </View>
 
@@ -1375,17 +1376,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
  * thing the eye reads as "selected", where two differently-lit icons read as
  * two icons.
  */
-/**
- * The dot under shuffle and repeat while they are on.
- *
- * Colour alone was the only signal, and coral against grey is the one pair a
- * red-weak eye loses. The dot is a second signal that survives that, sits
- * under the glyph without moving it (absolute), and is the convention people
- * already read in other players.
- */
-function OnDot({on}: {on: boolean}) {
-  return on ? <View style={styles.onDot} pointerEvents="none" /> : null;
-}
 
 function PaneSwitch({
   pane,
@@ -2008,15 +1998,6 @@ const styles = StyleSheet.create({
   // The triangle is already drawn a unit right of centre in its box (its
   // weight sits left of its point); this is only the last pixel.
   playNudge: {marginLeft: 1},
-  onDot: {
-    position: 'absolute',
-    bottom: 1,
-    alignSelf: 'center',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: C.accent,
-  },
 
   lyricScroll: {flex: 1},
   lyricBody: {paddingHorizontal: 26, paddingVertical: 20},

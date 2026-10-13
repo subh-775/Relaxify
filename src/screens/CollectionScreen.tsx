@@ -1146,7 +1146,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  bigPlay: {backgroundColor: C.text},
+  // The accent, where Spotify's play button is green: the one big "go".
+  bigPlay: {backgroundColor: C.accent},
   // Round, beside the two wide ones: an icon, not a word.
   bigSync: {flex: 0, width: 44},
   bigPlayText: {color: C.bg, fontSize: 15, fontWeight: '800'},

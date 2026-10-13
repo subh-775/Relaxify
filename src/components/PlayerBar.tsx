@@ -477,7 +477,7 @@ export const PlayerBar = React.memo(function PlayerBar({
           <View style={styles.controls}>
             {!!output && (
               <View style={styles.ctl}>
-                <Headphones size={24} color={C.accent} solid />
+                <Headphones size={24} color={C.accent} />
               </View>
             )}
 
