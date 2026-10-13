@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import {Image, StyleSheet, View} from 'react-native';
-import {ArrowDownToLine, Heart, Music2, User} from '../icons';
+import {ArrowDownToLine, Heart, Note, User} from '../icons';
 import {C} from '../theme';
 import {getBestArtworkUrl, thumbArtwork} from '../tracks';
 import {type Collection} from '../collections';
@@ -41,7 +41,7 @@ export function CollectionArt({
   if (collection.kind === 'liked') {
     return (
       <View style={[box, styles.center, {backgroundColor: LIKED_TINT}]}>
-        <Heart size={size * 0.42} color="#fff" fill="#fff" />
+        <Heart size={size * 0.42} color="#fff" solid />
       </View>
     );
   }
@@ -92,7 +92,7 @@ export function CollectionArt({
 
   return (
     <View style={[box, styles.center, styles.empty]}>
-      <Music2 size={size * 0.36} color={C.faint} />
+      <Note size={size * 0.36} color={C.faint} />
     </View>
   );
 }

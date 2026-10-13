@@ -194,9 +194,9 @@ export function ArtistScreen({
     playingHere ? togglePlay().catch(() => {}) : onPlay(songs[0], songs);
   const playIcon = (size: number) =>
     playingHere && isPlaying ? (
-      <Pause size={size} color={C.bg} fill={C.bg} />
+      <Pause size={size} color={C.bg} />
     ) : (
-      <Play size={size} color={C.bg} fill={C.bg} style={styles.playNudge} />
+      <Play size={size} color={C.bg} style={styles.playNudge} />
     );
 
   return (
@@ -503,7 +503,8 @@ const styles = StyleSheet.create({
   },
   moreText: {...T.sub, color: C.text, fontWeight: '700'},
   artEmpty: {backgroundColor: C.surfaceHi},
-  playNudge: {marginLeft: 3},
+  // Optical centring; the glyph already leans right (see PlayerScreen).
+  playNudge: {marginLeft: 1},
   section: {
     ...T.rowTitle,
     color: C.text,

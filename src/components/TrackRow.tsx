@@ -15,11 +15,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import {
-  ArrowDownToLine,
-  ListPlus,
-  MoreVertical,
-} from '../icons';
+import {Download, ListPlus, MoreVertical} from '../icons';
 import {C, S, T} from '../theme';
 import {formatDuration, type Track} from '../backend';
 import {cleanText, getBestArtworkUrl, thumbArtwork} from '../tracks';
@@ -202,7 +198,7 @@ export const TrackRow = React.memo(function TrackRow({
             </View>
 
             {showActions && downloaded && (
-              <ArrowDownToLine size={15} color={C.accent} style={styles.dot} />
+              <Download size={15} color={C.accent} solid style={styles.dot} />
             )}
 
             {showActions && (

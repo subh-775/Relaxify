@@ -34,7 +34,7 @@ import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import {Headphones, Menu, Shuffle} from '../icons';
+import {Grip, Headphones, Shuffle} from '../icons';
 import type {Track as RNTPTrack} from 'react-native-track-player';
 import {C, S, T} from '../theme';
 import {
@@ -481,7 +481,7 @@ function Row({
           style={styles.grip}
           onPressIn={onDrag}
           activeOpacity={0.6}>
-          <Menu size={19} color={C.faint} />
+          <Grip size={19} color={C.faint} />
         </TouchableOpacity>
       )}
     </View>

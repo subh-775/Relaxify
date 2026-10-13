@@ -401,6 +401,14 @@ async function setupPlayerOnce(): Promise<boolean> {
       // a small icon is drawn as its alpha only, so it must be one. A plain
       // resource name, which RN's drawable lookup resolves as it stands.
       icon: {uri: 'ic_stat_recap'} as unknown as number,
+      // The buttons, from the app's own set (scripts/icons.js draws them from
+      // src/glyphs.ts), resolved by name like the icon above. Android 13+
+      // draws its own media controls and ignores these; older versions and
+      // the expanded notification on some skins show them.
+      playIcon: {uri: 'ic_notif_play'} as unknown as number,
+      pauseIcon: {uri: 'ic_notif_pause'} as unknown as number,
+      nextIcon: {uri: 'ic_notif_next'} as unknown as number,
+      previousIcon: {uri: 'ic_notif_prev'} as unknown as number,
       capabilities: [
         Capability.Play,
         Capability.Pause,

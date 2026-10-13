@@ -36,17 +36,18 @@ import {
   View,
 } from 'react-native';
 import {
-  Check,
   ChevronDown,
-  CircleArrowDown,
+  Download,
   Gauge,
-  Disc3,
+  Disc,
   Headphones,
   MoreVertical,
   Pause,
   Play,
-  Quote,
-  Repeat2,
+  Lyrics as LyricsIcon,
+  Queue,
+  Repeat,
+  RepeatOne,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -1168,15 +1169,14 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   disabled={downloading || downloaded}
                   hitSlop={8}
                   style={styles.actionBtn}>
-                  {downloaded || downloading ? (
-                    <Check size={24} color={C.accent} strokeWidth={2.6} />
-                  ) : (
-                    <CircleArrowDown
-                      size={25}
-                      color={C.sub}
-                      strokeWidth={1.8}
-                    />
-                  )}
+                  {/* Grey ring at rest, coral ring while it downloads, and a
+                      solid coral disc with the arrow cut out once it is on
+                      the phone — the same two states as the + beside it. */}
+                  <Download
+                    size={25}
+                    color={downloaded || downloading ? C.accent : C.sub}
+                    solid={downloaded}
+                  />
                 </TouchableOpacity>
 
                 <AddButton
@@ -1220,13 +1220,14 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               hitSlop={10}
               style={styles.tBtn}>
               <Shuffle size={24} color={shuffled ? C.accent : C.sub} />
+              <OnDot on={shuffled} />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => skipPrevious()}
               hitSlop={10}
               style={styles.tBtn}>
-              <SkipBack size={34} color={C.text} fill={C.text} />
+              <SkipBack size={34} color={C.text} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1236,14 +1237,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               {buffering ? (
                 <ActivityIndicator size="large" color={C.bg} />
               ) : playing ? (
-                <Pause size={30} color={C.bg} fill={C.bg} />
+                <Pause size={30} color={C.bg} />
               ) : (
-                <Play
-                  size={30}
-                  color={C.bg}
-                  fill={C.bg}
-                  style={styles.playNudge}
-                />
+                <Play size={30} color={C.bg} style={styles.playNudge} />
               )}
             </TouchableOpacity>
 
@@ -1251,18 +1247,21 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               onPress={() => skipNext()}
               hitSlop={10}
               style={styles.tBtn}>
-              <SkipForward size={34} color={C.text} fill={C.text} />
+              <SkipForward size={34} color={C.text} />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={toggleRepeat}
               hitSlop={10}
               style={styles.tBtn}>
-              <Repeat2
-                size={26}
-                color={repeat === RepeatMode.Off ? C.sub : C.accent}
-                strokeWidth={repeat === RepeatMode.Off ? 2 : 2.4}
-              />
+              {/* Repeat only ever means "this song" here, so on is the loop
+                  with a 1 in it, not the same loop recoloured. */}
+              {repeat === RepeatMode.Off ? (
+                <Repeat size={26} color={C.sub} />
+              ) : (
+                <RepeatOne size={26} color={C.accent} />
+              )}
+              <OnDot on={repeat !== RepeatMode.Off} />
             </TouchableOpacity>
           </View>
 
@@ -1331,7 +1330,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Open the queue"
                   style={styles.queueBtn}>
-                  <QueueGlyph size={22} color={C.text} />
+                  <Queue size={22} color={C.text} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1377,19 +1376,15 @@ export const PlayerScreen = React.memo(function PlayerScreen({
  * two icons.
  */
 /**
- * The queue mark: the pill is what is playing, the two rules are what is
- * waiting behind it. Drawn rather than imported because lucide has no icon
- * that says "queue" without also saying "list" or "menu" — and this screen
- * already has a menu.
+ * The dot under shuffle and repeat while they are on.
+ *
+ * Colour alone was the only signal, and coral against grey is the one pair a
+ * red-weak eye loses. The dot is a second signal that survives that, sits
+ * under the glyph without moving it (absolute), and is the convention people
+ * already read in other players.
  */
-function QueueGlyph({size = 22, color}: {size?: number; color: string}) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Rect x="7" y="4" width="10" height="4" rx="2" fill={color} />
-      <Rect x="3" y="12" width="18" height="2.2" rx="1.1" fill={color} />
-      <Rect x="3" y="18" width="18" height="2.2" rx="1.1" fill={color} />
-    </Svg>
-  );
+function OnDot({on}: {on: boolean}) {
+  return on ? <View style={styles.onDot} pointerEvents="none" /> : null;
 }
 
 function PaneSwitch({
@@ -1452,10 +1447,10 @@ function PaneSwitch({
         pointerEvents="none"
       />
       <View style={styles.seg} pointerEvents="none">
-        <Disc3 size={16} color={songOn ? C.bg : C.sub} strokeWidth={2.2} />
+        <Disc size={16} color={songOn ? C.bg : C.sub} strokeWidth={2.2} />
       </View>
       <View style={styles.seg} pointerEvents="none">
-        <Quote
+        <LyricsIcon
           size={16}
           color={lyricsOn ? C.bg : lyricsDead ? C.faint : C.sub}
           strokeWidth={2.2}
@@ -2010,7 +2005,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  playNudge: {marginLeft: 3},
+  // The triangle is already drawn a unit right of centre in its box (its
+  // weight sits left of its point); this is only the last pixel.
+  playNudge: {marginLeft: 1},
+  onDot: {
+    position: 'absolute',
+    bottom: 1,
+    alignSelf: 'center',
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.accent,
+  },
 
   lyricScroll: {flex: 1},
   lyricBody: {paddingHorizontal: 26, paddingVertical: 20},

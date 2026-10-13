@@ -156,7 +156,7 @@ function HeroCard({item, width, onPick}: {item: HomeItem; width: number; onPick:
         )}
       </View>
       <View style={styles.heroPlay}>
-        <Play size={17} color={C.bg} fill={C.bg} />
+        <Play size={17} color={C.bg} />
       </View>
     </TouchableOpacity>
   );

@@ -24,7 +24,7 @@ import {
   Pencil,
   Plus,
   Search as SearchIcon,
-  Trash2,
+  Trash,
   X,
 } from '../icons';
 import {C, S, T} from '../theme';
@@ -538,7 +538,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                   style={styles.sheetRow}
                   activeOpacity={0.7}
                   onPress={() => doDelete(menuFor)}>
-                  <Trash2 size={20} color={C.danger} />
+                  <Trash size={20} color={C.danger} />
                   <Text style={[styles.sheetLabel, styles.sheetDanger]}>
                     Delete playlist
                   </Text>

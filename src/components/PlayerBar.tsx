@@ -477,7 +477,7 @@ export const PlayerBar = React.memo(function PlayerBar({
           <View style={styles.controls}>
             {!!output && (
               <View style={styles.ctl}>
-                <Headphones size={24} color={C.accent} strokeWidth={2} />
+                <Headphones size={24} color={C.accent} solid />
               </View>
             )}
 
@@ -499,9 +499,9 @@ export const PlayerBar = React.memo(function PlayerBar({
               {buffering ? (
                 <ActivityIndicator color={C.text} />
               ) : playing ? (
-                <Pause size={26} color={C.text} fill={C.text} />
+                <Pause size={26} color={C.text} />
               ) : (
-                <Play size={26} color={C.text} fill={C.text} />
+                <Play size={26} color={C.text} />
               )}
             </TouchableOpacity>
           </View>

@@ -73,13 +73,13 @@ export const EQ_PRESETS: EqPreset[] = [
   {
     id: 'jazz',
     label: 'Jazz',
-    icon: 'Music4',
+    icon: 'Notes',
     gains: [3, 2, 1, 2, -1, -1, 2, 3],
   },
   {
     id: 'vocal',
     label: 'Vocal',
-    icon: 'Mic2',
+    icon: 'Mic',
     gains: [-3, -2, 2, 5, 5, 3, 0, -2],
   },
   {

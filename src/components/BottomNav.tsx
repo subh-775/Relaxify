@@ -1,21 +1,22 @@
 /**
  * Primary navigation — three thumb-reachable destinations, icons only.
  *
- * Active state is white with a BOLDER stroke, not a filled glyph — a solid
- * blob reads as a different icon rather than the same one selected — plus a
- * small coral dot under it (C.brand, the logo's red). No label: the white icon
- * and the dot are the whole signal.
+ * Active is the same glyph FILLED, in white, with a small coral dot under it
+ * (C.brand, the logo's red); at rest it is a grey outline. Each tab's solid
+ * twin keeps its outline's silhouette (the house keeps its door, the lens only
+ * gets heavier), so it reads as the same icon switched on rather than a
+ * different one. No label: the filled icon and the dot are the whole signal.
  */
 import React from 'react';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
 import Animated, {ZoomIn} from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {Home, Search, Library} from '../icons';
+import {Home, Search, Library, type IconComponent} from '../icons';
 import {C} from '../theme';
 
 export type Tab = 'home' | 'search' | 'library';
 
-const TABS: {id: Tab; label: string; Icon: typeof Home}[] = [
+const TABS: {id: Tab; label: string; Icon: IconComponent}[] = [
   {id: 'home', label: 'Home', Icon: Home},
   {id: 'search', label: 'Search', Icon: Search},
   {id: 'library', label: 'Your Library', Icon: Library},
@@ -58,11 +59,7 @@ export function BottomNav({
             accessibilityLabel={label}
             accessibilityState={{selected: on}}
             onPress={() => onChange(id)}>
-            <Icon
-              size={ICON}
-              strokeWidth={on ? 2.4 : 2}
-              color={on ? C.text : INACTIVE}
-            />
+            <Icon size={ICON} solid={on} color={on ? C.text : INACTIVE} />
             {/* Mounted only under the active tab, so a tap remounts it there
                 and it pops in rather than sliding across from the old tab. */}
             {on && (

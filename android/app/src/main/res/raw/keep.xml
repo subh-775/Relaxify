@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Drawables the JS side names as strings (TrackPlayer.updateOptions in
+     src/player.ts), which the release build's resource shrinker cannot see.
+     Without this they are stripped and the notification falls back to
+     ExoPlayer's own buttons. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_notif_*,@drawable/ic_stat_recap" />

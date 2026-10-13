@@ -25,7 +25,6 @@ import {
 import {
   ArrowDownToLine,
   CheckSquare,
-  CheckSquare2,
   ChevronLeft,
   CircleCheck,
   Heart,
@@ -38,11 +37,11 @@ import {
   Plus,
   RefreshCw,
   Search as SearchIcon,
-  Share2,
+  Share as ShareIcon,
   Shuffle,
   Square,
   SquareX,
-  Trash2,
+  Trash,
   X,
   ArrowUpDown,
 } from '../icons';
@@ -593,7 +592,7 @@ export function CollectionScreen({
               {allSelected ? (
                 <SquareX size={22} color={C.accent} />
               ) : (
-                <CheckSquare2 size={22} color={C.accent} />
+                <CheckSquare size={22} color={C.accent} />
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -601,7 +600,7 @@ export function CollectionScreen({
               disabled={busy || !selected.size}
               hitSlop={10}
               style={styles.barBtn}>
-              <Trash2
+              <Trash
                 size={22}
                 color={selected.size && !busy ? C.danger : C.faint}
               />
@@ -656,7 +655,7 @@ export function CollectionScreen({
                 {sharing ? (
                   <ActivityIndicator size="small" color={C.text} />
                 ) : (
-                  <Share2 size={21} color={C.text} />
+                  <ShareIcon size={21} color={C.text} />
                 )}
               </TouchableOpacity>
             )}
@@ -738,9 +737,9 @@ export function CollectionScreen({
                     disabled={!tracks.length}
                     accessibilityRole="button">
                     {playingHere && isPlaying ? (
-                      <Pause size={20} color={C.bg} fill={C.bg} />
+                      <Pause size={20} color={C.bg} />
                     ) : (
-                      <Play size={20} color={C.bg} fill={C.bg} />
+                      <Play size={20} color={C.bg} />
                     )}
                     <Text style={styles.bigPlayText}>
                       {playingHere && isPlaying ? 'Pause' : 'Play'}
@@ -808,7 +807,7 @@ export function CollectionScreen({
                       <Heart
                         size={23}
                         color={saved ? C.accent : C.text}
-                        fill={saved ? C.accent : 'transparent'}
+                        solid={saved}
                       />
                     </TouchableOpacity>
                   )}
@@ -913,7 +912,7 @@ export function CollectionScreen({
                   hitSlop={10}
                   style={styles.check}>
                   {checked ? (
-                    <CheckSquare size={22} color={C.accent} />
+                    <CheckSquare size={22} color={C.accent} solid />
                   ) : (
                     <Square size={22} color={C.faint} />
                   )}
@@ -993,7 +992,7 @@ export function CollectionScreen({
               setMenuOpen(false);
               setConfirmDelete(true);
             }}>
-            <Trash2 size={20} color={C.danger} />
+            <Trash size={20} color={C.danger} />
             <Text style={[styles.sheetLabel, styles.sheetDanger]}>
               Delete playlist
             </Text>

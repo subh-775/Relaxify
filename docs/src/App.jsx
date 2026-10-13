@@ -157,11 +157,12 @@ function Menu({open, onClose, path}) {
 
 /* ── home ────────────────────────────────────────────────────────────────── */
 
-/** A small line icon on a palette-coloured tile. */
+/** A small line icon on a palette-coloured tile, drawn like the app's set
+ *  (src/glyphs.ts): flat line ends, soft corners. */
 function Glyph({color, d}) {
   return (
     <span className="glyph" style={{background: color}} aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#111014" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#111014" strokeWidth="2.2" strokeLinecap="butt" strokeLinejoin="round">
         <path d={d} />
       </svg>
     </span>
@@ -214,14 +215,14 @@ function Home() {
           </span>
         </div>
         <div className="stick reveal">
-          <Glyph color={PAL.sky.bg} d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" />
+          <Glyph color={PAL.sky.bg} d="M19.8 11.2a7.9 7.9 0 0 0-14.3-3.7M4.2 12.8a7.9 7.9 0 0 0 14.3 3.7M5.1 3.2v4.6h4.6M18.9 20.8v-4.6h-4.6" />
           <span>
             <b>Updates in the app</b>
             When a new update appears, you'll be notified in the app.
           </span>
         </div>
         <div className="stick reveal">
-          <Glyph color={PAL.orange.bg} d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z" />
+          <Glyph color={PAL.orange.bg} d="M12 20.4 4.3 12.9a4.85 4.85 0 0 1 6.86-6.86L12 6.9l.84-.86a4.85 4.85 0 0 1 6.86 6.86Z" />
           <span>
             <b>Free, for real</b>
             No account, no ads, no paywall.

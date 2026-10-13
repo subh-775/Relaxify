@@ -18,7 +18,7 @@ import {
   ChevronRight,
   HardDrive,
   RefreshCw,
-  Trash2,
+  Trash,
 } from '../icons';
 import {
   COLLECTED_ITEMS,
@@ -1319,7 +1319,7 @@ export function SettingsScreen({
             onPress={() => setCacheOpen(true)}
             disabled={clearing}
             activeOpacity={0.7}>
-            <Lead Icon={Trash2} />
+            <Lead Icon={Trash} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>
                 {clearing ? 'Clearing…' : 'Clear cached data'}

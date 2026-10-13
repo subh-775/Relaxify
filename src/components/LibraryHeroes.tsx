@@ -78,7 +78,7 @@ export function LibraryHeroes({
           to="#FF4FB3"
           ink="#FFFFFF"
           label="Liked songs"
-          icon={<Heart size={22} color="#fff" fill="#fff" />}
+          icon={<Heart size={22} color="#fff" solid />}
           onOpen={onOpen}
         />
       )}
