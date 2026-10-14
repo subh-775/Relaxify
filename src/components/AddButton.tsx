@@ -86,16 +86,16 @@ export function AddButton({
  * screen. Two copies of one glyph is two chances for them to disagree, and the
  * disagreement is invisible until someone screenshots both at once.
  *
- * Not in: a grey ring with a +. In: a solid coral disc with the tick CUT OUT
- * of it, so whatever is behind — black, a tinted player — shows through the
- * tick. That is what retired the old dark ring: a filled disc used to need a
- * dark stroke to keep a drawn-on tick legible, and the stroke ringed the disc
- * too. A hole needs no second colour.
+ * The shape is the same in both states: an outline at the same weight, no fill,
+ * no contrasting rim. Only the colour and the mark inside the circle change.
+ * The fill is what forced the dark ring in the first place — Lucide applies
+ * `color` as the stroke to the circle AND the tick, so a green disc needed a
+ * dark stroke to keep its tick legible, and that stroke ringed the disc too.
  */
 export function SavedGlyph({on, size = 25}: {on: boolean; size?: number}) {
   return on ? (
-    <CircleCheck size={size} color={C.accent} solid />
+    <CircleCheck size={size} color={C.accent} strokeWidth={2.2} />
   ) : (
-    <CirclePlus size={size} color={C.sub} />
+    <CirclePlus size={size} color={C.sub} strokeWidth={1.8} />
   );
 }

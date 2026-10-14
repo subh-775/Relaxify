@@ -76,7 +76,7 @@ import {
 } from '../brandArt';
 
 import {LogoMark} from '../components/Logo';
-import {Share} from '../icons';
+import {Share2} from '../icons';
 import {inviteMessage} from '../links';
 import {logEvent} from '../analytics';
 import {toast} from '../toast';
@@ -1713,7 +1713,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
                 onPress={share}
                 style={[styles.share, {backgroundColor: pal.ink}]}
                 hitSlop={8}>
-                <Share size={16} color={pal.bg} strokeWidth={2.4} />
+                <Share2 size={16} color={pal.bg} strokeWidth={2.4} />
               </TouchableOpacity>
             )}
             {(['week', 'all'] as const).map(m => {

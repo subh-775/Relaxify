@@ -173,7 +173,7 @@ export function SpotifyImportScreen({
               disabled={!tracks.length}
               activeOpacity={0.85}
               style={styles.playBtn}>
-              <Play size={26} color={C.bg} />
+              <Play size={26} color={C.bg} fill={C.bg} />
             </TouchableOpacity>
           </View>
 

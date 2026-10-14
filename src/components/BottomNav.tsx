@@ -1,20 +1,21 @@
 /**
  * Primary navigation — three thumb-reachable destinations, icons only.
  *
- * Spotify's footer: grey outlines at rest; the selected tab turns bright white
- * and fills in (Search, which cannot fill without turning into a disc, gains a
- * circle inside its lens). Nothing coral here — no dot, no tint — so the bar
- * reads as plain navigation and the colour stays for things that are ON.
+ * Active state is white with a BOLDER stroke, not a filled glyph — a solid
+ * blob reads as a different icon rather than the same one selected — plus a
+ * small coral dot under it (C.brand, the logo's red). No label: the white icon
+ * and the dot are the whole signal.
  */
 import React from 'react';
 import {StyleSheet, TouchableOpacity, View} from 'react-native';
+import Animated, {ZoomIn} from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {Home, Search, Library, type IconComponent} from '../icons';
+import {Home, Search, Library} from '../icons';
 import {C} from '../theme';
 
 export type Tab = 'home' | 'search' | 'library';
 
-const TABS: {id: Tab; label: string; Icon: IconComponent}[] = [
+const TABS: {id: Tab; label: string; Icon: typeof Home}[] = [
   {id: 'home', label: 'Home', Icon: Home},
   {id: 'search', label: 'Search', Icon: Search},
   {id: 'library', label: 'Your Library', Icon: Library},
@@ -57,7 +58,19 @@ export function BottomNav({
             accessibilityLabel={label}
             accessibilityState={{selected: on}}
             onPress={() => onChange(id)}>
-            <Icon size={ICON} solid={on} color={on ? C.text : INACTIVE} />
+            <Icon
+              size={ICON}
+              strokeWidth={on ? 2.4 : 2}
+              color={on ? C.text : INACTIVE}
+            />
+            {/* Mounted only under the active tab, so a tap remounts it there
+                and it pops in rather than sliding across from the old tab. */}
+            {on && (
+              <Animated.View
+                entering={ZoomIn.duration(180)}
+                style={styles.dot}
+              />
+            )}
           </TouchableOpacity>
         );
       })}
@@ -72,13 +85,23 @@ const ICON = 29;
 // The bar stays 59px: what the icon gained comes out of the padding.
 const PAD = 16 - (ICON - 25) / 2;
 
-// A light neutral grey, as Spotify's resting tabs: readable on its own with no
-// label beside it, and still clearly below the selected tab's pure white.
-const INACTIVE = '#A7A7A7';
+// Brighter than C.faint: with no label beside it, a resting icon has to be
+// readable on its own.
+const INACTIVE = '#7A7F8A';
 
 const styles = StyleSheet.create({
   bar: {flexDirection: 'row', paddingBottom: 2},
   // 29 + 2 × 14 + 2 = 59, the height the labelled bar had (8 + 23 + 4 + a
   // 13px label + 8 + 2), so the mini player and toasts stay where they were.
   tab: {flex: 1, alignItems: 'center', paddingVertical: PAD},
+  // Out of flow so the bar keeps its 59px: 5px under the icon, in the bottom
+  // padding.
+  dot: {
+    position: 'absolute',
+    top: PAD + ICON + 5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: C.brand,
+  },
 });

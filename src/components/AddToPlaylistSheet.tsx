@@ -247,7 +247,7 @@ function AddToPlaylistSheetView({
         accessibilityRole="checkbox"
         accessibilityState={{checked: liked}}>
         <View style={styles.likedTile}>
-          <Heart size={20} color="#fff" solid />
+          <Heart size={20} color="#fff" fill="#fff" />
         </View>
         <View style={styles.rowText}>
           <Text style={styles.rowTitle} numberOfLines={1}>

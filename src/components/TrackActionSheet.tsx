@@ -20,17 +20,15 @@ import {
 } from 'react-native';
 import {
   ArrowLeftRight,
-  Artist,
   CircleCheck,
   CirclePlus,
-  Disc,
+  Disc3,
   Download,
   ListPlus,
   ListX,
   Loader,
-  PlaylistAdd,
-  Trash,
-  type IconComponent,
+  Trash2,
+  User,
 } from '../icons';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
@@ -134,9 +132,7 @@ function TrackActionSheetView({
 
   const items: Array<{
     key: string;
-    Icon: IconComponent;
-    /** Draw the glyph's "on" state (the saved disc). */
-    solid?: boolean;
+    Icon: typeof CirclePlus;
     label: string;
     onPress: () => void;
     tint?: string;
@@ -158,7 +154,6 @@ function TrackActionSheetView({
     {
       key: 'like',
       Icon: liked ? CircleCheck : CirclePlus,
-      solid: liked,
       label: liked ? 'Remove from Liked Songs' : 'Add to Liked Songs',
       tint: liked ? C.accent : undefined,
       stay: true,
@@ -170,7 +165,7 @@ function TrackActionSheetView({
     downloaded
       ? {
           key: 'undownload',
-          Icon: Trash,
+          Icon: Trash2,
           label: 'Remove download',
           onPress: removeDownload,
         }
@@ -197,7 +192,7 @@ function TrackActionSheetView({
     },
     {
       key: 'playlist',
-      Icon: PlaylistAdd,
+      Icon: ListPlus,
       label: 'Add to playlist',
       onPress: run(() => onAddToPlaylist(t)),
     },
@@ -219,7 +214,7 @@ function TrackActionSheetView({
       : []),
     {
       key: 'artist',
-      Icon: Artist,
+      Icon: User,
       label: 'Go to artist',
       onPress: run(() => onOpenArtist(t)),
     },
@@ -227,7 +222,7 @@ function TrackActionSheetView({
       ? [
           {
             key: 'album',
-            Icon: Disc,
+            Icon: Disc3,
             label: 'Go to album',
             onPress: run(() => onOpenAlbum(t)),
           },
@@ -254,13 +249,13 @@ function TrackActionSheetView({
       </View>
 
       <ScrollView style={styles.list} bounces={false}>
-        {items.map(({key, Icon, solid, label, onPress, tint}) => (
+        {items.map(({key, Icon, label, onPress, tint}) => (
           <TouchableOpacity
             key={key}
             style={styles.row}
             activeOpacity={0.7}
             onPress={onPress}>
-            <Icon size={22} color={tint || C.sub} solid={solid} />
+            <Icon size={20} color={tint || C.sub} />
             <Text style={styles.rowLabel}>{label}</Text>
           </TouchableOpacity>
         ))}

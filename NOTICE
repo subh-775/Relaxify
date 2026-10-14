@@ -61,6 +61,7 @@ JavaScript (React Native)
     (modified; the changes are in patches/ and are applied at install time)
   react-native-svg ................................... MIT
   @react-native-async-storage/async-storage .......... MIT
+  lucide-react-native ................................ ISC
 
 Android
   NewPipeExtractor (TeamNewPipe) ..................... GPL-3.0

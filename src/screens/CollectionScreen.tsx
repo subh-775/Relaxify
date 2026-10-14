@@ -25,6 +25,7 @@ import {
 import {
   ArrowDownToLine,
   CheckSquare,
+  CheckSquare2,
   ChevronLeft,
   CircleCheck,
   Heart,
@@ -37,11 +38,11 @@ import {
   Plus,
   RefreshCw,
   Search as SearchIcon,
-  Share as ShareIcon,
+  Share2,
   Shuffle,
   Square,
   SquareX,
-  Trash,
+  Trash2,
   X,
   ArrowUpDown,
 } from '../icons';
@@ -592,7 +593,7 @@ export function CollectionScreen({
               {allSelected ? (
                 <SquareX size={22} color={C.accent} />
               ) : (
-                <CheckSquare size={22} color={C.accent} />
+                <CheckSquare2 size={22} color={C.accent} />
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -600,7 +601,7 @@ export function CollectionScreen({
               disabled={busy || !selected.size}
               hitSlop={10}
               style={styles.barBtn}>
-              <Trash
+              <Trash2
                 size={22}
                 color={selected.size && !busy ? C.danger : C.faint}
               />
@@ -655,7 +656,7 @@ export function CollectionScreen({
                 {sharing ? (
                   <ActivityIndicator size="small" color={C.text} />
                 ) : (
-                  <ShareIcon size={21} color={C.text} />
+                  <Share2 size={21} color={C.text} />
                 )}
               </TouchableOpacity>
             )}
@@ -737,9 +738,9 @@ export function CollectionScreen({
                     disabled={!tracks.length}
                     accessibilityRole="button">
                     {playingHere && isPlaying ? (
-                      <Pause size={20} color={C.bg} />
+                      <Pause size={20} color={C.bg} fill={C.bg} />
                     ) : (
-                      <Play size={20} color={C.bg} />
+                      <Play size={20} color={C.bg} fill={C.bg} />
                     )}
                     <Text style={styles.bigPlayText}>
                       {playingHere && isPlaying ? 'Pause' : 'Play'}
@@ -807,7 +808,7 @@ export function CollectionScreen({
                       <Heart
                         size={23}
                         color={saved ? C.accent : C.text}
-                        solid={saved}
+                        fill={saved ? C.accent : 'transparent'}
                       />
                     </TouchableOpacity>
                   )}
@@ -912,7 +913,7 @@ export function CollectionScreen({
                   hitSlop={10}
                   style={styles.check}>
                   {checked ? (
-                    <CheckSquare size={22} color={C.accent} solid />
+                    <CheckSquare size={22} color={C.accent} />
                   ) : (
                     <Square size={22} color={C.faint} />
                   )}
@@ -992,7 +993,7 @@ export function CollectionScreen({
               setMenuOpen(false);
               setConfirmDelete(true);
             }}>
-            <Trash size={20} color={C.danger} />
+            <Trash2 size={20} color={C.danger} />
             <Text style={[styles.sheetLabel, styles.sheetDanger]}>
               Delete playlist
             </Text>
@@ -1146,8 +1147,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  // The accent, where Spotify's play button is green: the one big "go".
-  bigPlay: {backgroundColor: C.accent},
+  bigPlay: {backgroundColor: C.text},
   // Round, beside the two wide ones: an icon, not a word.
   bigSync: {flex: 0, width: 44},
   bigPlayText: {color: C.bg, fontSize: 15, fontWeight: '800'},

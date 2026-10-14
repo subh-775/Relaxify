@@ -23,15 +23,9 @@ export const Github = p => (
   </svg>
 );
 
-// The app's ArrowUpRight (src/glyphs.ts): the same drawing, flat ends.
 export const External = p => (
-  <svg
-    {...base}
-    strokeWidth={1.8}
-    strokeLinecap="butt"
-    width={p.size || 13}
-    height={p.size || 13}>
-    <path d="M7 17 17 7M8.6 7H17v8.4" />
+  <svg {...base} width={p.size || 13} height={p.size || 13}>
+    <path d="M7 17 17 7M9 7h8v8" />
   </svg>
 );
 

@@ -216,9 +216,8 @@ export function GetApp({label = 'Download', meta = true}) {
 
 export function DownloadIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="butt" strokeLinejoin="round" aria-hidden="true">
-      {/* The app's ArrowDownToLine (src/glyphs.ts). */}
-      <path d="M12 3.6v12M7.2 11l4.8 4.8 4.8-4.8M4.6 20.4h14.8" />
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 4v11M7 11l5 5 5-5M5 20h14" />
     </svg>
   );
 }

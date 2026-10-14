@@ -13,6 +13,7 @@ export const LICENCES: {group: string; items: [string, string][]}[] = [
       ['react-native-draggable-flatlist (modified)', 'MIT'],
       ['react-native-svg', 'MIT'],
       ['@react-native-async-storage/async-storage', 'MIT'],
+      ['lucide-react-native', 'ISC'],
     ],
   },
   {
