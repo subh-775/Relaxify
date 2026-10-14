@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Base application theme. -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
@@ -12,6 +12,11 @@
              plain list scrolling miss frames on the GPU. The React views are
              transparent now and this paints the black once. -->
         <item name="android:windowBackground">@android:color/black</item>
+        <!-- The system navigation bar under the tab bar: the same black,
+             stated rather than left to the phone maker's default, which on
+             some phones is a translucent bar or a grey one. -->
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
     </style>
 
 </resources>

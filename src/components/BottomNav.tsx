@@ -50,17 +50,24 @@ export function BottomNav({
           mini player.
 
           Spotify's shading: the page still shows through at the top of the
-          bar, faintly, and it is near black by the labels. */}
+          bar, faintly, and it is solid black by the labels. */}
       <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
         <Defs>
           <LinearGradient id="navfade" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor={C.bg} stopOpacity="0.55" />
-            <Stop offset="0.45" stopColor={C.bg} stopOpacity="0.85" />
-            <Stop offset="1" stopColor={C.bg} stopOpacity="0.97" />
+            <Stop offset="0.4" stopColor={C.bg} stopOpacity="0.85" />
+            <Stop offset="0.7" stopColor={C.bg} stopOpacity="1" />
           </LinearGradient>
         </Defs>
         <Rect width="100%" height="100%" fill="url(#navfade)" />
       </Svg>
+      {/* The foot of the bar is a plain View, not part of the gradient. The
+          gradient used to end at 97%, and an SVG can be drawn a pixel short
+          of its frame, so the page showed through in its own colours along
+          the very bottom edge, as if the bar were not quite on it. A View
+          fills its frame exactly, so the bar now meets the bottom of the
+          screen in solid black. */}
+      <View style={styles.foot} pointerEvents="none" />
       {TABS.map(({id, label, Icon, IconOn}) => {
         const on = active === id;
         const Shown = on ? IconOn : Icon;
@@ -95,8 +102,20 @@ const ICON = 24;
 // quieter than the white of the tab you are in.
 const INACTIVE = '#B3B3B3';
 
+// The lowest 30% of the 59px bar: from the gradient's last stop down.
+const FOOT = 18;
+
 const styles = StyleSheet.create({
   bar: {flexDirection: 'row', paddingBottom: 2},
+  // The labels' strip down to the bottom edge, where the gradient is solid.
+  foot: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: FOOT,
+    backgroundColor: C.bg,
+  },
   // 8 + 24 + 4 + 13 + 8 + 2 = 59, the height the bar has always had, so the
   // mini player above it, BOTTOM_INSET and the toasts all stay put.
   tab: {flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8},
