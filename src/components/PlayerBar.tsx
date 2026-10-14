@@ -44,7 +44,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {Headphones, Pause, Play} from '../glyphs';
+import {Devices, Headphones, Pause, Play} from '../glyphs';
 import {C, S} from '../theme';
 import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from './Marquee';
@@ -468,25 +468,28 @@ export const PlayerBar = React.memo(function PlayerBar({
             )}
           </View>
 
-          {/* Output, like, play — three identical 38x38 slots, so the row reads
-            as one rhythm instead of three different shapes. The headphones are
-            STATUS rather than an action, which is why they are a bare View: no
-            press feedback on something that cannot be pressed. They appear only
-            when something is actually connected, so they cost nothing the rest
-            of the time. */}
+          {/* Output, like, play — three identical 44x44 slots, so the row reads
+            as one rhythm instead of three different shapes. The output mark is
+            STATUS rather than an action, which is why it is a bare View: no
+            press feedback on something that cannot be pressed. Coral
+            headphones while something is connected; otherwise the phone and
+            speaker, in white, as Spotify shows when the sound is coming from
+            the phone itself. */}
           <View style={styles.controls}>
-            {!!output && (
-              <View style={styles.ctl}>
-                <Headphones size={24} color={C.accent} strokeWidth={2} />
-              </View>
-            )}
+            <View style={styles.ctl}>
+              {output ? (
+                <Headphones size={27} color={C.accent} />
+              ) : (
+                <Devices size={26} color={C.text} />
+              )}
+            </View>
 
             {/* The same control as the full player, so the two can never
                 disagree about what a press does. */}
             <AddButton
               track={track}
               onOpenSheet={onAddToPlaylist}
-              size={23}
+              size={26}
               hitSlop={10}
               style={styles.ctl}
             />
@@ -499,9 +502,9 @@ export const PlayerBar = React.memo(function PlayerBar({
               {buffering ? (
                 <ActivityIndicator color={C.text} />
               ) : playing ? (
-                <Pause size={26} color={C.text} fill={C.text} />
+                <Pause size={28} color={C.text} fill={C.text} />
               ) : (
-                <Play size={26} color={C.text} fill={C.text} />
+                <Play size={28} color={C.text} fill={C.text} />
               )}
             </TouchableOpacity>
           </View>
@@ -523,7 +526,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     // Nearly edge to edge: 4 from each side leaves the title more room.
     marginHorizontal: 4,
-    marginBottom: 4,
+    // None underneath: like Spotify's, the bar rests right on the tab bar,
+    // so the two read as one stack at the foot of the screen.
+    marginBottom: 0,
     borderRadius: BAR_R,
     // Translucent, not opaque. Against the fade at the foot of the page this
     // is what makes the bar read as sitting ABOVE the content rather than
@@ -587,16 +592,16 @@ const styles = StyleSheet.create({
     paddingRight: S.gutter - 8,
   },
   ctl: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The same 42x42 slot as the other two. No disc: `playNudge` went with it,
+  // The same 44x44 slot as the other two. No disc: `playNudge` went with it,
   // since it existed only to optically centre a triangle inside a circle.
   playBtn: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

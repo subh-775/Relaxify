@@ -44,7 +44,6 @@ import {
   Quote,
   SkipBack,
   SkipForward,
-  Timer,
 } from '../icons';
 import {
   Headphones,
@@ -54,6 +53,7 @@ import {
   Queue,
   Repeat,
   Shuffle,
+  SleepTimer,
 } from '../glyphs';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Svg, {Defs, RadialGradient, Rect, Stop} from 'react-native-svg';
@@ -1320,10 +1320,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     sleepArmed ? `Sleep timer: ${sleepArmed}` : 'Sleep timer'
                   }
                   style={styles.queueBtn}>
-                  <Timer
-                    size={21}
+                  <SleepTimer
+                    size={22}
                     color={sleepArmed ? C.accent : C.text}
-                    strokeWidth={2}
                   />
                 </TouchableOpacity>
 

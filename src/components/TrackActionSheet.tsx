@@ -18,16 +18,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import {ArrowLeftRight, Disc3, Download, ListX, Loader} from '../icons';
 import {
-  ArrowLeftRight,
-  Disc3,
-  Download,
-  ListPlus,
-  ListX,
-  Loader,
-  User,
-} from '../icons';
-import {AddCircle, SavedCircle, Trash} from '../glyphs';
+  AddCircle,
+  AddToPlaylist,
+  AddToQueue,
+  Artist,
+  SavedCircle,
+  Trash,
+} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {enqueueDownload, forgetDownloads} from '../downloads';
@@ -175,7 +174,7 @@ function TrackActionSheetView({
         },
     {
       key: 'queue',
-      Icon: ListPlus,
+      Icon: AddToQueue,
       // In a Jam the queue is everyone's: the song goes there instead.
       label: inJam() ? 'Add to Jam queue' : 'Add to queue',
       onPress: run(() => {
@@ -190,7 +189,7 @@ function TrackActionSheetView({
     },
     {
       key: 'playlist',
-      Icon: ListPlus,
+      Icon: AddToPlaylist,
       label: 'Add to playlist',
       onPress: run(() => onAddToPlaylist(t)),
     },
@@ -212,7 +211,7 @@ function TrackActionSheetView({
       : []),
     {
       key: 'artist',
-      Icon: User,
+      Icon: Artist,
       label: 'Go to artist',
       onPress: run(() => onOpenArtist(t)),
     },

@@ -18,7 +18,8 @@
  * scroll, which moves the content under the reader's thumb.
  *
  * Measured, not guessed: PlayerBar is a 48px cover + 4px padding either side +
- * 3px for the progress line + a 4px margin = 63, and BottomNav is 8 + a 24px
- * icon + 4 + a 13px label + 8 + 2 = 59. Rounded up for air.
+ * 3px for the progress line = 59 (it rests right on the tab bar, no margin),
+ * and BottomNav is 8 + a 24px icon + 4 + a 13px label + 8 + 2 = 59. Rounded up
+ * for air.
  */
 export const BOTTOM_INSET = 128;

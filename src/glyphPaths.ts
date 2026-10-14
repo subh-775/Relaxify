@@ -85,19 +85,65 @@ export const GLYPHS = {
     {d: 'M13.6 12a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 1 1 3.2 0z'},
     {d: 'M13.6 19a1.6 1.6 0 1 1-3.2 0 1.6 1.6 0 1 1 3.2 0z'},
   ],
+  // Song rows: the dots lie down. The standing ⋮ above is for the screen's
+  // own menu (player, playlist page).
+  moreH: [
+    {d: 'M6.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 1 1 3 0z'},
+    {d: 'M13.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 1 1 3 0z'},
+    {d: 'M20.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 1 1 3 0z'},
+  ],
   // Now playing as a pill, what comes next as two lines.
   queue: [
     {d: 'M5.5 3.5h13a2.5 2.5 0 0 1 0 5h-13a2.5 2.5 0 0 1 0-5z', w: 1.8},
     {d: 'M3 14h18M3 19.5h18', w: 1.9},
   ],
-  // One band, two D-shaped cups with their flat side inward.
-  headphones: [
-    {d: 'M3 17v-5a9 9 0 0 1 18 0v5', w: 1.9},
-    {d: 'M3 15.5A2.5 2.5 0 0 1 5.5 13h2v8.5h-2A2.5 2.5 0 0 1 3 19z', w: 1.9},
+  // The queue with a + where the last line ends.
+  addQueue: [
+    {d: 'M5.5 3.5h8a2.5 2.5 0 0 1 0 5h-8a2.5 2.5 0 0 1 0-5z', w: 1.8},
+    {d: 'M3 14h10.5M3 19.5h7', w: 1.9},
+    {d: 'M18 12.5v8M14 16.5h8', w: 1.9},
+  ],
+  // Two notes and a +.
+  addPlaylist: [
+    {d: 'M5.8 2.9v5.8M2.9 5.8h5.8', w: 1.8},
+    {d: 'M8.8 11.6v7a2.3 2.3 0 1 1-4.6 0 2.3 2.3 0 1 1 4.6 0', w: 1.8},
+    {d: 'M12.6 5.2h8.3v13.4a2.3 2.3 0 1 1-4.6 0 2.3 2.3 0 1 1 4.6 0', w: 1.8},
+  ],
+  // Head and shoulders in one line, for "Go to artist".
+  artist: [
     {
-      d: 'M21 15.5a2.5 2.5 0 0 0-2.5-2.5h-2v8.5h2a2.5 2.5 0 0 0 2.5-2.5z',
+      d: 'M4 20.5v-2.1c0-.95.53-1.82 1.38-2.25l3.82-1.9c.7-.35.9-1.91.4-2.25A4.24 4.24 0 1 1 14.4 12c-.5.34-.3 1.9.4 2.25l3.82 1.9c.85.43 1.38 1.3 1.38 2.25v2.1z',
       w: 1.9,
     },
+  ],
+  // One round band. Its outer edge carries on down into two slanted cups,
+  // each closed by a flat top and a rounded foot.
+  headphones: [
+    {
+      d: 'M3.06 14.06h3.22l2.5 3.77a1.4 1.4 0 0 1-2.28 1.52A9.18 9.18 0 1 1 17.5 19.35a1.4 1.4 0 0 1-2.28-1.52l2.5-3.77h3.22',
+      w: 1.8,
+    },
+  ],
+  // Nothing connected: the sound is coming from this phone. A phone seen
+  // from the side, half behind a speaker.
+  devices: [
+    {
+      d: 'M7.7 4.4H3.9a1.2 1.2 0 0 0-1.2 1.2v8.35a1.2 1.2 0 0 0 1.2 1.2h2.4',
+      w: 1.6,
+    },
+    {d: 'M4.75 19.4h1.3v1.3h-1.3z'},
+    {
+      d: 'M12.7 3.85h6.6a2 2 0 0 1 2 2v12.35a2 2 0 0 1-2 2h-6.6a2 2 0 0 1-2-2V5.85a2 2 0 0 1 2-2z',
+      w: 1.6,
+    },
+    {d: 'M16.95 7.7a1 1 0 1 1-2 0 1 1 0 1 1 2 0z'},
+    {d: 'M18.3 14.6a2.35 2.35 0 1 1-4.7 0 2.35 2.35 0 1 1 4.7 0z', w: 1.6},
+  ],
+  // A stopwatch: the sleep timer.
+  timer: [
+    {d: 'M9.25 2.25h5.5M12 2.25v3.6', w: 1.9},
+    {d: 'M19.75 13.6a7.75 7.75 0 1 1-15.5 0 7.75 7.75 0 1 1 15.5 0z', w: 1.9},
+    {d: 'M12 9v4.4', w: 1.9},
   ],
   play: [
     {
@@ -110,13 +156,13 @@ export const GLYPHS = {
     },
   ],
   add: [
-    {d: 'M21.25 12a9.25 9.25 0 1 1-18.5 0 9.25 9.25 0 1 1 18.5 0z', w: 1.7},
-    {d: 'M12 7.5v9M7.5 12h9', w: 1.7},
+    {d: 'M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0z', w: 1.6},
+    {d: 'M12 6.4v11.2M6.4 12h11.2', w: 1.7},
   ],
   // A solid disc with a dark tick, whatever the page behind it.
   saved: [
-    {d: 'M22.25 12a10.25 10.25 0 1 1-20.5 0 10.25 10.25 0 1 1 20.5 0z'},
-    {d: 'M7.5 12.3l3.1 3.1 5.9-5.9', w: 2.1, ink: true},
+    {d: 'M22.8 12a10.8 10.8 0 1 1-21.6 0 10.8 10.8 0 1 1 21.6 0z'},
+    {d: 'M7.3 12.3l3.3 3.3 6.2-6.2', w: 2.2, ink: true},
   ],
   trash: [
     {d: 'M3.5 6.25h17', w: 1.8},

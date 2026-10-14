@@ -15,8 +15,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import {ArrowDownToLine, ListPlus} from '../icons';
-import {MoreVertical} from '../glyphs';
+import {ArrowDownToLine} from '../icons';
+import {AddToQueue, MoreHorizontal} from '../glyphs';
 import {C, S, T} from '../theme';
 import {formatDuration, type Track} from '../backend';
 import {cleanText, getBestArtworkUrl, thumbArtwork} from '../tracks';
@@ -159,7 +159,7 @@ export const TrackRow = React.memo(function TrackRow({
           still reads clearly against the accent-tinted icon. */}
         <View style={styles.queueHintBg} pointerEvents="none">
           <View style={styles.queueHint}>
-            <ListPlus size={22} color={C.accent} strokeWidth={2.4} />
+            <AddToQueue size={22} color={C.accent} />
           </View>
         </View>
 
@@ -219,7 +219,7 @@ export const TrackRow = React.memo(function TrackRow({
                 onPress={onMenu}
                 hitSlop={8}
                 style={styles.menu}>
-                <MoreVertical size={19} color={C.faint} />
+                <MoreHorizontal size={20} color={C.faint} />
               </TouchableOpacity>
             )}
           </TouchableOpacity>
