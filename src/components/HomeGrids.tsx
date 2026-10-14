@@ -1,6 +1,6 @@
 /**
  * Discover and Recents, at the top of Home, in one of two layouts (Settings,
- * "Grid for Discover and Recents"):
+ * "Home style as Speed Dial"):
  *
  *   rows (the default)  each is a row of covers you scroll sideways, the
  *                       same 144dp cards as every other row on Home;

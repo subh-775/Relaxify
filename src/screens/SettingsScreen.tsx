@@ -1211,12 +1211,7 @@ export function SettingsScreen({
             onPress={() => setLangOpen(true)}
           />
           <ToggleRow
-            label="Grid for Discover and Recents"
-            hint={
-              settings.homeGrid
-                ? 'Nine songs each, in a 3 × 3 grid'
-                : 'Off: a row of covers you scroll sideways'
-            }
+            label="Home style as Speed Dial"
             value={settings.homeGrid}
             onChange={v => writeSetting('homeGrid', v)}
           />

@@ -36,9 +36,7 @@ import {
   View,
 } from 'react-native';
 import {
-  Check,
   ChevronDown,
-  CircleArrowDown,
   Gauge,
   Disc3,
   Quote,
@@ -46,6 +44,8 @@ import {
   SkipForward,
 } from '../icons';
 import {
+  DownloadCircle,
+  DownloadedCircle,
   Headphones,
   MoreVertical,
   Pause,
@@ -1171,13 +1171,17 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   disabled={downloading || downloaded}
                   hitSlop={8}
                   style={styles.actionBtn}>
-                  {downloaded || downloading ? (
-                    <Check size={24} color={C.accent} strokeWidth={2.6} />
+                  {/* On the phone: a white tick in the ring, not a coral
+                      one. Coral is for what you switch on; a download is a
+                      fact about the song, so it stays the colour of the
+                      page. Mid-download, the ring waits, dimmed. */}
+                  {downloaded ? (
+                    <DownloadedCircle size={ACTION} color={C.text} />
                   ) : (
-                    <CircleArrowDown
-                      size={25}
+                    <DownloadCircle
+                      size={ACTION}
                       color={C.sub}
-                      strokeWidth={1.8}
+                      style={downloading && styles.actionWaiting}
                     />
                   )}
                 </TouchableOpacity>
@@ -1185,7 +1189,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                 <AddButton
                   track={track}
                   onOpenSheet={onAddToPlaylist}
-                  size={25}
+                  size={ACTION}
                   style={styles.actionBtn}
                 />
               </View>
@@ -1795,6 +1799,10 @@ function NeighbourMeta({n, slide, span}: NeighbourProps) {
   );
 }
 
+/** The download and + beside the title: bigger than the 25 they were, so
+ *  the two read as the buttons they are, not as marks on the title line. */
+const ACTION = 30;
+
 const styles = StyleSheet.create({
   // Below the bottom sheets (40) so a sheet raised from the ⊕ in here sits on
   // top of the player, and below the drawer (45). See the note on the render.
@@ -1962,7 +1970,9 @@ const styles = StyleSheet.create({
   actions: {flexDirection: 'row', alignItems: 'center', gap: 2, paddingTop: 2},
   // 9, not 7: dropping the heart freed about thirty pixels in this row, and
   // the honest use for them is a bigger touch target rather than more air.
-  actionBtn: {padding: 9},
+  // 30 + 7 either side: the row is the same height it was with 25 + 9.
+  actionBtn: {padding: 7},
+  actionWaiting: {opacity: 0.45},
 
   // Capped, because this column shares the row with the title: an unbounded
   // device name would take the width the song name needs.

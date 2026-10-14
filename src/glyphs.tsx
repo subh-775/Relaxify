@@ -85,3 +85,5 @@ export const Jam = make('jam');
 export const Help = make('help');
 export const Languages = make('languages');
 export const Share = make('share');
+export const DownloadCircle = make('download');
+export const DownloadedCircle = make('downloaded');

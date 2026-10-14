@@ -54,8 +54,9 @@ export type Settings = {
   homeLanguages: string[];
   /** Stream at DATA_SAVER_KBPS while on mobile data. */
   dataSaver: boolean;
-  /** Home's Discover and Recents as two 3x3 grids of covers; off, each is a
-   *  row of covers you scroll sideways, like the rest of Home. */
+  /** "Home style as Speed Dial": Home's Discover and Recents as two 3x3
+   *  grids of covers. Off, each is a row of covers you scroll sideways, like
+   *  the rest of Home. */
   homeGrid: boolean;
 };
 

@@ -229,6 +229,16 @@ export const GLYPHS = {
     },
     {d: 'M8.3 10.75l7.4-4M8.3 13.25l7.4 4', w: 1.8},
   ],
+  // The big player's download, the + circle's twin: the same ring, an arrow
+  // in it. Once the song is on the phone the arrow becomes a tick, in white.
+  download: [
+    {d: 'M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0z', w: 1.6},
+    {d: 'M12 6.8v10M7.9 12.7l4.1 4.1 4.1-4.1', w: 1.7},
+  ],
+  downloaded: [
+    {d: 'M22 12a10 10 0 1 1-20 0 10 10 0 1 1 20 0z', w: 1.6},
+    {d: 'M7.3 12.3l3.2 3.2 6.2-6.2', w: 1.8},
+  ],
 } satisfies Record<string, GlyphPart[]>;
 
 export type GlyphName = keyof typeof GLYPHS;
