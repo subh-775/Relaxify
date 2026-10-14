@@ -1,6 +1,10 @@
 /**
- * A grab-and-drag scroll thumb for long lists — a white half-disc with up/down
- * chevrons, flat side flush against the right edge of the screen.
+ * A grab-and-drag scroll thumb for long lists: a slim dark pill with three
+ * grip lines, a little in from the right edge, that turns coral while held.
+ *
+ * It used to be a white half-disc with grey chevrons, which read as a tab
+ * stuck to the edge rather than as a handle. Grip lines say "hold and drag",
+ * and a dark pill stays quiet over bright covers until it is touched.
  *
  * Appears while the list is moving and fades after it stops. Drag it and the
  * list follows proportionally, so the far end of a long library is one thumb
@@ -29,9 +33,12 @@ import Animated, {
   type AnimatedRef,
   type SharedValue,
 } from 'react-native-reanimated';
-import {ChevronDown, ChevronUp} from '../icons';
+import {C} from '../theme';
 
-const THUMB = 46;
+/** The pill: its height, its width, and its gap from the screen edge. */
+const THUMB = 52;
+const THUMB_W = 24;
+const INSET = 4;
 /** Breathing room above and below the thumb's travel. */
 const EDGE = 8;
 /** How long the thumb stays after the list stops. */
@@ -124,13 +131,14 @@ export function FastScroll({
     const worth = max > vh * WORTH_SCREENS;
     return {
       opacity: worth ? shown.value : 0,
+      backgroundColor: dragging.value ? C.accent : REST,
       transform: [{translateY: EDGE + Math.min(len, Math.max(0, top))}],
     };
   });
 
   const drag = Gesture.Pan()
     .minDistance(0)
-    .hitSlop({left: 18, top: 10, bottom: 10})
+    .hitSlop({left: 18, right: INSET, top: 10, bottom: 10})
     .onStart(() => {
       const vh = viewH.value;
       const max = Math.max(0, contentH.value - vh);
@@ -159,38 +167,40 @@ export function FastScroll({
       <Animated.View
         style={[styles.thumb, thumbStyle]}
         pointerEvents={live ? 'auto' : 'none'}>
-        <View style={styles.glyphs} pointerEvents="none">
-          <ChevronUp size={17} color={GLYPH} strokeWidth={2.6} />
-          <ChevronDown size={17} color={GLYPH} strokeWidth={2.6} />
+        <View style={styles.grip} pointerEvents="none">
+          <View style={styles.line} />
+          <View style={styles.line} />
+          <View style={styles.line} />
         </View>
       </Animated.View>
     </GestureDetector>
   );
 }
 
-const GLYPH = '#6b6b6b';
+/** Dark glass at rest; the background is animated, so it lives here. */
+const REST = 'rgba(60,60,66,0.92)';
 
 const styles = StyleSheet.create({
   // Pinned top-right and moved with a transform, so the travel never costs a
-  // layout pass. An exact semicircle: half as wide as it is tall, rounded by
-  // that half-width on the left only, flat against the screen edge.
+  // layout pass. A full pill, inset from the edge, with a hairline rim so it
+  // still has an outline over a black row.
   thumb: {
     position: 'absolute',
     top: 0,
-    right: 0,
-    width: THUMB / 2,
+    right: INSET,
+    width: THUMB_W,
     height: THUMB,
-    borderTopLeftRadius: THUMB / 2,
-    borderBottomLeftRadius: THUMB / 2,
-    backgroundColor: '#f4f4f4',
+    borderRadius: THUMB_W / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
     shadowOffset: {width: 0, height: 2},
   },
-  // Nudged right, into the fuller part of the half-disc.
-  glyphs: {marginLeft: 4, marginTop: -1},
+  grip: {gap: 4},
+  line: {width: 10, height: 2, borderRadius: 1, backgroundColor: C.text},
 });

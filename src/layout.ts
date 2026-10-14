@@ -23,3 +23,11 @@
  * for air.
  */
 export const BOTTOM_INSET = 128;
+
+/**
+ * A cover card on Home, and its corner: Spotify's 144dp square with a small
+ * radius. One number for every plain row of cards (the backend's rows, and
+ * Discover and Recents when they are shown as rows), so they line up.
+ */
+export const HOME_CARD = 144;
+export const HOME_CARD_RADIUS = 6;

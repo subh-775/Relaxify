@@ -27,6 +27,7 @@ import {normalizeTracks} from '../tracks';
 import {asArray, createStore, useStoreValue} from '../storage';
 import {upgradeArtwork} from '../tracks';
 import {useOffline} from '../offline';
+import {HOME_CARD_RADIUS} from '../layout';
 
 const COVER = 128;
 
@@ -161,11 +162,11 @@ export function FollowedShelf({
 
 const styles = StyleSheet.create({
   wrap: {marginTop: 22},
-  title: {...T.rowTitle, color: C.text, paddingHorizontal: S.gutter},
-  sub: {...T.sub, color: C.sub, paddingHorizontal: S.gutter, marginTop: 2},
+  title: {...T.section, color: C.text, paddingHorizontal: S.gutter},
+  sub: {...T.listSub, color: C.sub, paddingHorizontal: S.gutter, marginTop: 2},
   shelf: {paddingHorizontal: S.gutter, gap: S.gap, paddingTop: 10},
   rel: {width: COVER},
-  cover: {width: COVER, height: COVER, borderRadius: 8},
+  cover: {width: COVER, height: COVER, borderRadius: HOME_CARD_RADIUS},
   empty: {backgroundColor: C.surfaceHi},
   newTag: {
     position: 'absolute',
@@ -190,7 +191,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: C.bg,
   },
-  relTitle: {...T.body, color: C.text, marginTop: 14},
-  relSub: {...T.sub, color: C.sub, marginTop: 2},
+  relTitle: {...T.cardTitle, color: C.text, marginTop: 14},
+  relSub: {...T.cardSub, color: C.sub, marginTop: 2},
 
 });
