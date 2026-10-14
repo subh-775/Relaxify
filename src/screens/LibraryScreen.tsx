@@ -60,7 +60,6 @@ import {usePlaybackOrigin} from '../player';
 import {toast} from '../toast';
 import {Sheet} from '../components/Sheet';
 import {ConfirmModal} from '../components/ConfirmModal';
-import {listWindowing} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
 import {TOP_FADE, TopFade} from '../components/TopFade';
 import Animated, {useAnimatedRef} from 'react-native-reanimated';
@@ -72,6 +71,32 @@ import {EmptyState} from '../components/EmptyState';
 import {fold} from '../tracks';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
+
+/** The cover, plus 7 above and below it. Every row is exactly this tall (the
+ *  style says so), which is what lets the list skip measuring: see
+ *  `getItemLayout` below. */
+const ART = 56;
+const ROW_H = ART + 14;
+
+/**
+ * Windowing for the library list, tuned for the scroll thumb.
+ *
+ * Dragging the thumb jumps the list hundreds of rows a second. The thumb
+ * moves on the UI thread; the rows it lands on are rendered in JS. With the
+ * shared TrackRow defaults (8 rows a batch, a 7-screen window, clipped
+ * subviews) the rows arrived a beat after the thumb, so the thumb ran down the
+ * screen ahead of the playlists. Bigger batches, a wider window and no native
+ * clipping keep the rows under the thumb; library rows are light enough.
+ */
+/** The two lines of a row still fit beside the cover at this font scale. */
+const ROW_TEXT_MAX_SCALE = 1.3;
+
+const LIBRARY_WINDOWING = {
+  initialNumToRender: 14,
+  maxToRenderPerBatch: 16,
+  updateCellsBatchingPeriod: 16,
+  windowSize: 11,
+} as const;
 
 const FILTERS: Array<{id: Filter; label: string}> = [
   {id: 'all', label: 'All'},
@@ -135,6 +160,8 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   // to end instead of a dozen flings.
   const listRef = useAnimatedRef<Animated.FlatList<Collection>>();
   const fast = useFastScroll();
+  /** The Liked / Downloaded tiles above the rows, as laid out. */
+  const [headerH, setHeaderH] = useState(0);
 
   const likes = useLikes();
   const pins = usePins();
@@ -204,6 +231,23 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   useEffect(() => onDownloadsChanged(loadDownloads), [loadDownloads]);
 
   const heroes = filter === 'all' && !query.trim();
+
+  /**
+   * Every row's place, worked out instead of measured.
+   *
+   * Without it the list only knew the rows it had drawn and guessed the rest,
+   * so its length changed as you scrolled and the thumb's mapping drifted
+   * under the finger. Fixed rows make the length exact from the first frame,
+   * and a drag can render the rows it lands on directly.
+   */
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({
+      length: ROW_H,
+      offset: TOP_FADE + (heroes ? headerH : 0) + ROW_H * index,
+      index,
+    }),
+    [heroes, headerH],
+  );
   const liked = withArtists.find(c => c.kind === 'liked');
   const downloaded = withArtists.find(c => c.kind === 'downloads');
 
@@ -415,18 +459,21 @@ export const LibraryScreen = React.memo(function LibraryScreen({
             ref={listRef}
             data={rows}
             keyExtractor={c => c.id}
-            {...listWindowing}
+            {...LIBRARY_WINDOWING}
+            getItemLayout={getItemLayout}
             contentContainerStyle={[styles.list, listEnd]}
             showsVerticalScrollIndicator={false}
             onScroll={fast.onScroll}
             scrollEventThrottle={16}
             ListHeaderComponent={
               heroes ? (
-                <LibraryHeroes
-                  liked={liked}
-                  downloads={downloaded}
-                  onOpen={onOpen}
-                />
+                <View onLayout={e => setHeaderH(e.nativeEvent.layout.height)}>
+                  <LibraryHeroes
+                    liked={liked}
+                    downloads={downloaded}
+                    onOpen={onOpen}
+                  />
+                </View>
               ) : null
             }
             ListEmptyComponent={
@@ -448,14 +495,15 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                 onPress={() => onOpen(item)}
                 onLongPress={() => onLongPress(item)}
                 delayLongPress={350}>
-                <CollectionArt collection={item} size={56} />
+                <CollectionArt collection={item} size={ART} />
                 <View style={styles.rowText}>
                   <Text
                     style={[
                       styles.rowTitle,
                       isPlayingFrom(item) && styles.rowTitlePlaying,
                     ]}
-                    numberOfLines={1}>
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={ROW_TEXT_MAX_SCALE}>
                     {item.name}
                   </Text>
                   <View style={styles.metaLine}>
@@ -467,7 +515,10 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                         <PinGlyph size={12} color={DOWNLOAD_TINT} />
                       </View>
                     )}
-                    <Text style={styles.rowSub} numberOfLines={1}>
+                    <Text
+                      style={styles.rowSub}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={ROW_TEXT_MAX_SCALE}>
                       {collectionSubtitle(item)}
                     </Text>
                   </View>
@@ -725,11 +776,12 @@ const styles = StyleSheet.create({
   // end above them or its last row is permanently behind one. See src/layout.ts.
   listBox: {flex: 1},
   list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
+  // A fixed height, not padding: getItemLayout relies on it.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: S.gutter,
-    paddingVertical: 7,
+    height: ROW_H,
     gap: 13,
   },
   rowText: {flex: 1, minWidth: 0},
