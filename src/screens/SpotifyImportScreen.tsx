@@ -16,7 +16,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {Check, ChevronLeft, Play} from '../icons';
+import {Check, ChevronLeft} from '../icons';
+import {Play} from '../glyphs';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
 import {cleanText, getTrackId, normalizeTracks} from '../tracks';

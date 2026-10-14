@@ -31,7 +31,7 @@ import Svg, {
 } from 'react-native-svg';
 import {C, S, T} from '../theme';
 import {FONT} from '../font';
-import {Play} from '../icons';
+import {Play} from '../glyphs';
 import {upgradeArtwork} from '../tracks';
 import {surfaceTint, useArtworkColor} from '../artworkColor';
 import type {HomeItem, HomeRow} from '../backend';

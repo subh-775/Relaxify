@@ -18,7 +18,7 @@
  */
 import React, {useCallback} from 'react';
 import {StyleProp, TouchableOpacity, ViewStyle} from 'react-native';
-import {CircleCheck, CirclePlus} from '../icons';
+import {AddCircle, SavedCircle} from '../glyphs';
 import {C} from '../theme';
 import type {Track} from '../backend';
 import {toggleLike, useLike} from '../store';
@@ -86,16 +86,15 @@ export function AddButton({
  * screen. Two copies of one glyph is two chances for them to disagree, and the
  * disagreement is invisible until someone screenshots both at once.
  *
- * The shape is the same in both states: an outline at the same weight, no fill,
- * no contrasting rim. Only the colour and the mark inside the circle change.
- * The fill is what forced the dark ring in the first place — Lucide applies
- * `color` as the stroke to the circle AND the tick, so a green disc needed a
- * dark stroke to keep its tick legible, and that stroke ringed the disc too.
+ * Spotify's pair: a thin grey ring with a + while not saved, a solid coral
+ * disc with a black tick once it is. The tick is drawn in its own colour (see
+ * `ink` in src/glyphPaths.ts), so the disc needs no dark ring to keep it
+ * legible on a coloured bar.
  */
 export function SavedGlyph({on, size = 25}: {on: boolean; size?: number}) {
   return on ? (
-    <CircleCheck size={size} color={C.accent} strokeWidth={2.2} />
+    <SavedCircle size={size} color={C.accent} />
   ) : (
-    <CirclePlus size={size} color={C.sub} strokeWidth={1.8} />
+    <AddCircle size={size} color={C.sub} />
   );
 }

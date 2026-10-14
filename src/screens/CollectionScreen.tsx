@@ -30,22 +30,18 @@ import {
   CircleCheck,
   Heart,
   ImagePlus,
-  MoreVertical,
-  Pause,
   Link,
   Pencil,
-  Play,
   Plus,
   RefreshCw,
   Search as SearchIcon,
   Share2,
-  Shuffle,
   Square,
   SquareX,
-  Trash2,
   X,
   ArrowUpDown,
 } from '../icons';
+import {MoreVertical, Pause, Play, Shuffle, Trash} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
@@ -601,7 +597,7 @@ export function CollectionScreen({
               disabled={busy || !selected.size}
               hitSlop={10}
               style={styles.barBtn}>
-              <Trash2
+              <Trash
                 size={22}
                 color={selected.size && !busy ? C.danger : C.faint}
               />
@@ -993,7 +989,7 @@ export function CollectionScreen({
               setMenuOpen(false);
               setConfirmDelete(true);
             }}>
-            <Trash2 size={20} color={C.danger} />
+            <Trash size={20} color={C.danger} />
             <Text style={[styles.sheetLabel, styles.sheetDanger]}>
               Delete playlist
             </Text>

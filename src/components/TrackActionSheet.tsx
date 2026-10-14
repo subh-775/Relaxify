@@ -20,16 +20,14 @@ import {
 } from 'react-native';
 import {
   ArrowLeftRight,
-  CircleCheck,
-  CirclePlus,
   Disc3,
   Download,
   ListPlus,
   ListX,
   Loader,
-  Trash2,
   User,
 } from '../icons';
+import {AddCircle, SavedCircle, Trash} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {enqueueDownload, forgetDownloads} from '../downloads';
@@ -132,7 +130,7 @@ function TrackActionSheetView({
 
   const items: Array<{
     key: string;
-    Icon: typeof CirclePlus;
+    Icon: typeof Download | typeof AddCircle;
     label: string;
     onPress: () => void;
     tint?: string;
@@ -153,7 +151,7 @@ function TrackActionSheetView({
       : []),
     {
       key: 'like',
-      Icon: liked ? CircleCheck : CirclePlus,
+      Icon: liked ? SavedCircle : AddCircle,
       label: liked ? 'Remove from Liked Songs' : 'Add to Liked Songs',
       tint: liked ? C.accent : undefined,
       stay: true,
@@ -165,7 +163,7 @@ function TrackActionSheetView({
     downloaded
       ? {
           key: 'undownload',
-          Icon: Trash2,
+          Icon: Trash,
           label: 'Remove download',
           onPress: removeDownload,
         }

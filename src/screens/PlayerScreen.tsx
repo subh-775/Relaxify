@@ -41,17 +41,20 @@ import {
   CircleArrowDown,
   Gauge,
   Disc3,
-  Headphones,
-  MoreVertical,
-  Pause,
-  Play,
   Quote,
-  Repeat2,
-  Shuffle,
   SkipBack,
   SkipForward,
   Timer,
 } from '../icons';
+import {
+  Headphones,
+  MoreVertical,
+  Pause,
+  Play,
+  Queue,
+  Repeat,
+  Shuffle,
+} from '../glyphs';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Svg, {Defs, RadialGradient, Rect, Stop} from 'react-native-svg';
 import Animated, {
@@ -1258,7 +1261,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               onPress={toggleRepeat}
               hitSlop={10}
               style={styles.tBtn}>
-              <Repeat2
+              <Repeat
                 size={26}
                 color={repeat === RepeatMode.Off ? C.sub : C.accent}
                 strokeWidth={repeat === RepeatMode.Off ? 2 : 2.4}
@@ -1331,7 +1334,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Open the queue"
                   style={styles.queueBtn}>
-                  <QueueGlyph size={22} color={C.text} />
+                  <Queue size={22} color={C.text} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1382,16 +1385,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
  * that says "queue" without also saying "list" or "menu" — and this screen
  * already has a menu.
  */
-function QueueGlyph({size = 22, color}: {size?: number; color: string}) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Rect x="7" y="4" width="10" height="4" rx="2" fill={color} />
-      <Rect x="3" y="12" width="18" height="2.2" rx="1.1" fill={color} />
-      <Rect x="3" y="18" width="18" height="2.2" rx="1.1" fill={color} />
-    </Svg>
-  );
-}
-
 function PaneSwitch({
   pane,
   onPick,

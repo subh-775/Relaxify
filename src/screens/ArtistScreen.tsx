@@ -26,7 +26,8 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {ChevronLeft, Pause, Play} from '../icons';
+import {ChevronLeft} from '../icons';
+import {Pause, Play} from '../glyphs';
 import {C, S, T} from '../theme';
 import {getArtist, type ArtistProfile, type Track} from '../backend';
 import {normalizeTracks} from '../tracks';

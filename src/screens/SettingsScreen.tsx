@@ -12,14 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  HardDrive,
-  RefreshCw,
-  Trash2,
-} from '../icons';
+import {Check, ChevronLeft, ChevronRight, HardDrive, RefreshCw} from '../icons';
+import {Trash} from '../glyphs';
 import {
   COLLECTED_ITEMS,
   COLLECTED_PROMISE,
@@ -252,7 +246,11 @@ function Section({
   );
 }
 
-type RowIcon = typeof HardDrive;
+type RowIcon = React.ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}>;
 
 /** A row's leading icon, the same size and colour everywhere. */
 function Lead({Icon}: {Icon?: RowIcon}) {
@@ -1319,7 +1317,7 @@ export function SettingsScreen({
             onPress={() => setCacheOpen(true)}
             disabled={clearing}
             activeOpacity={0.7}>
-            <Lead Icon={Trash2} />
+            <Lead Icon={Trash} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>
                 {clearing ? 'Clearing…' : 'Clear cached data'}

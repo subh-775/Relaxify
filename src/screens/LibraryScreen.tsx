@@ -19,14 +19,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  ImagePlus,
-  Pencil,
-  Plus,
-  Search as SearchIcon,
-  Trash2,
-  X,
-} from '../icons';
+import {ImagePlus, Pencil, Search as SearchIcon, X} from '../icons';
+import {PlusSlim, Trash} from '../glyphs';
 import {C, S, T} from '../theme';
 import {PinGlyph} from '../components/PinGlyph';
 import {getLocalLibrary, type Track} from '../backend';
@@ -364,7 +358,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           hitSlop={12}
           style={styles.barBtn}
           accessibilityLabel="New playlist">
-          <Plus size={26} color={C.text} strokeWidth={2.2} />
+          <PlusSlim size={23} color={C.text} />
         </TouchableOpacity>
       </View>
 
@@ -538,7 +532,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                   style={styles.sheetRow}
                   activeOpacity={0.7}
                   onPress={() => doDelete(menuFor)}>
-                  <Trash2 size={20} color={C.danger} />
+                  <Trash size={20} color={C.danger} />
                   <Text style={[styles.sheetLabel, styles.sheetDanger]}>
                     Delete playlist
                   </Text>

@@ -15,11 +15,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import {
-  ArrowDownToLine,
-  ListPlus,
-  MoreVertical,
-} from '../icons';
+import {ArrowDownToLine, ListPlus} from '../icons';
+import {MoreVertical} from '../glyphs';
 import {C, S, T} from '../theme';
 import {formatDuration, type Track} from '../backend';
 import {cleanText, getBestArtworkUrl, thumbArtwork} from '../tracks';

@@ -44,7 +44,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {Headphones, Pause, Play} from '../icons';
+import {Headphones, Pause, Play} from '../glyphs';
 import {C, S} from '../theme';
 import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from './Marquee';
