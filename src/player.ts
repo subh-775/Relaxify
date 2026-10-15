@@ -481,7 +481,18 @@ async function setupPlayerOnce(): Promise<boolean> {
     });
 
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
-      logEvent('playback_error', {message: e.message, code: e.code});
+      // With the song and its source, so a failure can be traced to the
+      // source that refused it, as playback_stall already is.
+      TrackPlayer.getActiveTrack()
+        .catch(() => undefined)
+        .then(t => {
+          const src = sourceTrackFor(t ?? null);
+          logEvent('playback_error', {
+            ...(src ? songParams(src) : {}),
+            message: e.message,
+            code: e.code,
+          });
+        });
       retryAfterError()
         .then(retried => retried || skipPastError())
         .catch(() => skipPastError());
