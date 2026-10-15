@@ -62,7 +62,9 @@ export function songParams(t: Track): Record<string, string> {
  *  native crash report, which React Native's crash produces anyway. */
 function report(e: unknown, fatal: boolean): void {
   const message = String((e as Error)?.message ?? e);
-  logEvent('app_error', {message, fatal: fatal ? 1 : 0});
+  // Text, not a number: GA keeps a number in a text dimension ("Fatal error")
+  // as blank.
+  logEvent('app_error', {message, fatal: fatal ? 'yes' : 'no'});
   if (!fatal) {
     try {
       native.recordError?.(message, String((e as Error)?.stack ?? ''));
