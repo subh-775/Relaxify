@@ -71,7 +71,7 @@ import {C} from '../theme';
 import {getLyrics, type Lyrics, type Track} from '../backend';
 import {logEvent} from '../analytics';
 import {enqueueDownload, useIsDownloaded} from '../downloads';
-import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
+import {cleanText, fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from '../components/Marquee';
 import {
   RepeatMode,
@@ -946,7 +946,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   const artwork = track
     ? getBestArtworkUrl(track)
     : String(active.artwork ?? '');
-  const title = cleanText(String(active.title ?? ''));
+  // The whole title as the source has it, entities decoded: "(From ...)",
+  // "(Live)" and all. The lists keep the tidied one.
+  const title = fullText(active.title);
   const artistList = splitArtists(String(active.artist ?? ''));
   const artists = artistList.join(', ');
   const artistCount = artistList.length;
@@ -1109,9 +1111,14 @@ export const PlayerScreen = React.memo(function PlayerScreen({
           <View style={styles.metaRow}>
             <View style={styles.metaCarousel}>
               <Animated.View style={[styles.meta, metaStyle]}>
-                <Text style={styles.title} numberOfLines={1}>
-                  {title}
-                </Text>
+                {/* One line, as Spotify sets it. A long title is set smaller
+                    until it fits; only one still too long at 70% floats. */}
+                <Marquee
+                  text={title}
+                  style={styles.title}
+                  shrinkTo={0.7}
+                  paused={!visible}
+                />
                 {/* Its OWN line, at full width. The artist is the second most
                     important thing on this screen and it was sharing a row with
                     two badges and the output device — which is how "Mitraz"
@@ -1200,7 +1207,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   not "by which radio". */}
               {!!output && (
                 <View style={styles.output}>
-                  <Headphones size={12} color={C.accent} />
+                  <Headphones size={13.5} color={C.accent} />
                   <Text style={styles.outputText} numberOfLines={1}>
                     {output}
                   </Text>
@@ -1306,7 +1313,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   {fastRate ? (
                     <Text style={styles.rateBadge}>{rateLabel(rate)}</Text>
                   ) : (
-                    <Gauge size={21} color={C.text} strokeWidth={2} />
+                    <Gauge size={BOTTOM_ICON} color={C.text} strokeWidth={2} />
                   )}
                 </TouchableOpacity>
 
@@ -1325,7 +1332,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   }
                   style={styles.queueBtn}>
                   <SleepTimer
-                    size={22}
+                    size={BOTTOM_ICON}
                     color={sleepArmed ? C.accent : C.text}
                   />
                 </TouchableOpacity>
@@ -1337,7 +1344,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Open the queue"
                   style={styles.queueBtn}>
-                  <Queue size={22} color={C.text} />
+                  <Queue size={BOTTOM_ICON} color={C.text} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1789,9 +1796,14 @@ function NeighbourMeta({n, slide, span}: NeighbourProps) {
     <Animated.View
       pointerEvents="none"
       style={[styles.meta, styles.metaPreview, style]}>
-      <Text style={styles.title} numberOfLines={1}>
-        {cleanText(String(n.track.title ?? ''))}
-      </Text>
+      {/* At the size it will have once it lands, so the swipe ends
+          without the title jumping. */}
+      <Marquee
+        text={fullText(n.track.title)}
+        style={styles.title}
+        shrinkTo={0.7}
+        paused
+      />
       <Text style={styles.artist} numberOfLines={1}>
         {splitArtists(String(n.track.artist ?? '')).join(', ')}
       </Text>
@@ -1799,9 +1811,13 @@ function NeighbourMeta({n, slide, span}: NeighbourProps) {
   );
 }
 
-/** The download and + beside the title: bigger than the 25 they were, so
- *  the two read as the buttons they are, not as marks on the title line. */
-const ACTION = 30;
+/** The download and + beside the title: the size the mini player's + is
+ *  (PlayerBar), so the two players draw the same control the same size. */
+const ACTION = 26;
+
+/** Speed, sleep and queue, bottom right: 24 in a 6px pad is the 36 the
+ *  song / lyrics capsule bottom left stands, so the row reads as one line. */
+const BOTTOM_ICON = 24;
 
 const styles = StyleSheet.create({
   // Below the bottom sheets (40) so a sheet raised from the ⊕ in here sits on
@@ -1880,9 +1896,9 @@ const styles = StyleSheet.create({
   // Tabular-ish: a fixed min width so 1.25x and 2x do not shuffle the row.
   rateBadge: {
     color: C.accent,
-    fontSize: 13,
-    fontWeight: '800',
-    minWidth: 34,
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 36,
     textAlign: 'center',
   },
   bottomRight: {flexDirection: 'row', alignItems: 'center', gap: 2},
@@ -1961,7 +1977,15 @@ const styles = StyleSheet.create({
   metaCarousel: {flex: 1, minWidth: 0, overflow: 'hidden'},
   meta: {minWidth: 0},
   metaPreview: {position: 'absolute', top: 0, left: 0, right: 0},
-  title: {fontSize: 23, fontWeight: '800', color: C.text, letterSpacing: -0.3},
+  // 22, a point under the 23 it was, so more titles fit whole; a fixed line
+  // height, so one that is shrunk to fit keeps the row exactly as tall.
+  title: {
+    fontSize: 22,
+    lineHeight: 29,
+    fontWeight: '700',
+    color: C.text,
+    letterSpacing: -0.3,
+  },
   // C.text at 15/500, not a 13px caption in C.sub. It is the second most
   // important thing on the screen and it now has a line to itself.
   artist: {color: C.text, fontSize: 15, fontWeight: '500', marginTop: 2},
@@ -1970,8 +1994,8 @@ const styles = StyleSheet.create({
   actions: {flexDirection: 'row', alignItems: 'center', gap: 2, paddingTop: 2},
   // 9, not 7: dropping the heart freed about thirty pixels in this row, and
   // the honest use for them is a bigger touch target rather than more air.
-  // 30 + 7 either side: the row is the same height it was with 25 + 9.
-  actionBtn: {padding: 7},
+  // 26 + 9 either side: the 44 the row has always been.
+  actionBtn: {padding: 9},
   actionWaiting: {opacity: 0.45},
 
   // Capped, because this column shares the row with the title: an unbounded
@@ -1980,11 +2004,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    maxWidth: 150,
+    maxWidth: 160,
   },
   outputText: {
     color: C.accent,
-    fontSize: 11,
+    fontSize: 12.5,
     fontWeight: '600',
     flexShrink: 1,
   },

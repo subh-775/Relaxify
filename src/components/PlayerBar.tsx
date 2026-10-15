@@ -46,7 +46,7 @@ import Animated, {
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {Devices, Headphones, Pause, Play} from '../glyphs';
 import {C, S} from '../theme';
-import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
+import {fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from './Marquee';
 import {
   sourceTrackFor,
@@ -138,6 +138,11 @@ export const PlayerBar = React.memo(function PlayerBar({
   const output = useAudioOutput();
 
   const track = useMemo(() => sourceTrackFor(active), [active]);
+  // The whole name, as the full player shows it: entities decoded, nothing
+  // taken off. Every credited artist, comma-separated.
+  const title = fullText(active?.title);
+  const artistList = splitArtists(String(active?.artist ?? ''));
+  const artists = artistList.join(', ');
 
   /**
    * How far the bar's contents are dragged, in pixels.
@@ -431,26 +436,33 @@ export const PlayerBar = React.memo(function PlayerBar({
                   )}
                 </View>
 
+                {/* With headphones in, the second line is the device's name,
+                    so the song and who sings it share the first, and it
+                    floats when it is too long to read whole. On the phone's
+                    speaker the title stays put and the credit floats under
+                    it, as Spotify's does. */}
                 <View style={styles.text}>
-                  <Marquee
-                    text={cleanText(String(active.title ?? ''))}
-                    style={styles.title}
-                  />
                   {output ? (
-                    // The name only. The 10px glyph that used to sit beside it
-                    // has moved into the controls at control size, which is where
-                    // it is actually legible.
-                    <Text style={styles.output} numberOfLines={1}>
-                      {output}
-                    </Text>
+                    <>
+                      <Marquee
+                        text={artists ? `${title} • ${artists}` : title}
+                        style={styles.title}
+                      />
+                      <Text style={styles.output} numberOfLines={1}>
+                        {output}
+                      </Text>
+                    </>
                   ) : (
-                    <Marquee
-                      text={cleanText(String(active.artist ?? ''))}
-                      style={styles.artist}
-                      ticker={
-                        splitArtists(String(active.artist ?? '')).length > 1
-                      }
-                    />
+                    <>
+                      <Text style={styles.title} numberOfLines={1}>
+                        {title}
+                      </Text>
+                      <Marquee
+                        text={artists}
+                        style={styles.artist}
+                        ticker={artistList.length > 1}
+                      />
+                    </>
                   )}
                 </View>
               </TouchableOpacity>
@@ -575,11 +587,12 @@ const styles = StyleSheet.create({
   artFill: {width: '100%', height: '100%'},
   artFallback: {backgroundColor: C.bg},
   text: {flex: 1, minWidth: 0},
-  // 14/600 over 11.5/400-at-62%. The old pair was 13/700 and 12/400 — one pixel
+  // 14/600 over 12.5/400-at-62%. The old pair was 13/700 and 12/400 — one pixel
   // apart, which is no hierarchy at all. The contrast gap does more work here
-  // than the size gap.
+  // than the size gap. (12.5, not 11.5, since DM Sans: its smaller x-height
+  // set the credit at a size Spotify's never is.)
   title: {fontSize: 14, fontWeight: '600', color: C.text, letterSpacing: 0.1},
-  artist: {fontSize: 11.5, color: C.text, opacity: 0.62, marginTop: 2},
+  artist: {fontSize: 12.5, color: C.text, opacity: 0.62, marginTop: 2},
   output: {
     fontSize: 10.5,
     fontWeight: '600',
@@ -659,10 +672,10 @@ function NeighbourSlide({
         </View>
         <View style={styles.text}>
           <Text style={styles.title} numberOfLines={1}>
-            {cleanText(String(n.track.title ?? ''))}
+            {fullText(n.track.title)}
           </Text>
           <Text style={styles.artist} numberOfLines={1}>
-            {cleanText(String(n.track.artist ?? ''))}
+            {splitArtists(String(n.track.artist ?? '')).join(', ')}
           </Text>
         </View>
       </View>
