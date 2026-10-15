@@ -30,8 +30,6 @@ import {
   CircleCheck,
   Heart,
   ImagePlus,
-  Link,
-  Pencil,
   Plus,
   RefreshCw,
   Search as SearchIcon,
@@ -41,7 +39,7 @@ import {
   X,
   ArrowUpDown,
 } from '../icons';
-import {MoreVertical, Pause, Play, Shuffle, Trash} from '../glyphs';
+import {MoreVertical, Pause, Pen, Play, Shuffle, Trash} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
@@ -84,7 +82,7 @@ import {
   setPlaylistImage,
   usePlaylists,
 } from '../playlists';
-import {importSourceName, isImportUrl, useLastImport} from '../spotifyImport';
+import {importSourceName, useLastImport} from '../spotifyImport';
 import {syncImport} from '../backend';
 import {sharePlaylist} from '../sharedPlaylists';
 import {PlaylistSourceBadge} from '../components/Badges';
@@ -143,10 +141,8 @@ export function CollectionScreen({
   // playlist is editable from inside as well as from its row.
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  /** Sync with the original: running, and the "which playlist" prompt. */
+  /** Sync with the original, while it runs. */
   const [syncing, setSyncing] = useState(false);
-  const [linking, setLinking] = useState(false);
-  const [linkText, setLinkText] = useState('');
   const [renameText, setRenameText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -279,18 +275,6 @@ export function CollectionScreen({
     },
     [livePlaylist, syncing],
   );
-
-  const submitLink = useCallback(() => {
-    const url = linkText.trim();
-    if (!livePlaylist || !isImportUrl(url)) {
-      toast('Paste a Spotify or YouTube playlist link.');
-      return;
-    }
-    setLinking(false);
-    setLinkText('');
-    setImportedFrom(livePlaylist.id, {url, keys: []});
-    runSync({url, keys: []});
-  }, [linkText, livePlaylist, runSync]);
 
   /** Share: straight to the phone's share options with the playlist's name
    *  and link. The first time makes the link (sharedPlaylists.ts), which
@@ -958,7 +942,7 @@ export function CollectionScreen({
               setMenuOpen(false);
               setRenaming(true);
             }}>
-            <Pencil size={20} color={C.sub} />
+            <Pen size={20} color={C.sub} />
             <Text style={styles.sheetLabel}>Rename</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -968,20 +952,6 @@ export function CollectionScreen({
             <ImagePlus size={20} color={C.sub} />
             <Text style={styles.sheetLabel}>Change cover</Text>
           </TouchableOpacity>
-          {!syncFrom && (
-            <TouchableOpacity
-              style={styles.sheetRow}
-              activeOpacity={0.7}
-              onPress={() => {
-                setMenuOpen(false);
-                setLinking(true);
-              }}>
-              <Link size={20} color={C.sub} />
-              <Text style={styles.sheetLabel}>
-                Sync with a Spotify or YouTube playlist
-              </Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
             style={styles.sheetRow}
             activeOpacity={0.7}
@@ -1035,52 +1005,6 @@ export function CollectionScreen({
                     !renameText.trim() && styles.dialogDisabled,
                   ]}>
                   Save
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* The original to sync with, asked once for a playlist imported before
-          Sync existed; the same dialog shape as Rename. */}
-      <Modal
-        visible={linking}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setLinking(false)}>
-        <View style={styles.dialogScrim}>
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>Sync with its original</Text>
-            <TextInput
-              value={linkText}
-              onChangeText={setLinkText}
-              placeholder="Spotify or YouTube playlist link"
-              placeholderTextColor={C.faint}
-              style={styles.input}
-              autoFocus
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={submitLink}
-            />
-            <View style={styles.dialogRow}>
-              <TouchableOpacity
-                onPress={() => setLinking(false)}
-                style={styles.dialogBtn}>
-                <Text style={styles.dialogCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={submitLink}
-                disabled={!linkText.trim()}
-                style={styles.dialogBtn}>
-                <Text
-                  style={[
-                    styles.dialogOk,
-                    !linkText.trim() && styles.dialogDisabled,
-                  ]}>
-                  Sync
                 </Text>
               </TouchableOpacity>
             </View>

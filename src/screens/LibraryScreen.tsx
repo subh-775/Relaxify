@@ -19,8 +19,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {ImagePlus, Pencil, Search as SearchIcon, X} from '../icons';
-import {PlusSlim, Trash} from '../glyphs';
+import {ImagePlus, Search as SearchIcon, X} from '../icons';
+import {Pen, PlusSlim, Trash} from '../glyphs';
 import {C, S, T, fs} from '../theme';
 import {PinGlyph} from '../components/PinGlyph';
 import {getLocalLibrary, type Track} from '../backend';
@@ -536,7 +536,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                     setRenameText(menuFor.name);
                     setMenuFor(null);
                   }}>
-                  <Pencil size={20} color={C.sub} />
+                  <Pen size={20} color={C.sub} />
                   <Text style={styles.sheetLabel}>Rename</Text>
                 </TouchableOpacity>
                 <TouchableOpacity

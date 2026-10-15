@@ -73,6 +73,7 @@ export const Pause = make('pause');
 export const AddCircle = make('add');
 export const SavedCircle = make('saved');
 export const Trash = make('trash');
+export const Pen = make('pen');
 export const Devices = make('devices');
 export const SleepTimer = make('timer');
 export const MoreHorizontal = make('moreH');

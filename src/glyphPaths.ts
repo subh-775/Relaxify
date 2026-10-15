@@ -181,6 +181,15 @@ export const GLYPHS = {
     },
     {d: 'M10.7 13.1L5.75 18.05', w: 2},
   ],
+  // Rename: Spotify's pencil. One outline at 45°, a round cap at the top and
+  // a point at the bottom, no band across it: at the 20px a menu row draws
+  // it, every inner line lucide's pencil has turns to mush.
+  pen: [
+    {
+      d: 'M9.24 18.44 19.84 7.84a2.6 2.6 0 0 0-3.68-3.68L5.56 14.76 3.6 20.4z',
+      w: 1.8,
+    },
+  ],
   // The sidebar's rows, one line weight with the rest of the set.
   // Eight blunt teeth round a ring.
   settings: [
