@@ -354,6 +354,11 @@ export const PlayerBar = React.memo(function PlayerBar({
   }
 
   const artwork = artworkForColor;
+  // What is behind each line, for the edges of a floating one to fade into:
+  // the bar's gradient runs top to bottom, so the first line sits on a
+  // lighter part of it than the second. Untinted, the bar's grey over black.
+  const fadeTop = tint ? surfaceTint(tint, 0.133) : UNTINTED;
+  const fadeBottom = tint ? surfaceTint(tint, 0.117) : UNTINTED;
 
   return (
     /* Rises in rather than appearing. The bar arrives when the first song
@@ -447,6 +452,7 @@ export const PlayerBar = React.memo(function PlayerBar({
                       <Marquee
                         text={artists ? `${title} • ${artists}` : title}
                         style={styles.title}
+                        fadeColor={fadeTop}
                       />
                       <Text style={styles.output} numberOfLines={1}>
                         {output}
@@ -461,6 +467,7 @@ export const PlayerBar = React.memo(function PlayerBar({
                         text={artists}
                         style={styles.artist}
                         ticker={artistList.length > 1}
+                        fadeColor={fadeBottom}
                       />
                     </>
                   )}
@@ -532,6 +539,9 @@ export const PlayerBar = React.memo(function PlayerBar({
   );
 });
 
+/** The untinted bar: its 90% #262626 over the black page. */
+const UNTINTED = '#222222';
+
 const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
@@ -594,7 +604,7 @@ const styles = StyleSheet.create({
   title: {fontSize: 14, fontWeight: '600', color: C.text, letterSpacing: 0.1},
   artist: {fontSize: 12.5, color: C.text, opacity: 0.62, marginTop: 2},
   output: {
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '600',
     color: C.accent,
     marginTop: 2,

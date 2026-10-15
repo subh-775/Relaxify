@@ -949,6 +949,8 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   // The whole title as the source has it, entities decoded: "(From ...)",
   // "(Live)" and all. The lists keep the tidied one.
   const title = fullText(active.title);
+  // The open player's surface, which the floating lines' edges fade into.
+  const fadeColor = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
   const artistList = splitArtists(String(active.artist ?? ''));
   const artists = artistList.join(', ');
   const artistCount = artistList.length;
@@ -1118,6 +1120,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   style={styles.title}
                   shrinkTo={0.7}
                   paused={!visible}
+                  fadeColor={fadeColor}
                 />
                 {/* Its OWN line, at full width. The artist is the second most
                     important thing on this screen and it was sharing a row with
@@ -1133,6 +1136,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     style={styles.artist}
                     ticker={artistCount > 1}
                     paused={!visible}
+                    fadeColor={fadeColor}
                   />
                 </TouchableOpacity>
                 {/* Third line. Both badges render nothing when their setting is
