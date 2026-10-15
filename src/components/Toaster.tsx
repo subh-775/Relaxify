@@ -1,8 +1,8 @@
 /**
  * Renders the current toast just above the player bar.
  *
- * Every toast is one shape: the width of the page's content, its words
- * centred, the way "Press back again to exit" sits. A toast about a song is
+ * Every toast is one shape, the "Press back again to exit" capsule: centred,
+ * only as wide as its words, no empty box either side. A toast about a song is
  * washed in that song's colour, as the mini player is; one about nothing in
  * particular is plain dark. No cover and no Undo beside the words: a like or
  * an add is undone where it was done, and the room they took left the words
@@ -14,7 +14,7 @@ import {Animated, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {runToastAction, useToast} from '../toast';
 import {surfaceTint, useArtworkColor} from '../artworkColor';
-import {C, S} from '../theme';
+import {C} from '../theme';
 
 export function Toaster({bottom = 96}: {bottom?: number}) {
   const item = useToast();
@@ -81,16 +81,16 @@ export function Toaster({bottom = 96}: {bottom?: number}) {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    left: S.gutter,
-    right: S.gutter,
+    alignSelf: 'center',
+    maxWidth: '90%',
     zIndex: 9999,
-    minHeight: 44,
-    borderRadius: 14,
+    borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: '#26262b',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 11,
+    backgroundColor: 'rgba(38,38,38,0.94)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 22,
+    paddingVertical: 12,
     elevation: 8,
     shadowColor: '#000',
     shadowOpacity: 0.5,
