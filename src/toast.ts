@@ -11,10 +11,10 @@
  */
 import {useSyncExternalStore} from 'react';
 
-/** 'info' is the everyday confirmation bar; 'warn' is visually distinct (dark,
- *  accent-bordered) for system-ish notices like "press back again to exit". */
+/** 'info' is the everyday confirmation; 'warn' is a notice about the app
+ *  itself ("press back again to exit"), never washed in a song's colour. */
 export type ToastKind = 'info' | 'warn';
-/** One button on the toast, such as Undo. */
+/** One button on the toast, for a toast that asks something (Replace?). */
 export type ToastAction = {label: string; onPress: () => void};
 type Extra = {
   /** A song's cover: the toast shows it and takes its colour. */
@@ -24,7 +24,7 @@ type Extra = {
 export type ToastItem = {id: number; message: string; kind: ToastKind} & Extra;
 
 const SHOW_MS = 2200;
-/** Long enough to reach for Undo. */
+/** Long enough to reach for the button. */
 const ACTION_MS = 3800;
 const GAP_MS = 180;
 
