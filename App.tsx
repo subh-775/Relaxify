@@ -370,6 +370,14 @@ function Shell() {
     },
     [],
   );
+  /** Home and the artist page open an album by its id, with no songs yet.
+   *  One stable function, so passing it does not undo HomeScreen's memo: an
+   *  inline arrow here re-rendered all of Home on every tab switch. */
+  const openAlbumById = useCallback(
+    (albumName: string, artistName: string, id = '') =>
+      openAlbumByName(albumName, artistName, [], id),
+    [openAlbumByName],
+  );
 
   const openAlbumOf = useCallback(
     (track: Track) => {
@@ -796,7 +804,7 @@ function Shell() {
             onOpenJam={openJam}
             onImportSpotify={setImportUrl}
             onOpenCollection={openFromLibrary}
-            onOpenAlbum={(n, a, id) => openAlbumByName(n, a, [], id)}
+            onOpenAlbum={openAlbumById}
             visible={tab === 'home'}
           />
         </View>
@@ -883,7 +891,7 @@ function Shell() {
                   toggleFollow(n, img) ? `Following ${n}` : `Unfollowed ${n}`,
                 )
               }
-              onOpenAlbum={(n, a, id) => openAlbumByName(n, a, [], id)}
+              onOpenAlbum={openAlbumById}
             />
           </View>
         )}
