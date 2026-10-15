@@ -7,8 +7,16 @@
  * White, not coral: coral is for things that are on, and being on a tab is
  * where you are, not a setting.
  */
-import React from 'react';
-import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import React, {useRef} from 'react';
+import {Pressable, StyleSheet, Text, View} from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {
   HomeGlyph,
@@ -68,31 +76,80 @@ export function BottomNav({
           fills its frame exactly, so the bar now meets the bottom of the
           screen in solid black. */}
       <View style={styles.foot} pointerEvents="none" />
-      {TABS.map(({id, label, Icon, IconOn}) => {
-        const on = active === id;
-        const Shown = on ? IconOn : Icon;
-        return (
-          <TouchableOpacity
-            key={id}
-            style={styles.tab}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-            accessibilityState={{selected: on}}
-            onPress={() => onChange(id)}>
-            <Shown size={ICON} color={on ? C.text : INACTIVE} />
-            <Text
-              style={[styles.label, on && styles.labelOn]}
-              numberOfLines={1}
-              allowFontScaling={false}>
-              {label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+      {TABS.map(({id, label, Icon, IconOn}) => (
+        <TabButton
+          key={id}
+          label={label}
+          Icon={active === id ? IconOn : Icon}
+          on={active === id}
+          onPress={() => onChange(id)}
+        />
+      ))}
     </View>
   );
 }
+
+/**
+ * One tab: the icon and its label shrink together under the finger and spring
+ * back, as Spotify's do.
+ *
+ * The shrink always plays in full. A quick tap lifts the finger a few
+ * milliseconds after it lands, and easing back from wherever the shrink had
+ * got to would show nothing; so the way back waits for the shrink to finish
+ * and then overshoots a touch, which is what makes it read as a press.
+ */
+function TabButton({
+  label,
+  Icon,
+  on,
+  onPress,
+}: {
+  label: string;
+  Icon: Icon;
+  on: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const downAt = useRef(0);
+  const pressed = useAnimatedStyle(() => ({
+    transform: [{scale: scale.value}],
+  }));
+  return (
+    <Pressable
+      style={styles.tab}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{selected: on}}
+      onPressIn={() => {
+        downAt.current = Date.now();
+        scale.value = withTiming(PRESSED, {
+          duration: SHRINK_MS,
+          easing: Easing.out(Easing.quad),
+        });
+      }}
+      onPressOut={() => {
+        const left = Math.max(0, SHRINK_MS - (Date.now() - downAt.current));
+        scale.value = withDelay(left, withSpring(1, SPRING));
+      }}
+      onPress={onPress}>
+      <Animated.View style={[styles.tabInner, pressed]}>
+        <Icon size={ICON} color={on ? C.text : INACTIVE} />
+        <Text
+          style={[styles.label, on && styles.labelOn]}
+          numberOfLines={1}
+          allowFontScaling={false}>
+          {label}
+        </Text>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/** How small a tab gets under the finger, and how fast. */
+const PRESSED = 0.86;
+const SHRINK_MS = 90;
+/** Back to full size with a small overshoot. */
+const SPRING = {damping: 14, stiffness: 420, mass: 0.6};
 
 // Spotify's size. The label under it carries the rest of the weight that the
 // 29px icon used to carry alone.
@@ -118,7 +175,8 @@ const styles = StyleSheet.create({
   },
   // 8 + 24 + 4 + 13 + 8 + 2 = 59, the height the bar has always had, so the
   // mini player above it, BOTTOM_INSET and the toasts all stay put.
-  tab: {flex: 1, alignItems: 'center', gap: 4, paddingVertical: 8},
+  tab: {flex: 1, alignItems: 'center', paddingVertical: 8},
+  tabInner: {alignItems: 'center', gap: 4},
   // Fixed size (allowFontScaling off): a large system font would push the bar
   // past 59 and the mini player up with it.
   label: {
