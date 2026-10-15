@@ -161,16 +161,24 @@ function Shell() {
    * afterwards, which is why the app visibly assembled itself in stages. Now
    * the real UI mounts underneath the splash and the splash only lifts once
    * BOTH the engine (session restored, so the mini player is already there)
-   * and Home's first rows are ready. Nothing pops in after that.
+   * and Home's first rows are ready. Nothing pops in after that. It also
+   * waits for the startup animation to finish, so a fast start never cuts it
+   * off halfway.
    */
   const [booted, setBooted] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const welcomed = useWelcomed();
   const engineDone = useRef(false);
   const homeDone = useRef(false);
+  const splashPlayed = useRef(false);
   const lifting = useRef(false);
   const liftSplash = useCallback(() => {
-    if (engineDone.current && homeDone.current && !lifting.current) {
+    if (
+      engineDone.current &&
+      homeDone.current &&
+      splashPlayed.current &&
+      !lifting.current
+    ) {
       lifting.current = true;
       // Everything is in place; now let the JS thread finish what that set
       // off (rows rendering, covers decoding, the restored queue's events)
@@ -185,6 +193,10 @@ function Shell() {
   }, []);
   const onHomeReady = useCallback(() => {
     homeDone.current = true;
+    liftSplash();
+  }, [liftSplash]);
+  const onSplashPlayed = useCallback(() => {
+    splashPlayed.current = true;
     liftSplash();
   }, [liftSplash]);
 
@@ -1038,7 +1050,7 @@ function Shell() {
 
       {!booted && (
         <View style={styles.splash} pointerEvents="auto">
-          <Splash />
+          <Splash onPlayed={onSplashPlayed} />
         </View>
       )}
     </SafeAreaView>

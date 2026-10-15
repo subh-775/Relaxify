@@ -17,6 +17,10 @@
              some phones is a translucent bar or a grey one. -->
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+        <!-- Android 12+ shows the app icon while the app starts. Plain black
+             instead: the startup GIF (Splash.tsx) is where the icon arrives,
+             so it is not shown, taken away and built again. -->
+        <item name="android:windowSplashScreenAnimatedIcon" tools:targetApi="31">@android:color/transparent</item>
     </style>
 
 </resources>
