@@ -12,7 +12,7 @@
  */
 import React from 'react';
 import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {Check, Moon} from '../icons';
+import {Check} from '../icons';
 import {C, S, T} from '../theme';
 import {
   cancelSleepTimer,
@@ -42,14 +42,11 @@ export function SleepSheet({
 
   return (
     <Sheet open={open} onClose={onClose}>
+      {/* Just the name, centred, like Spotify's. The time left shows only
+          while a timer is running: off, there is nothing to say. */}
       <View style={styles.head}>
-        <Moon size={19} color={C.accent} />
-        <View style={styles.headText}>
-          <Text style={styles.title}>Sleep timer</Text>
-          <Text style={styles.sub}>
-            {label ? `Music stops in ${label}` : 'Music keeps playing'}
-          </Text>
-        </View>
+        <Text style={styles.title}>Sleep timer</Text>
+        {!!label && <Text style={styles.sub}>Music stops in {label}</Text>}
       </View>
 
       {MINUTES.map(m => {
@@ -94,17 +91,14 @@ export function SleepSheet({
 
 const styles = StyleSheet.create({
   head: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     paddingHorizontal: S.gutter,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: C.border,
   },
-  headText: {flex: 1, minWidth: 0},
-  title: {...T.body, color: C.text},
-  sub: {...T.sub, color: C.sub, marginTop: 2},
+  title: {...T.listTitle, fontWeight: '700', color: C.text},
+  sub: {...T.listSub, color: C.sub, marginTop: 2},
   row: {
     flexDirection: 'row',
     alignItems: 'center',

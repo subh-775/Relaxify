@@ -24,7 +24,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import {Gauge, Minus, Plus} from '../icons';
+import {Minus, Plus} from '../icons';
 import {C, S, T} from '../theme';
 import {Sheet} from './Sheet';
 import {playbackRate, setPlaybackRate} from '../player';
@@ -123,14 +123,10 @@ export function SpeedSheet({
 
   return (
     <Sheet open={open} onClose={onClose}>
+      {/* Just the name, centred, like the sleep timer's. The number under
+          it says the rest. */}
       <View style={styles.head}>
-        <Gauge size={19} color={C.accent} />
-        <View style={styles.headText}>
-          <Text style={styles.title}>Playback speed</Text>
-          <Text style={styles.sub}>
-            {isRate(rate, 1) ? 'Normal' : 'Kept for the songs after this one'}
-          </Text>
-        </View>
+        <Text style={styles.title}>Playback speed</Text>
       </View>
 
       <Text style={styles.value}>{rateLabel(shown)}</Text>
@@ -195,16 +191,12 @@ const THUMB = 18;
 
 const styles = StyleSheet.create({
   head: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     paddingHorizontal: S.gutter,
     paddingTop: 14,
     paddingBottom: 2,
   },
-  headText: {flex: 1, minWidth: 0},
-  title: {...T.rowTitle, color: C.text, fontSize: 16},
-  sub: {...T.sub, color: C.sub, marginTop: 1},
+  title: {...T.listTitle, fontWeight: '700', color: C.text},
   value: {
     ...T.screenTitle,
     color: C.text,
