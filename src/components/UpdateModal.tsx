@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
     color: INK,
     fontSize: 15.5,
     lineHeight: 19,
-    fontWeight: '900',
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
   meta: {color: INK, fontSize: 11.5, fontWeight: '700', opacity: 0.7},
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginLeft: 8,
   },
-  stripBtnText: {color: C.accent, fontSize: 13.5, fontWeight: '900'},
+  stripBtnText: {color: C.accent, fontSize: 13.5, fontWeight: '700'},
   close: {padding: 6, marginLeft: 4},
   card: {
     position: 'absolute',
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,90,110,0.10)',
   },
   text: {flex: 1, minWidth: 0},
-  title: {color: C.text, fontSize: 15, fontWeight: '800'},
+  title: {color: C.text, fontSize: 15, fontWeight: '700'},
   message: {color: C.sub, fontSize: 13, lineHeight: 19, marginTop: 4},
   actions: {
     flexDirection: 'row',
@@ -273,5 +273,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 9,
   },
-  installText: {color: C.bg, fontWeight: '800', fontSize: 14},
+  installText: {color: C.bg, fontWeight: '700', fontSize: 14},
 });

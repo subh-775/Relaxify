@@ -20,17 +20,85 @@ const PLAYABLE_SOURCES = new Set([
 /** Quality-first. The player walks this order when a source fails to stream. */
 const SOURCE_ORDER = ['jiosaavn', 'soundcloud', 'youtube_music', 'youtube'];
 
+/** Mojibake: UTF-8 read as Latin-1 somewhere upstream. */
 const TEXT_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/&quot;/gi, '"'],
-  [/&#34;/g, '"'],
-  [/&#39;/g, "'"],
-  [/&amp;/gi, '&'],
-  [/&apos;/gi, "'"],
   [/Â·/g, '·'],
   [/â€™/g, "'"],
   [/â€œ|â€�/g, '"'],
   [/â€“|â€”/g, '-'],
 ];
+
+const NAMED_ENTITIES: Record<string, string> = {
+  quot: '"',
+  amp: '&',
+  apos: "'",
+  lt: '<',
+  gt: '>',
+  nbsp: ' ',
+  ndash: '–',
+  mdash: '—',
+  hellip: '…',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  laquo: '«',
+  raquo: '»',
+};
+
+/**
+ * HTML entities, decoded: what JioSaavn and YouTube titles arrive wrapped in.
+ *
+ * Several passes, because some arrive encoded twice ("&amp;quot;" is a quote
+ * once the &amp; is undone), and the semicolon is optional, because some
+ * arrive without it ("&quot"). A name that is not an entity is left as it is,
+ * so "R&B" and "AT&T" survive. Last, a "quot;" whose ampersand was lost on the
+ * way, which is how a quote ended up on screen as "quot;Hello quot;" (the
+ * semicolon is what makes it safe to take even glued to a word).
+ */
+export function decodeEntities(value: string): string {
+  let text = value;
+  for (let pass = 0; pass < 3 && text.includes('&'); pass++) {
+    const next = text.replace(
+      /&(#x[0-9a-f]+|#[0-9]+|[a-z]+);?/gi,
+      (whole, body: string) => {
+        if (body[0] === '#') {
+          const code =
+            body[1] === 'x' || body[1] === 'X'
+              ? parseInt(body.slice(2), 16)
+              : parseInt(body.slice(1), 10);
+          return code > 0 && code <= 0x10ffff
+            ? String.fromCodePoint(code)
+            : whole;
+        }
+        return NAMED_ENTITIES[body.toLowerCase()] ?? whole;
+      },
+    );
+    if (next === text) {
+      break;
+    }
+    text = next;
+  }
+  return text.replace(/(quot|apos);/gi, (_, name: string) =>
+    name.toLowerCase() === 'quot' ? '"' : "'",
+  );
+}
+
+/**
+ * A title or credit exactly as the source wrote it, made readable: entities
+ * and mojibake undone, spaces tidied, nothing taken away. The players show
+ * this; lists and matching use [cleanText].
+ */
+export function fullText(value: unknown): string {
+  if (value == null) {
+    return '';
+  }
+  let text = decodeEntities(String(value));
+  TEXT_REPLACEMENTS.forEach(([pattern, replacement]) => {
+    text = text.replace(pattern, replacement);
+  });
+  return text.replace(/\s+/g, ' ').trim();
+}
 
 /**
  * Ordered best-to-worst artwork keys.
@@ -64,18 +132,13 @@ const ARTWORK_PRIORITY = [
  * look like three different ones.
  *
  * Note: no textarea-decode step here — that was a DOM trick in the WebView and
- * there is no document in React Native. The explicit entity table above covers
- * what actually shows up in this catalogue.
+ * there is no document in React Native. [decodeEntities] does the same job.
  */
 export function cleanText(value: unknown): string {
   if (value == null) {
     return '';
   }
-  let text = String(value);
-  TEXT_REPLACEMENTS.forEach(([pattern, replacement]) => {
-    text = text.replace(pattern, replacement);
-  });
-
+  let text = fullText(value);
   text = text.replace(
     /\s*[([{].*?(?:official|video|audio|lyric|remaster|live|feat\.|ft\.|full\s+video|hd|4k|visuali[sz]er|music\s+video|song\s+video|original\s+motion|bollywood).*?[)\]}/]/gi,
     '',

@@ -1,7 +1,12 @@
 /**
- * The two grids at the top of Home, one swiped row with dots under it:
- * Discover first, then Recents. Each is a three-by-three grid of covers, the
- * "speed dial" layout YouTube Music uses.
+ * Discover and Recents, at the top of Home, in one of two layouts (Settings,
+ * "Home style as Speed Dial"):
+ *
+ *   rows (the default)  each is a row of covers you scroll sideways, the
+ *                       same 144dp cards as every other row on Home;
+ *   grid                the two are one swiped row with dots under it, each
+ *                       a three-by-three grid of covers, the "speed dial"
+ *                       layout YouTube Music uses.
  *
  * Discover (src/discover.ts) is nine songs picked for this listener, new on
  * every open: mostly ones they have not heard, similar to their own, with two
@@ -25,6 +30,7 @@
  */
 import React, {useMemo, useState} from 'react';
 import {
+  FlatList,
   Image,
   StyleSheet,
   Text,
@@ -48,6 +54,8 @@ import {useIsActiveTrack} from '../player';
 import {Sheet} from './Sheet';
 import {TrackRow} from './TrackRow';
 import type {Track} from '../backend';
+import {useSettings} from '../store';
+import {HOME_CARD, HOME_CARD_RADIUS} from '../layout';
 
 const COLUMNS = 3;
 const MAX_TILES = 9;
@@ -77,6 +85,7 @@ export function HomeGrids({
   recent: Track[];
   onPlay: (track: Track, context?: Track[]) => void;
 }) {
+  const {homeGrid} = useSettings();
   const {width} = useWindowDimensions();
   const size = tileSize(width);
   // How far the pager has scrolled, on the UI thread: the title and the dots
@@ -91,6 +100,22 @@ export function HomeGrids({
   ].filter((p): p is Page => !!p);
   if (!pages.length) {
     return null;
+  }
+
+  if (!homeGrid) {
+    return (
+      <View style={styles.section}>
+        {pages.map((k, i) => (
+          <SongShelf
+            key={k}
+            title={TITLES[k]}
+            songs={k === 'discover' ? discover.slice(0, MAX_TILES) : recent}
+            first={i === 0}
+            onPlay={onPlay}
+          />
+        ))}
+      </View>
+    );
   }
 
   const render = (k: Page) =>
@@ -194,6 +219,78 @@ function SlideTitle({
     </Animated.Text>
   );
 }
+
+/**
+ * One of the two as a row of covers: every song it holds (Discover's nine,
+ * all twenty Recents), so there is no "more" tile and no sheet to open.
+ */
+function SongShelf({
+  title,
+  songs,
+  first,
+  onPlay,
+}: {
+  title: string;
+  songs: Track[];
+  first: boolean;
+  onPlay: (track: Track, context?: Track[]) => void;
+}) {
+  return (
+    <View style={!first && styles.shelfGap}>
+      <Text style={[styles.shelfTitle]}>{title}</Text>
+      <FlatList
+        horizontal
+        data={songs}
+        keyExtractor={getTrackId}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.shelf}
+        // Each fling comes to rest with a card on the page margin, as the
+        // rows below do (HomeScreen's SNAP).
+        snapToInterval={HOME_CARD + S.gap}
+        snapToAlignment="start"
+        decelerationRate="fast"
+        renderItem={({item}) => (
+          <SongCard track={item} onPress={() => onPlay(item)} />
+        )}
+      />
+    </View>
+  );
+}
+
+/** A song under its cover: the name, then the artist. The one playing now
+ *  has a coral name, as a song does in any list. */
+const SongCard = React.memo(function SongCard({
+  track,
+  onPress,
+}: {
+  track: Track;
+  onPress: () => void;
+}) {
+  const playing = useIsActiveTrack(track);
+  const art = getBestArtworkUrl(track);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={styles.card}
+      accessibilityRole="button"
+      accessibilityLabel={`Play ${cleanText(track.title)}`}>
+      {art ? (
+        <Image source={{uri: art}} style={styles.cardArt} />
+      ) : (
+        <View style={[styles.cardArt, styles.fallback]} />
+      )}
+      <Text
+        style={[styles.cardTitle, playing && styles.cardPlaying]}
+        numberOfLines={1}>
+        {cleanText(track.title)}
+      </Text>
+      <Text style={styles.cardSub} numberOfLines={1}>
+        {cleanText(track.artist)}
+      </Text>
+    </TouchableOpacity>
+  );
+});
 
 /** A dot that grows into the white pill as its page slides in. */
 function SlideDot({
@@ -398,8 +495,27 @@ const styles = StyleSheet.create({
   // Top-aligned: a Recents page with fewer than nine songs is shorter than
   // Discover, and should not float in the middle of the row.
   pager: {alignItems: 'flex-start'},
-  head: {paddingHorizontal: S.gutter, marginBottom: 10},
-  title: {...T.rowTitle, color: C.text},
+  head: {paddingHorizontal: S.gutter, marginBottom: 12},
+  title: {...T.section, color: C.text},
+  // The row layout: the same heading, gap and cards as Home's other rows.
+  shelfGap: {marginTop: 22},
+  shelfTitle: {
+    ...T.section,
+    color: C.text,
+    paddingHorizontal: S.gutter,
+    marginBottom: 12,
+  },
+  shelf: {paddingHorizontal: S.gutter, gap: S.gap},
+  card: {width: HOME_CARD},
+  cardArt: {
+    width: HOME_CARD,
+    height: HOME_CARD,
+    borderRadius: HOME_CARD_RADIUS,
+    backgroundColor: C.surface,
+  },
+  cardTitle: {...T.cardTitle, color: C.text, marginTop: 8},
+  cardPlaying: {color: C.accent},
+  cardSub: {...T.cardSub, color: C.sub, marginTop: 2},
   // Every title after the first sits on top of it, in the same place.
   stacked: {position: 'absolute', left: S.gutter, top: 0},
   // The cards carousel's dots, so the two swiped rows on Home read alike.
@@ -440,7 +556,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: C.text,
   },
-  playAllText: {color: C.bg, fontSize: 13, fontWeight: '800'},
+  playAllText: {color: C.bg, fontSize: 13, fontWeight: '700'},
   tile: {
     borderRadius: 8,
     overflow: 'hidden',
@@ -456,8 +572,8 @@ const styles = StyleSheet.create({
     right: 8,
     bottom: 7,
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12.5,
+    fontWeight: '600',
   },
   // The song playing now: a grey ring, the same on every greeting colour.
   playing: {

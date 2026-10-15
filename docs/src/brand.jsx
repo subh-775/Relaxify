@@ -1,6 +1,6 @@
 /**
  * The site's own pieces: the logo, the
- * Recap-style starburst, the Home deck, the download button, live release
+ * Recap-style starburst (Home only), the Home deck, the download button, live release
  * numbers, and the blocks pages are written with.
  *
  * Motion is GSAP, transform and opacity only, and none of it runs for anyone
@@ -8,7 +8,7 @@
  */
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import gsap from 'gsap';
-import {CYCLE, PAGES, PAL, SITE} from './nav.js';
+import {PAGES, PAL, SITE} from './nav.js';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 /** An in-site link, with the GitHub Pages base in front. */
@@ -48,17 +48,9 @@ function burstPath(R, r, n) {
   return `${d}Z`;
 }
 
-export function Burst({color, className = '', points = 12, spin}) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!spin || reduceMotion()) {
-      return;
-    }
-    const t = gsap.to(ref.current, {rotation: 360, duration: 24, repeat: -1, ease: 'none', transformOrigin: '50% 50%'});
-    return () => t.kill();
-  }, [spin]);
+export function Burst({color, className = '', points = 12}) {
   return (
-    <svg ref={ref} className={`burst ${className}`} viewBox="0 0 100 100" aria-hidden="true">
+    <svg className={`burst ${className}`} viewBox="0 0 100 100" aria-hidden="true">
       <path d={burstPath(48, 29, points)} fill={color} />
     </svg>
   );
@@ -167,20 +159,20 @@ export function LiveRelease() {
   return (
     <>
       <div className="live">
-        <div className="stat wide" style={{background: PAL.lime.bg}}>
+        <div className="stat wide">
           <span>
             <span className="l">Newest version</span>
             <span className="v">{info ? info.version : '…'}</span>
           </span>
-          <a className="pill-dark" href={SITE.apk}>
+          <a className="btn" href={SITE.apk}>
             Download
           </a>
         </div>
-        <div className="stat" style={{background: PAL.sky.bg}}>
+        <div className="stat">
           <span className="v small">{info ? info.date : '…'}</span>
           <span className="l">Released</span>
         </div>
-        <div className="stat" style={{background: PAL.orange.bg}}>
+        <div className="stat">
           <span className="v">
             <CountUp value={info ? info.downloads : null} />
           </span>
@@ -392,12 +384,12 @@ export function Deck() {
 
 /* ── page blocks ─────────────────────────────────────────────────────────── */
 
-/** A real sequence: numbered, each step its own colour. */
+/** A real sequence, numbered. */
 export function Steps({children}) {
   return <ol className="steps">{children}</ol>;
 }
 
-/** "Do this → this happens" cards, each its own colour. */
+/** "Do this → this happens" pairs. */
 export function Moves({children}) {
   return <div className="moves">{children}</div>;
 }
@@ -417,7 +409,7 @@ export function Move({how, children}) {
 export function Callout({kind = 'tip', title, children}) {
   return (
     <aside className={`callout ${kind} reveal`}>
-      <b>{title || (kind === 'important' ? 'Heads up' : 'Tip')}</b>
+      <b>{title || (kind === 'important' ? 'Important' : 'Note')}</b>
       <div>{children}</div>
     </aside>
   );
@@ -441,9 +433,6 @@ export function Group({title, children}) {
     </section>
   );
 }
-
-/** Colour for the n-th step or card, cycling the palette. */
-export const cycle = n => PAL[CYCLE[n % CYCLE.length]].bg;
 
 /* ── reveal on scroll ────────────────────────────────────────────────────── */
 

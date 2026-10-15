@@ -32,8 +32,17 @@ import Animated, {
   runOnJS,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import {ArrowUpRight, ChevronRight} from '../icons';
-import {C, S, T} from '../theme';
+import {ArrowUpRight} from '../icons';
+import {
+  Equalizer,
+  Help,
+  Jam,
+  Languages,
+  SettingsGear,
+  Share,
+  type GlyphProps,
+} from '../glyphs';
+import {C, S, T, fs} from '../theme';
 import {appVersion} from '../backend';
 import {useUpdateAvailable} from '../update';
 import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
@@ -71,19 +80,25 @@ export type SidebarDest =
 // already face-down, and the drawer is two gestures away from the music; it
 // lives beside the queue in the player, where the thing it acts on is.
 //
-// Words only, no icon per row and no colour: the drawer is the app's quiet
-// back room, and five plain labels read faster than five glyphs beside them.
+// An outline icon beside each label, as Spotify's drawer has, in white like
+// the label: the drawer stays without colour, and the icons make each row
+// findable at a glance. No chevrons: every row opens its page, so an arrow on
+// each said nothing. How to use keeps its ↗, since it leaves the app.
 //
 // Shortcuts only: each row opens its thing directly, with no Settings list to
 // dig through first. Recap is not one: it is a Sunday event, reached from its
 // Home card (and the notification), not a page to visit any day.
-const ITEMS: {id: SidebarDest; label: string}[] = [
-  {id: 'equalizer', label: 'Equalizer'},
-  {id: 'jam', label: 'Jam'},
-  {id: 'help', label: 'How to use'},
-  {id: 'languages', label: 'Home languages'},
-  {id: 'recommend', label: 'Recommend Relaxify'},
-  {id: 'settings', label: 'Settings'},
+const ITEMS: {
+  id: SidebarDest;
+  label: string;
+  Icon: (p: GlyphProps) => React.JSX.Element;
+}[] = [
+  {id: 'equalizer', label: 'Equalizer', Icon: Equalizer},
+  {id: 'jam', label: 'Jam', Icon: Jam},
+  {id: 'help', label: 'How to use', Icon: Help},
+  {id: 'languages', label: 'Home languages', Icon: Languages},
+  {id: 'recommend', label: 'Recommend Relaxify', Icon: Share},
+  {id: 'settings', label: 'Settings', Icon: SettingsGear},
 ];
 
 /**
@@ -217,12 +232,13 @@ export const Sidebar = React.memo(function Sidebar({
             stray label; the icon is what makes the drawer feel like part of
             the product. */}
           <View style={styles.brandRow}>
-            <LogoMark size={56} />
+            <LogoMark size={44} />
             <View style={styles.brandText}>
               <Text style={styles.brand}>Relaxify</Text>
               <Text style={styles.brandSub}>vibes on repeat</Text>
             </View>
           </View>
+          <View style={styles.rule} />
 
           <View style={styles.items}>
             {ITEMS.map(item => (
@@ -231,6 +247,7 @@ export const Sidebar = React.memo(function Sidebar({
                 style={styles.item}
                 activeOpacity={0.7}
                 onPress={() => go(item.id)}>
+                <item.Icon size={22} color={C.text} />
                 <View style={styles.itemText}>
                   <Text style={styles.itemLabel}>{item.label}</Text>
                 </View>
@@ -239,12 +256,9 @@ export const Sidebar = React.memo(function Sidebar({
                 {item.id === 'settings' && updateWaiting && (
                   <View style={styles.dot} />
                 )}
-                {/* Help leaves the app for the documentation site, and a
-                    chevron promises the opposite — another page in here. */}
-                {item.id === 'help' ? (
-                  <ArrowUpRight size={17} color={C.faint} />
-                ) : (
-                  <ChevronRight size={17} color={C.faint} />
+                {/* Help leaves the app for the documentation site. */}
+                {item.id === 'help' && (
+                  <ArrowUpRight size={16} color={C.faint} />
                 )}
               </TouchableOpacity>
             ))}
@@ -292,20 +306,32 @@ const styles = StyleSheet.create({
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
     paddingHorizontal: S.gutter,
-    marginBottom: 28,
+    marginBottom: 18,
   },
   brandText: {flex: 1, minWidth: 0},
-  brand: {...T.screenTitle, color: C.text, fontSize: 24, letterSpacing: 0.1},
-  brandSub: {color: C.sub, fontSize: 12.5, marginTop: 2},
+  brand: {
+    color: C.text,
+    fontSize: fs(20),
+    lineHeight: fs(26),
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  brandSub: {color: C.sub, fontSize: fs(13), fontWeight: '400', marginTop: 1},
+  // Under the brand, as Spotify's drawer rules off the profile.
+  rule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 8,
+  },
   items: {flex: 1},
   item: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 15,
+    gap: 16,
     paddingHorizontal: S.gutter,
-    paddingVertical: 14,
+    height: 54,
   },
   itemText: {flex: 1, minWidth: 0},
   dot: {
@@ -315,7 +341,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.text, // no colour in the drawer, the update dot too
     marginRight: 4,
   },
-  itemLabel: {color: C.text, fontSize: 16, fontWeight: '700'},
+  itemLabel: {...T.listTitle, color: C.text},
   itemValue: {color: C.accent, fontSize: 12.5, fontWeight: '700'},
   foot: {paddingBottom: 22, gap: 3},
   version: {

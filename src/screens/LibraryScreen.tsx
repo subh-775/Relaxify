@@ -19,15 +19,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  ImagePlus,
-  Pencil,
-  Plus,
-  Search as SearchIcon,
-  Trash2,
-  X,
-} from '../icons';
-import {C, S, T} from '../theme';
+import {ImagePlus, Search as SearchIcon, X} from '../icons';
+import {Pen, PlusSlim, Trash} from '../glyphs';
+import {C, S, T, fs} from '../theme';
 import {PinGlyph} from '../components/PinGlyph';
 import {getLocalLibrary, type Track} from '../backend';
 import {useLikes} from '../store';
@@ -66,21 +60,50 @@ import {usePlaybackOrigin} from '../player';
 import {toast} from '../toast';
 import {Sheet} from '../components/Sheet';
 import {ConfirmModal} from '../components/ConfirmModal';
-import {listWindowing} from '../components/TrackRow';
 import {BOTTOM_INSET} from '../layout';
 import {TOP_FADE, TopFade} from '../components/TopFade';
 import Animated, {useAnimatedRef} from 'react-native-reanimated';
 import {FastScroll, useFastScroll} from '../components/FastScroll';
 import {MenuMark} from '../components/MenuMark';
 import {useListEnd} from '../components/UpdateModal';
-import {LibraryHeroes} from '../components/LibraryHeroes';
 import {EmptyState} from '../components/EmptyState';
 import {fold} from '../tracks';
 
 type Filter = 'all' | 'playlists' | 'albums' | 'artists';
 
-const FILTERS: Array<{id: Filter; label: string}> = [
-  {id: 'all', label: 'All'},
+/** The cover, plus 8 above and below it: Spotify's 58dp cover and 74dp row.
+ *  Every row is exactly this tall (the style says so), which is what lets the
+ *  list skip measuring: see `getItemLayout` below. */
+const ART = 58;
+const ROW_H = ART + 16;
+
+/**
+ * Windowing for the library list, tuned for the scroll thumb.
+ *
+ * Dragging the thumb jumps the list hundreds of rows a second. The thumb
+ * moves on the UI thread; the rows it lands on are rendered in JS. With the
+ * shared TrackRow defaults (8 rows a batch, a 7-screen window, clipped
+ * subviews) the rows arrived a beat after the thumb, so the thumb ran down the
+ * screen ahead of the playlists. Bigger batches, a wider window and no native
+ * clipping keep the rows under the thumb; library rows are light enough.
+ */
+/** Spotify's chip grey: a step lighter than the app's raised surface, so a
+ *  pill reads as something to press. */
+const CHIP = '#2a2a2a';
+
+/** The two lines of a row still fit beside the cover at this font scale. */
+const ROW_TEXT_MAX_SCALE = 1.3;
+
+const LIBRARY_WINDOWING = {
+  initialNumToRender: 14,
+  maxToRenderPerBatch: 16,
+  updateCellsBatchingPeriod: 16,
+  windowSize: 11,
+} as const;
+
+// No "All" chip: nothing picked IS all, and tapping the picked chip again
+// goes back to it, as on Spotify.
+const FILTERS: Array<{id: Exclude<Filter, 'all'>; label: string}> = [
   {id: 'playlists', label: 'Playlists'},
   {id: 'albums', label: 'Albums'},
   {id: 'artists', label: 'Artists'},
@@ -209,9 +232,22 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   // afterwards, and why the Downloaded collection was a scan behind.
   useEffect(() => onDownloadsChanged(loadDownloads), [loadDownloads]);
 
-  const heroes = filter === 'all' && !query.trim();
-  const liked = withArtists.find(c => c.kind === 'liked');
-  const downloaded = withArtists.find(c => c.kind === 'downloads');
+  /**
+   * Every row's place, worked out instead of measured.
+   *
+   * Without it the list only knew the rows it had drawn and guessed the rest,
+   * so its length changed as you scrolled and the thumb's mapping drifted
+   * under the finger. Fixed rows make the length exact from the first frame,
+   * and a drag can render the rows it lands on directly.
+   */
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({
+      length: ROW_H,
+      offset: TOP_FADE + ROW_H * index,
+      index,
+    }),
+    [],
+  );
 
   const rows = useMemo(() => {
     const matches = (c: Collection) => {
@@ -245,33 +281,14 @@ export const LibraryScreen = React.memo(function LibraryScreen({
     const found = (c: Collection) =>
       !q || fold(`${c.name} ${collectionSubtitle(c)}`).includes(q);
     const list = withArtists.filter(c => matches(c) && found(c));
-    // On "All" with no search, Liked and Downloaded are the two tiles above
-    // the list (LibraryHeroes), so they are not rows as well.
-    const fixed = heroes
-      ? []
-      : list.filter(c => c.kind === 'liked' || c.kind === 'downloads');
+    // Liked Songs and Downloaded lead as ordinary rows, Spotify's way, rather
+    // than as two big tiles above the list.
+    const fixed = list.filter(
+      c => c.kind === 'liked' || c.kind === 'downloads',
+    );
     const rest = list.filter(c => c.kind !== 'liked' && c.kind !== 'downloads');
     return [...fixed, ...sortPinned(rest, pins, idOf, c => c.updatedAt)];
-  }, [withArtists, pins, filter, query, heroes]);
-
-  // L2: how many each chip holds, whatever the search box says.
-  const counts = useMemo(() => {
-    const n = {all: withArtists.length, playlists: 0, albums: 0, artists: 0};
-    for (const c of withArtists) {
-      if (
-        c.kind === 'userPlaylist' ||
-        c.kind === 'sourcePlaylist' ||
-        c.kind === 'liked'
-      ) {
-        n.playlists += 1;
-      } else if (c.kind === 'album') {
-        n.albums += 1;
-      } else if (c.kind === 'artist') {
-        n.artists += 1;
-      }
-    }
-    return n;
-  }, [withArtists]);
+  }, [withArtists, pins, filter, query]);
 
   /** Only playlists pin — not artists, not albums, and not the fixtures. */
   const canPin = (c: Collection) =>
@@ -364,7 +381,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
           hitSlop={12}
           style={styles.barBtn}
           accessibilityLabel="New playlist">
-          <Plus size={26} color={C.text} strokeWidth={2.2} />
+          <PlusSlim size={23} color={C.text} />
         </TouchableOpacity>
       </View>
 
@@ -397,13 +414,12 @@ export const LibraryScreen = React.memo(function LibraryScreen({
             <TouchableOpacity
               key={f.id}
               activeOpacity={0.75}
-              onPress={() => setFilter(f.id)}
+              onPress={() => setFilter(on ? 'all' : f.id)}
+              accessibilityRole="button"
+              accessibilityState={{selected: on}}
               style={[styles.chip, on && styles.chipOn]}>
               <Text style={[styles.chipText, on && styles.chipTextOn]}>
                 {f.label}
-              </Text>
-              <Text style={[styles.chipCount, on && styles.chipCountOn]}>
-                {counts[f.id]}
               </Text>
             </TouchableOpacity>
           );
@@ -421,26 +437,18 @@ export const LibraryScreen = React.memo(function LibraryScreen({
             ref={listRef}
             data={rows}
             keyExtractor={c => c.id}
-            {...listWindowing}
+            {...LIBRARY_WINDOWING}
+            getItemLayout={getItemLayout}
             contentContainerStyle={[styles.list, listEnd]}
             showsVerticalScrollIndicator={false}
             onScroll={fast.onScroll}
             scrollEventThrottle={16}
-            ListHeaderComponent={
-              heroes ? (
-                <LibraryHeroes
-                  liked={liked}
-                  downloads={downloaded}
-                  onOpen={onOpen}
-                />
-              ) : null
-            }
             ListEmptyComponent={
               query.trim() ? (
                 <Text style={styles.empty}>
                   {`Nothing in your library matches "${query.trim()}".`}
                 </Text>
-              ) : heroes ? null : (
+              ) : (
                 <EmptyState
                   title="Nothing here yet"
                   line="Like a song, save an album or make a playlist, and it shows up here."
@@ -454,14 +462,15 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                 onPress={() => onOpen(item)}
                 onLongPress={() => onLongPress(item)}
                 delayLongPress={350}>
-                <CollectionArt collection={item} size={56} />
+                <CollectionArt collection={item} size={ART} />
                 <View style={styles.rowText}>
                   <Text
                     style={[
                       styles.rowTitle,
                       isPlayingFrom(item) && styles.rowTitlePlaying,
                     ]}
-                    numberOfLines={1}>
+                    numberOfLines={1}
+                    maxFontSizeMultiplier={ROW_TEXT_MAX_SCALE}>
                     {item.name}
                   </Text>
                   <View style={styles.metaLine}>
@@ -470,10 +479,13 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                       state of a control they do not have says nothing. */}
                     {isPinned(idOf(item)) && (
                       <View style={styles.pin}>
-                        <PinGlyph size={12} color={DOWNLOAD_TINT} />
+                        <PinGlyph size={13} color={DOWNLOAD_TINT} />
                       </View>
                     )}
-                    <Text style={styles.rowSub} numberOfLines={1}>
+                    <Text
+                      style={styles.rowSub}
+                      numberOfLines={1}
+                      maxFontSizeMultiplier={ROW_TEXT_MAX_SCALE}>
                       {collectionSubtitle(item)}
                     </Text>
                   </View>
@@ -524,7 +536,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                     setRenameText(menuFor.name);
                     setMenuFor(null);
                   }}>
-                  <Pencil size={20} color={C.sub} />
+                  <Pen size={20} color={C.sub} />
                   <Text style={styles.sheetLabel}>Rename</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -538,7 +550,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                   style={styles.sheetRow}
                   activeOpacity={0.7}
                   onPress={() => doDelete(menuFor)}>
-                  <Trash2 size={20} color={C.danger} />
+                  <Trash size={20} color={C.danger} />
                   <Text style={[styles.sheetLabel, styles.sheetDanger]}>
                     Delete playlist
                   </Text>
@@ -700,27 +712,24 @@ const styles = StyleSheet.create({
   findInput: {flex: 1, color: C.text, fontSize: 15, padding: 0},
   chips: {
     flexDirection: 'row',
-    gap: 9,
+    gap: 8,
     paddingHorizontal: S.gutter,
     // The list's TOP_FADE padding is the gap under the chips now.
     paddingBottom: 0,
   },
+  // Spotify's grey pill: 32 tall, the name alone.
   chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    height: 32,
+    justifyContent: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: C.surfaceHi,
+    backgroundColor: CHIP,
   },
   // One colour, the logo's, not the greeting's of the moment: the filter is
   // part of the Library, and the Library should not change colour with Home.
   chipOn: {backgroundColor: C.brand},
-  chipCount: {color: C.faint, fontSize: 11.5, fontWeight: '800'},
-  chipCountOn: {color: '#111014', opacity: 0.6},
-  chipText: {...T.sub, color: C.text, fontSize: 13},
-  chipTextOn: {color: '#111014', fontWeight: '700'},
+  chipText: {color: C.text, fontSize: fs(14), fontWeight: '500'},
+  chipTextOn: {color: '#111014', fontWeight: '600'},
   center: {
     flex: 1,
     alignItems: 'center',
@@ -731,19 +740,20 @@ const styles = StyleSheet.create({
   // end above them or its last row is permanently behind one. See src/layout.ts.
   listBox: {flex: 1},
   list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
+  // A fixed height, not padding: getItemLayout relies on it.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: S.gutter,
-    paddingVertical: 7,
-    gap: 13,
+    height: ROW_H,
+    gap: 12,
   },
   rowText: {flex: 1, minWidth: 0},
-  rowTitle: {...T.rowTitle, color: C.text, fontSize: 16},
-  rowTitlePlaying: {color: C.accent, fontWeight: '800'},
-  metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 3},
-  pin: {marginRight: 5, transform: [{rotate: '45deg'}]},
-  rowSub: {...T.sub, color: C.sub, flex: 1},
+  rowTitle: {...T.listTitle, color: C.text},
+  rowTitlePlaying: {color: C.accent, fontWeight: '500'},
+  metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 2},
+  pin: {marginRight: 6},
+  rowSub: {...T.listSub, color: C.sub, flex: 1},
   empty: {
     color: C.faint,
     textAlign: 'center',

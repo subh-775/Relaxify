@@ -36,22 +36,25 @@ import {
   View,
 } from 'react-native';
 import {
-  Check,
   ChevronDown,
-  CircleArrowDown,
   Gauge,
   Disc3,
+  Quote,
+  SkipBack,
+  SkipForward,
+} from '../icons';
+import {
+  DownloadCircle,
+  DownloadedCircle,
   Headphones,
   MoreVertical,
   Pause,
   Play,
-  Quote,
-  Repeat2,
+  Queue,
+  Repeat,
   Shuffle,
-  SkipBack,
-  SkipForward,
-  Timer,
-} from '../icons';
+  SleepTimer,
+} from '../glyphs';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Svg, {Defs, RadialGradient, Rect, Stop} from 'react-native-svg';
 import Animated, {
@@ -68,7 +71,7 @@ import {C} from '../theme';
 import {getLyrics, type Lyrics, type Track} from '../backend';
 import {logEvent} from '../analytics';
 import {enqueueDownload, useIsDownloaded} from '../downloads';
-import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
+import {cleanText, fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from '../components/Marquee';
 import {
   RepeatMode,
@@ -943,7 +946,11 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   const artwork = track
     ? getBestArtworkUrl(track)
     : String(active.artwork ?? '');
-  const title = cleanText(String(active.title ?? ''));
+  // The whole title as the source has it, entities decoded: "(From ...)",
+  // "(Live)" and all. The lists keep the tidied one.
+  const title = fullText(active.title);
+  // The open player's surface, which the floating lines' edges fade into.
+  const fadeColor = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
   const artistList = splitArtists(String(active.artist ?? ''));
   const artists = artistList.join(', ');
   const artistCount = artistList.length;
@@ -1106,9 +1113,14 @@ export const PlayerScreen = React.memo(function PlayerScreen({
           <View style={styles.metaRow}>
             <View style={styles.metaCarousel}>
               <Animated.View style={[styles.meta, metaStyle]}>
-                <Text style={styles.title} numberOfLines={1}>
-                  {title}
-                </Text>
+                {/* One line, as Spotify sets it, always at the same size: a
+                    long title floats rather than shrinks. */}
+                <Marquee
+                  text={title}
+                  style={styles.title}
+                  paused={!visible}
+                  fadeColor={fadeColor}
+                />
                 {/* Its OWN line, at full width. The artist is the second most
                     important thing on this screen and it was sharing a row with
                     two badges and the output device — which is how "Mitraz"
@@ -1123,6 +1135,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     style={styles.artist}
                     ticker={artistCount > 1}
                     paused={!visible}
+                    fadeColor={fadeColor}
                   />
                 </TouchableOpacity>
                 {/* Third line. Both badges render nothing when their setting is
@@ -1168,13 +1181,17 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   disabled={downloading || downloaded}
                   hitSlop={8}
                   style={styles.actionBtn}>
-                  {downloaded || downloading ? (
-                    <Check size={24} color={C.accent} strokeWidth={2.6} />
+                  {/* On the phone: a white tick in the ring, not a coral
+                      one. Coral is for what you switch on; a download is a
+                      fact about the song, so it stays the colour of the
+                      page. Mid-download, the ring waits, dimmed. */}
+                  {downloaded ? (
+                    <DownloadedCircle size={ACTION} color={C.text} />
                   ) : (
-                    <CircleArrowDown
-                      size={25}
+                    <DownloadCircle
+                      size={ACTION}
                       color={C.sub}
-                      strokeWidth={1.8}
+                      style={downloading && styles.actionWaiting}
                     />
                   )}
                 </TouchableOpacity>
@@ -1182,7 +1199,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                 <AddButton
                   track={track}
                   onOpenSheet={onAddToPlaylist}
-                  size={25}
+                  size={ACTION}
                   style={styles.actionBtn}
                 />
               </View>
@@ -1193,7 +1210,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   not "by which radio". */}
               {!!output && (
                 <View style={styles.output}>
-                  <Headphones size={12} color={C.accent} />
+                  <Headphones size={13.5} color={C.accent} />
                   <Text style={styles.outputText} numberOfLines={1}>
                     {output}
                   </Text>
@@ -1258,7 +1275,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               onPress={toggleRepeat}
               hitSlop={10}
               style={styles.tBtn}>
-              <Repeat2
+              <Repeat
                 size={26}
                 color={repeat === RepeatMode.Off ? C.sub : C.accent}
                 strokeWidth={repeat === RepeatMode.Off ? 2 : 2.4}
@@ -1299,7 +1316,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   {fastRate ? (
                     <Text style={styles.rateBadge}>{rateLabel(rate)}</Text>
                   ) : (
-                    <Gauge size={21} color={C.text} strokeWidth={2} />
+                    <Gauge size={BOTTOM_ICON} color={C.text} strokeWidth={2} />
                   )}
                 </TouchableOpacity>
 
@@ -1317,10 +1334,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     sleepArmed ? `Sleep timer: ${sleepArmed}` : 'Sleep timer'
                   }
                   style={styles.queueBtn}>
-                  <Timer
-                    size={21}
+                  <SleepTimer
+                    size={BOTTOM_ICON}
                     color={sleepArmed ? C.accent : C.text}
-                    strokeWidth={2}
                   />
                 </TouchableOpacity>
 
@@ -1331,7 +1347,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   accessibilityRole="button"
                   accessibilityLabel="Open the queue"
                   style={styles.queueBtn}>
-                  <QueueGlyph size={22} color={C.text} />
+                  <Queue size={BOTTOM_ICON} color={C.text} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -1382,16 +1398,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
  * that says "queue" without also saying "list" or "menu" — and this screen
  * already has a menu.
  */
-function QueueGlyph({size = 22, color}: {size?: number; color: string}) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Rect x="7" y="4" width="10" height="4" rx="2" fill={color} />
-      <Rect x="3" y="12" width="18" height="2.2" rx="1.1" fill={color} />
-      <Rect x="3" y="18" width="18" height="2.2" rx="1.1" fill={color} />
-    </Svg>
-  );
-}
-
 function PaneSwitch({
   pane,
   onPick,
@@ -1793,15 +1799,25 @@ function NeighbourMeta({n, slide, span}: NeighbourProps) {
     <Animated.View
       pointerEvents="none"
       style={[styles.meta, styles.metaPreview, style]}>
-      <Text style={styles.title} numberOfLines={1}>
-        {cleanText(String(n.track.title ?? ''))}
-      </Text>
+      <Marquee
+        text={fullText(n.track.title)}
+        style={styles.title}
+        paused
+      />
       <Text style={styles.artist} numberOfLines={1}>
         {splitArtists(String(n.track.artist ?? '')).join(', ')}
       </Text>
     </Animated.View>
   );
 }
+
+/** The download and + beside the title: the size the mini player's + is
+ *  (PlayerBar), so the two players draw the same control the same size. */
+const ACTION = 26;
+
+/** Speed, sleep and queue, bottom right: 24 in a 6px pad is the 36 the
+ *  song / lyrics capsule bottom left stands, so the row reads as one line. */
+const BOTTOM_ICON = 24;
 
 const styles = StyleSheet.create({
   // Below the bottom sheets (40) so a sheet raised from the ⊕ in here sits on
@@ -1880,9 +1896,9 @@ const styles = StyleSheet.create({
   // Tabular-ish: a fixed min width so 1.25x and 2x do not shuffle the row.
   rateBadge: {
     color: C.accent,
-    fontSize: 13,
-    fontWeight: '800',
-    minWidth: 34,
+    fontSize: 14,
+    fontWeight: '700',
+    minWidth: 36,
     textAlign: 'center',
   },
   bottomRight: {flexDirection: 'row', alignItems: 'center', gap: 2},
@@ -1961,16 +1977,26 @@ const styles = StyleSheet.create({
   metaCarousel: {flex: 1, minWidth: 0, overflow: 'hidden'},
   meta: {minWidth: 0},
   metaPreview: {position: 'absolute', top: 0, left: 0, right: 0},
-  title: {fontSize: 23, fontWeight: '800', color: C.text, letterSpacing: -0.3},
-  // C.text at 15/500, not a 13px caption in C.sub. It is the second most
-  // important thing on the screen and it now has a line to itself.
-  artist: {color: C.text, fontSize: 15, fontWeight: '500', marginTop: 2},
+  // 22, a point under the 23 it was, so more titles fit whole. One size for
+  // every title: a long one floats instead of shrinking.
+  title: {
+    fontSize: 22,
+    lineHeight: 29,
+    fontWeight: '700',
+    color: C.text,
+    letterSpacing: -0.3,
+  },
+  // C.text at 15, plain: the title carries the weight, the credit reads
+  // quietly under it. It has a line to itself.
+  artist: {color: C.text, fontSize: 15, fontWeight: '400', marginTop: 2},
   badgeRow: {flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4},
   actionCol: {alignItems: 'flex-end', gap: 6},
   actions: {flexDirection: 'row', alignItems: 'center', gap: 2, paddingTop: 2},
   // 9, not 7: dropping the heart freed about thirty pixels in this row, and
   // the honest use for them is a bigger touch target rather than more air.
+  // 26 + 9 either side: the 44 the row has always been.
   actionBtn: {padding: 9},
+  actionWaiting: {opacity: 0.45},
 
   // Capped, because this column shares the row with the title: an unbounded
   // device name would take the width the song name needs.
@@ -1978,11 +2004,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    maxWidth: 150,
+    maxWidth: 160,
   },
   outputText: {
     color: C.accent,
-    fontSize: 11,
+    fontSize: 12.5,
     fontWeight: '600',
     flexShrink: 1,
   },
@@ -2019,7 +2045,7 @@ const styles = StyleSheet.create({
   lyricLine: {
     fontSize: 21,
     lineHeight: LINE_H,
-    fontWeight: '800',
+    fontWeight: '700',
     color: 'rgba(255,255,255,0.38)',
   },
   lyricLineOn: {color: C.text},

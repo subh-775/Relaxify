@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   dots: {flexDirection: 'row', gap: 4},
   dot: {width: 7, height: 7, borderRadius: 4, backgroundColor: '#3a3a40'},
   dotOn: {backgroundColor: C.text},
-  countText: {color: C.text, fontSize: 12.5, fontWeight: '800'},
+  countText: {color: C.text, fontSize: 12.5, fontWeight: '700'},
   // Three to a row: all sixteen fit on the welcome page and in the sheet
   // without scrolling.
   grid: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14},

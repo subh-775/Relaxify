@@ -44,12 +44,46 @@ export const fs = (size: number): number =>
 // lineHeight is explicit on the title styles: Android crops the descender of a
 // big bold letter (the 'g' in "Good morning" / "Settings") when a line is left
 // to its default height, so every title gets ~1.3× breathing room.
+//
+// Spotify's pairing: a bold heading, and regular lines under it. The weight
+// is in the headings; a list row is plain, so a screen of them reads calm and
+// the playing one (coral) stands out by colour alone.
 export const T = {
   screenTitle: {
-    fontSize: fs(26),
-    lineHeight: fs(34),
-    fontWeight: '800' as const,
-    letterSpacing: -0.5,
+    fontSize: fs(24),
+    lineHeight: fs(31),
+    fontWeight: '700' as const,
+    letterSpacing: -0.4,
+  },
+  /** A Home row's heading ("Recommended for today"). */
+  section: {
+    fontSize: fs(21),
+    lineHeight: fs(27),
+    fontWeight: '700' as const,
+    letterSpacing: -0.4,
+  },
+  /** A list row's first line: a song, a playlist, a setting. */
+  listTitle: {
+    fontSize: fs(16),
+    lineHeight: fs(21),
+    fontWeight: '400' as const,
+  },
+  /** The grey line under it. */
+  listSub: {
+    fontSize: fs(13.5),
+    lineHeight: fs(18),
+    fontWeight: '400' as const,
+  },
+  /** Under a cover on Home: the name, then who made it. */
+  cardTitle: {
+    fontSize: fs(14),
+    lineHeight: fs(18),
+    fontWeight: '700' as const,
+  },
+  cardSub: {
+    fontSize: fs(13),
+    lineHeight: fs(17),
+    fontWeight: '400' as const,
   },
   rowTitle: {
     fontSize: fs(17),

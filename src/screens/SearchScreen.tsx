@@ -24,7 +24,7 @@ import {
   View,
 } from 'react-native';
 import {Clock, Search as SearchIcon, X} from '../icons';
-import {C, S, T} from '../theme';
+import {C, S, T, fs} from '../theme';
 import {
   getGenres,
   getLyricHint,
@@ -412,7 +412,7 @@ export const SearchScreen = React.memo(function SearchScreen({
         </View>
 
         <View style={styles.field}>
-          <SearchIcon size={20} color={C.bg} strokeWidth={2.4} />
+          <SearchIcon size={22} color={C.bg} strokeWidth={2.2} />
           <View style={styles.inputBox}>
             {/* The tab stays mounted, and leaving it empties the field: on
                 its own this ticker ran behind Home and Library all session. */}
@@ -432,7 +432,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           </View>
           {!!query && (
             <TouchableOpacity onPress={() => resetSearch(true)} hitSlop={10}>
-              <X size={19} color={C.bg} />
+              <X size={20} color={C.bg} />
             </TouchableOpacity>
           )}
         </View>
@@ -781,15 +781,15 @@ const styles = StyleSheet.create({
   field: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     marginHorizontal: S.gutter,
     paddingHorizontal: 14,
-    height: 46,
-    borderRadius: 6,
+    height: 48,
+    borderRadius: 8,
     backgroundColor: '#fff',
   },
   inputBox: {flex: 1, alignSelf: 'stretch', justifyContent: 'center'},
-  input: {color: '#000', fontSize: 15, fontWeight: '600', padding: 0},
+  input: {color: '#000', fontSize: 15, fontWeight: '500', padding: 0},
   spotify: {
     marginHorizontal: S.gutter,
     marginTop: 12,
@@ -820,12 +820,14 @@ const styles = StyleSheet.create({
   // end above them or its last row is permanently behind one. See src/layout.ts.
   list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
   section: {
-    ...T.rowTitle,
     color: C.text,
-    fontSize: 16,
+    fontSize: fs(18),
+    lineHeight: fs(24),
+    fontWeight: '700',
+    letterSpacing: -0.3,
     paddingHorizontal: S.gutter,
-    paddingTop: 8,
-    paddingBottom: 6,
+    paddingTop: 12,
+    paddingBottom: 10,
   },
   grid: {
     flexDirection: 'row',
@@ -833,24 +835,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     gap: 10,
   },
+  // Spotify's Browse tile: 100 tall, a small corner, the name bold.
   tile: {
     flexBasis: '47%',
     flexGrow: 1,
-    height: 96,
-    borderRadius: 8,
+    height: 100,
+    borderRadius: 6,
     overflow: 'hidden',
     padding: 12,
   },
-  tileText: {color: '#fff', fontSize: 15, fontWeight: '800', maxWidth: '75%'},
+  tileText: {
+    color: '#fff',
+    fontSize: fs(16),
+    lineHeight: fs(20),
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    maxWidth: '75%',
+  },
   tileBlob: {position: 'absolute', right: -26, bottom: -30},
   // The cover sits half off the corner, rotated — the Spotify browse-tile look,
   // and it means a square cover never has to be cropped to fit.
   tileArt: {
     position: 'absolute',
-    right: -14,
-    bottom: -6,
-    width: 62,
-    height: 62,
+    right: -12,
+    bottom: -4,
+    width: 68,
+    height: 68,
     borderRadius: 4,
     transform: [{rotate: '25deg'}],
   },
@@ -873,7 +883,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 1,
   },
-  firstText: {color: '#111014', fontSize: 11, fontWeight: '800'},
+  firstText: {color: '#111014', fontSize: 11, fontWeight: '700'},
   artistCard: {width: 84, alignItems: 'center'},
   artistPfp: {
     width: 76,
@@ -887,7 +897,13 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceHi,
   },
   artistInitial: {color: C.faint, fontSize: 26, fontWeight: '700'},
-  artistName: {...T.sub, color: C.text, marginTop: 6, textAlign: 'center'},
+  artistName: {
+    color: C.text,
+    fontSize: fs(13),
+    fontWeight: '500',
+    marginTop: 7,
+    textAlign: 'center',
+  },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -895,7 +911,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     paddingVertical: 13,
   },
-  historyText: {...T.body, color: C.text, flex: 1, fontWeight: '500'},
+  historyText: {...T.listTitle, color: C.text, flex: 1},
   historyX: {padding: 2},
   suggestion: {
     flexDirection: 'row',
@@ -905,21 +921,21 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   suggestionArt: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 4,
     backgroundColor: C.surface,
   },
-  suggestionRound: {borderRadius: 22},
+  suggestionRound: {borderRadius: 24},
   suggestionArtEmpty: {
     backgroundColor: C.surfaceHi,
     alignItems: 'center',
     justifyContent: 'center',
   },
   suggestionText: {flex: 1, minWidth: 0},
-  suggestionTitle: {...T.body, color: C.text},
-  suggestionSub: {...T.sub, color: C.sub, marginTop: 2},
-  suggestionPlaying: {color: C.accent, fontWeight: '800'},
+  suggestionTitle: {...T.listTitle, color: C.text},
+  suggestionSub: {...T.listSub, color: C.sub, marginTop: 2},
+  suggestionPlaying: {color: C.accent, fontWeight: '500'},
   empty: {
     color: C.faint,
     textAlign: 'center',

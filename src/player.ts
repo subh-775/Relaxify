@@ -481,7 +481,18 @@ async function setupPlayerOnce(): Promise<boolean> {
     });
 
     TrackPlayer.addEventListener(Event.PlaybackError, e => {
-      logEvent('playback_error', {message: e.message, code: e.code});
+      // With the song and its source, so a failure can be traced to the
+      // source that refused it, as playback_stall already is.
+      TrackPlayer.getActiveTrack()
+        .catch(() => undefined)
+        .then(t => {
+          const src = sourceTrackFor(t ?? null);
+          logEvent('playback_error', {
+            ...(src ? songParams(src) : {}),
+            message: e.message,
+            code: e.code,
+          });
+        });
       retryAfterError()
         .then(retried => retried || skipPastError())
         .catch(() => skipPastError());
@@ -536,6 +547,20 @@ async function setupPlayerOnce(): Promise<boolean> {
           true,
         );
       }
+      // The same queue ROW again is not a new song. Tapping a song part-way
+      // down a list starts it alone, then inserts the earlier songs in front
+      // of it; the shift fires this event a second time for the song that is
+      // already playing, and every tapped song was counted twice.
+      const sameRow =
+        !!e.lastTrack?._qid && e.lastTrack._qid === e.track?._qid;
+      if (!sameRow) {
+        // The song that ended: at the engine's own last position when it is
+        // the one whose listen is open (exact even behind a locked screen).
+        const wasOpen =
+          !!e.lastTrack?._qid && e.lastTrack._qid === listening?.row._qid;
+        closeListen(wasOpen ? e.lastPosition || undefined : undefined);
+        listening = e.track ? {row: e.track, position: 0} : null;
+      }
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
         TrackPlayer.getPlaybackState()
@@ -545,34 +570,8 @@ async function setupPlayerOnce(): Promise<boolean> {
         // engine moved on to (autoplay, Next, a swipe) only once it has earned a
         // play (countListened), so a song skipped after a second never shows up.
 
-        // The same queue ROW again is not a new play. Tapping a song part-way
-        // down a list starts it alone, then inserts the earlier songs in front
-        // of it; the shift fires this event a second time for the song that is
-        // already playing, and every tapped song was counted twice.
-        const sameRow =
-          !!e.lastTrack?._qid && e.lastTrack._qid === e.track?._qid;
         if (!sameRow) {
           logEvent('song_played', songParams(src));
-          // How far the song that just ended got: skips vs full listens.
-          const last = sourceTrackFor(e.lastTrack ?? null);
-          if (last) {
-            const dur = Number(e.lastTrack?.duration) || 0;
-            logEvent('song_listened', {
-              ...songParams(last),
-              seconds: Math.round(e.lastPosition || 0),
-              completed: dur > 0 && e.lastPosition >= dur - 5 ? 1 : 0,
-              // The same as text: GA keeps a number in a text dimension as
-              // blank, so `completed` could never be read. The report reads
-              // this one (relaxify-report: songs played to the end).
-              finished: dur > 0 && e.lastPosition >= dur - 5 ? 'yes' : 'no',
-              // Not a skip: the song moved on by itself. With `completed` 0
-              // that is a song cut short, which is worth seeing with the
-              // speed and crossfade it happened at.
-              auto: Date.now() - Math.max(manualStepAt, userMoveAt) > 3000 ? 1 : 0,
-              rate: playbackRate(),
-              crossfade: readSettings().crossfadeDuration,
-            });
-          }
         }
       }
       // Re-read the mirror, warm the covers around the new track and save the
@@ -895,6 +894,9 @@ export async function playTrack(
   buildingQueue = true;
 
   cancelCrossfade(); // and guarantee full volume for the fresh track
+  // The reset below drops the playing song without a "last track", so its
+  // listen is closed here, while it is still known.
+  closeListen(undefined, true);
   // A brand-new queue is in the order the user picked — shuffle no longer
   // describes anything, so the icon must go back to off.
   preShuffleUpcoming = null;
@@ -1666,6 +1668,7 @@ export async function togglePlay(): Promise<void> {
 
 export async function stop(): Promise<void> {
   cancelCrossfade();
+  closeListen(undefined, true);
   try {
     await TrackPlayer.reset();
     clearResume(); // an explicit stop means "don't reopen on this"
@@ -1924,6 +1927,62 @@ export function earnedPlay(
 ): boolean {
   const need = playThreshold(duration);
   return position >= need && (from < need || position - from >= need);
+}
+
+/**
+ * The song whose listen is open. It is closed, and sent as `song_listened`,
+ * exactly once, however the song stops being the song: it ended, a skip, a
+ * tap on another song, Stop. It used to be sent only from the track-changed
+ * event, which reaches a tapped song's fresh queue with no "last track", so
+ * every song left by tapping another was never reported.
+ */
+let listening: {row: RNTPTrack; position: number} | null = null;
+
+/** How a listen ended. `full`: it reached the end, or the last few seconds
+ *  a crossfade overlaps (the next song starts up to `crossfade` seconds
+ *  early, which read as "not finished" with the old 5 s rule). `partial`:
+ *  it earned a play (the Recap's rule), `skip`: it did not. */
+export function listenOutcome(
+  position: number,
+  duration: number,
+  crossfade: number,
+): 'full' | 'partial' | 'skip' {
+  if (duration > 0 && position >= duration - 5 - Math.max(0, crossfade)) {
+    return 'full';
+  }
+  return position >= playThreshold(duration) ? 'partial' : 'skip';
+}
+
+function closeListen(position?: number, byUser = false): void {
+  const open = listening;
+  listening = null;
+  const src = open && sourceTrackFor(open.row);
+  if (!open || !src) {
+    return;
+  }
+  const dur = Number(open.row.duration) || 0;
+  const at = Math.max(0, position ?? open.position);
+  // Opened but never heard: a session restored paused and left.
+  if (at <= 0) {
+    return;
+  }
+  const crossfade = readSettings().crossfadeDuration;
+  const listen = listenOutcome(at, dur, crossfade);
+  logEvent('song_listened', {
+    ...songParams(src),
+    // How far it got, which is the time heard unless it was seeked.
+    seconds: Math.round(dur > 0 ? Math.min(at, dur) : at),
+    listen,
+    // The same as yes/no, for the reports that read it since v1.2.36.
+    finished: listen === 'full' ? 'yes' : 'no',
+    // Text, not a number: GA keeps a number in a text dimension as blank.
+    ended_by:
+      byUser || Date.now() - Math.max(manualStepAt, userMoveAt) <= 3000
+        ? 'user'
+        : 'auto',
+    rate: playbackRate(),
+    crossfade,
+  });
 }
 
 function countListened(
@@ -2310,6 +2369,10 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
       const active = (await TrackPlayer.getActiveTrack()) ?? null;
       if (state === State.Playing) {
         countListened(active, position, duration);
+        const open = listening;
+        if (open && active?._qid && active._qid === open.row._qid) {
+          open.position = position;
+        }
       }
       const src = sourceTrackFor(active);
       if (src) {

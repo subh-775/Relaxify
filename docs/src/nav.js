@@ -1,7 +1,7 @@
 /**
- * One source of truth for the site's shape: the pages in reading order, each
- * with the card colour it wears (the app's own card palette) and what its
- * card on Home says.
+ * One source of truth for the site's shape: the pages in reading order (the
+ * four core features first), the colour each one's card wears on Home, and
+ * what that card says. Colour lives on Home only; the pages are plain.
  */
 
 /** owner/name once, so a rename or a fork is one edit rather than six. */
@@ -32,17 +32,16 @@ export const PAL = {
   night: {bg: '#15121C', ink: '#FFFFFF', art: '#2EE6C8'},
 };
 
-/** The order colours cycle through for steps and gesture cards. */
-export const CYCLE = ['lime', 'sky', 'lav', 'orange', 'pink', 'teal'];
-
 export const PAGES = [
-  {link: '/start', pal: 'coral', title: 'Start here', kicker: 'Your first song in a minute', card: 'Install, pick languages, hit play.'},
-  {link: '/play', pal: 'lime', title: 'Play & find', kicker: 'Every song, one search', card: 'Search, the player, the right copy.'},
-  {link: '/music', pal: 'sky', title: 'Your music', kicker: 'Keep it, move it, Recap it', card: 'Likes, downloads, playlists.'},
-  {link: '/together', pal: 'lav', title: 'Together', kicker: 'Same song, same second', card: 'Jam with friends, share playlists.'},
-  {link: '/sound', pal: 'orange', title: 'Sound', kicker: 'Make it sound yours', card: 'Equalizer, quality, data saver.'},
-  {link: '/help', pal: 'pink', title: 'Help', kicker: "Something off? Let's fix it", card: 'Quick answers, no stress.', mood: 'huh'},
-  {link: '/releases', pal: 'night', title: "What's new", kicker: 'The newest version', card: 'Version, date and downloads.'},
+  {link: '/start', pal: 'coral', title: 'Getting started', kicker: 'Install and first steps', card: 'From download to your first song in about a minute.'},
+  {link: '/offline', pal: 'lime', title: 'Offline listening', kicker: 'No signal, no problem', card: 'Download songs and play them anywhere, no data needed.'},
+  {link: '/import', pal: 'sky', title: 'Bring your playlists', kicker: 'From Spotify and YouTube', card: 'Paste a link and your playlist is rebuilt here.'},
+  {link: '/sound', pal: 'orange', title: 'Equalizer and sound', kicker: 'Hear more of what you love', card: 'Bring out the bass, the voice or the guitar.'},
+  {link: '/together', pal: 'lav', title: 'Listen together', kicker: 'Same song, same second', card: 'Start a Jam with friends, or share a playlist.'},
+  {link: '/play', pal: 'pink', title: 'Search and play', kicker: 'Every source, one search', card: 'Search, lyrics and picking the right version.'},
+  {link: '/music', pal: 'teal', title: 'Your library', kicker: 'Likes, playlists and Recap', card: 'Everything you keep, and your week in music.'},
+  {link: '/help', pal: 'coral', title: 'Questions and fixes', kicker: 'Answers to common questions', card: 'Installing, playback and your data.'},
+  {link: '/releases', pal: 'night', title: "What's new", kicker: 'The latest version', card: 'Version, date and downloads.'},
 ];
 
 /** The download page lives outside the app shell (public/get), so links to
@@ -63,8 +62,8 @@ export const MOVED = {
   '/guide/queue': '/play',
   '/guide/lyrics': '/play',
   '/guide/library': '/music',
-  '/guide/downloads': '/music',
-  '/guide/spotify-import': '/music',
+  '/guide/downloads': '/offline',
+  '/guide/spotify-import': '/import',
   '/guide/recap': '/music',
   '/guide/jam': '/together',
   '/guide/equalizer': '/sound',

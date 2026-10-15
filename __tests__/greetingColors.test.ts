@@ -54,11 +54,13 @@ test('the line fits its room with the longest word, pill and all', () => {
   // Rooms Home's header leaves on 432, 392 and 360 dp phones.
   for (const room of [300, 260, 224]) {
     const size = fitSize(room);
-    // "Listen" and "up" (2.747 + 1.203 em), a 7 dp gap after each, and the
-    // pill with 9 dp either side.
-    expect(size * (2.747 + 1.203 + longest) + 14 + 18).toBeLessThanOrEqual(room);
+    // "Listen" and "up" (3.037 + 1.279 em in DM Sans ExtraBold), a 7 dp gap
+    // after each, and the pill with 9 dp either side.
+    expect(size * (3.037 + 1.279 + longest) + 14 + 18).toBeLessThanOrEqual(room);
   }
-  expect(fitSize(224)).toBeGreaterThanOrEqual(22); // not tiny on a 360 dp phone
+  // Not tiny on a 360 dp phone. 21, not 22: DM Sans is a little wider than
+  // Plus Jakarta Sans was at this weight.
+  expect(fitSize(224)).toBeGreaterThanOrEqual(21);
   expect(fitSize(0)).toBe(32); // before layout: full size, not 0
 });
 

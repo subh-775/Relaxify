@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
   big: {
     color: C.brand,
     fontSize: 34,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: -1,
     marginTop: 4,
   },
@@ -72,5 +72,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 26,
     paddingVertical: 13,
   },
-  btnText: {color: C.bg, fontSize: 15, fontWeight: '800'},
+  btnText: {color: C.bg, fontSize: 15, fontWeight: '700'},
 });

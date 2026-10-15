@@ -1,5 +1,5 @@
 /**
- * Plus Jakarta Sans on every Text and TextInput in the app.
+ * DM Sans on every Text and TextInput in the app.
  *
  * A Text with no fontFamily renders in the phone's own system font, and that
  * is not one font: Roboto on one phone, a maker's own face on the next, so the
@@ -17,7 +17,13 @@
  */
 import {Text, TextInput} from 'react-native';
 
-export const FONT = 'Plus Jakarta Sans';
+/**
+ * Spotify's own face, Spotify Mix, is not available to anyone else. DM Sans
+ * is the nearest open one: the same round, low-contrast geometric letters, a
+ * two-storey a, a straight-tailed y, and a smaller x-height than Plus Jakarta
+ * Sans had, so a 16px row reads at Spotify's size rather than a size up.
+ */
+export const FONT = 'DM Sans';
 
 const base = {fontFamily: FONT};
 

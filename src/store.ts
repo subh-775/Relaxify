@@ -54,6 +54,10 @@ export type Settings = {
   homeLanguages: string[];
   /** Stream at DATA_SAVER_KBPS while on mobile data. */
   dataSaver: boolean;
+  /** "Home style as Speed Dial": Home's Discover and Recents as two 3x3
+   *  grids of covers. Off, each is a row of covers you scroll sideways, like
+   *  the rest of Home. */
+  homeGrid: boolean;
 };
 
 /** The quality streamed on mobile data with the data saver on. */
@@ -90,6 +94,9 @@ export const DEFAULT_SETTINGS: Settings = {
   resumeOnConnect: false,
   homeLanguages: ['hindi', 'english'],
   dataSaver: true,
+  // A row of covers, the way every other part of Home reads. The grid is the
+  // speed dial for anyone who wants nine songs one tap away.
+  homeGrid: false,
 };
 
 /** At most this many Home languages: more and Home turns into a blur. */

@@ -34,7 +34,8 @@ import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import {Headphones, Menu, Shuffle} from '../icons';
+import {Menu} from '../icons';
+import {Headphones, Shuffle} from '../glyphs';
 import type {Track as RNTPTrack} from 'react-native-track-player';
 import {C, S, T} from '../theme';
 import {
@@ -544,7 +545,7 @@ const styles = StyleSheet.create({
   artEmpty: {backgroundColor: C.surfaceHi},
   text: {flex: 1, minWidth: 0},
   title: {...T.body, color: C.text},
-  titleActive: {color: C.accent, fontWeight: '800'},
+  titleActive: {color: C.accent, fontWeight: '700'},
   artist: {...T.sub, color: C.sub, marginTop: 2},
   rec: {color: C.faint},
   grip: {paddingHorizontal: 14, paddingVertical: 18},

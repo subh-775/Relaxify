@@ -42,7 +42,7 @@ import {
   reserveDrawerEdge,
   shouldOpen,
 } from '../drawer';
-import {BOTTOM_INSET} from '../layout';
+import {BOTTOM_INSET, HOME_CARD, HOME_CARD_RADIUS} from '../layout';
 import {TOP_FADE, TopFade} from '../components/TopFade';
 import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
@@ -568,7 +568,7 @@ function Card({item, onPick}: {item: HomeItem; onPick: (i: HomeItem) => void}) {
   );
 }
 
-const CARD = 138;
+const CARD = HOME_CARD;
 
 /**
  * Every row comes to rest with a card on the page margin.
@@ -612,22 +612,22 @@ const styles = StyleSheet.create({
   },
   row: {marginTop: 22},
   rowTitle: {
-    ...T.rowTitle,
+    ...T.section,
     color: C.text,
     paddingHorizontal: S.gutter,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   rowList: {paddingHorizontal: S.gutter, gap: S.gap},
   card: {width: CARD},
   artWrap: {
-    borderRadius: S.radius,
+    borderRadius: HOME_CARD_RADIUS,
     overflow: 'hidden',
     backgroundColor: C.surface,
   },
   art: {width: CARD, height: CARD},
   artFallback: {backgroundColor: C.surfaceHi},
-  cardTitle: {...T.body, color: C.text, marginTop: 8, lineHeight: 18},
-  cardSub: {...T.sub, color: C.sub, marginTop: 2},
+  cardTitle: {...T.cardTitle, color: C.text, marginTop: 8},
+  cardSub: {...T.cardSub, color: C.sub, marginTop: 2},
   center: {flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14},
   errText: {
     color: C.danger,

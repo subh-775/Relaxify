@@ -12,14 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  HardDrive,
-  RefreshCw,
-  Trash2,
-} from '../icons';
+import {Check, ChevronLeft, ChevronRight, HardDrive, RefreshCw} from '../icons';
+import {Trash} from '../glyphs';
 import {
   COLLECTED_ITEMS,
   COLLECTED_PROMISE,
@@ -38,7 +32,7 @@ import ReAnimated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import {C, S, T} from '../theme';
+import {C, S, T, fs} from '../theme';
 import {
   appVersion,
   clearBackendCache,
@@ -199,16 +193,11 @@ const QUALITIES = [
 ];
 
 /**
- * A settings group: a small icon + label, over one rounded card holding its
- * rows.
+ * A settings group: a white heading over its rows, Spotify's way.
  *
- * The flat version — a label and then rows ruled edge to edge — made the whole
- * screen one continuous ribbon of hairlines, so no group had a visible start or
- * end and everything read as a single undifferentiated list. A card gives each
- * group a boundary, which is what makes it scannable.
- *
- * Separators are injected BETWEEN children rather than set as a border on each
- * row, so the first row never carries a stray line under the card's top edge.
+ * No card, no hairlines. Ruled rows made the screen one long ribbon of lines;
+ * a bold heading and the space around each group give it its start and end
+ * instead, and the rows read as plain text.
  */
 function Section({
   title,
@@ -242,7 +231,6 @@ function Section({
           // component state leaks across rows. React.Children.toArray already
           // assigns stable keys; use them.
           <React.Fragment key={(child as {key?: string}).key ?? i}>
-            {i > 0 && <View style={styles.sep} />}
             {child}
           </React.Fragment>
         ))}
@@ -252,7 +240,11 @@ function Section({
   );
 }
 
-type RowIcon = typeof HardDrive;
+type RowIcon = React.ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}>;
 
 /** A row's leading icon, the same size and colour everywhere. */
 function Lead({Icon}: {Icon?: RowIcon}) {
@@ -1218,6 +1210,11 @@ export function SettingsScreen({
             value={languagesLabel(settings.homeLanguages)}
             onPress={() => setLangOpen(true)}
           />
+          <ToggleRow
+            label="Home style as Speed Dial"
+            value={settings.homeGrid}
+            onChange={v => writeSetting('homeGrid', v)}
+          />
           <LanguagesSheet open={langOpen} onClose={() => setLangOpen(false)} />
         </Section>
 
@@ -1319,7 +1316,7 @@ export function SettingsScreen({
             onPress={() => setCacheOpen(true)}
             disabled={clearing}
             activeOpacity={0.7}>
-            <Lead Icon={Trash2} />
+            <Lead Icon={Trash} />
             <View style={styles.rowText}>
               <Text style={styles.rowLabel}>
                 {clearing ? 'Clearing…' : 'Clear cached data'}
@@ -1436,7 +1433,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   back: {padding: 4},
-  barTitle: {...T.screenTitle, color: C.text, fontSize: 22},
+  barTitle: {...T.screenTitle, color: C.text},
   center: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   // Enough tail room that the last row clears the mini player + bottom nav —
   // the reset button was getting clipped by a small amount.
@@ -1485,16 +1482,18 @@ const styles = StyleSheet.create({
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: S.gutter + 4,
-    marginBottom: 8,
+    gap: 8,
+    paddingHorizontal: S.gutter,
+    marginBottom: 2,
   },
+  // A plain white heading, as Spotify's settings have: the group is named
+  // in the same voice as the screen, not in small grey capitals.
   sectionTitle: {
-    fontSize: 11.5,
+    fontSize: fs(18),
+    lineHeight: fs(24),
     fontWeight: '700',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    color: C.faint,
+    letterSpacing: -0.2,
+    color: C.text,
   },
   /**
    * FLAT. No fill, no radius, no card.
@@ -1505,11 +1504,9 @@ const styles = StyleSheet.create({
    * nothing else — which reads as MORE scannable, not less, because the eye
    * stops having to parse three container edges per section.
    */
-  card: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: C.border,
-  },
+  // No lines at all now: the heading and the space around a group are
+  // what separate it.
+  card: {},
   // A brief accent ring, for "this is the thing you came here for". Still a
   // ring, because with no card fill there is nothing else to tint.
   cardHighlight: {
@@ -1520,21 +1517,16 @@ const styles = StyleSheet.create({
   sectionFooter: {
     ...T.sub,
     color: C.faint,
-    paddingHorizontal: S.gutter + 4,
+    paddingHorizontal: S.gutter,
     paddingTop: 7,
     lineHeight: 16,
-  },
-  sep: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: C.border,
-    marginLeft: S.gutter,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     // Aligned to the page gutter now that there is no card inset to sit inside.
     paddingHorizontal: S.gutter,
-    paddingVertical: 13,
+    paddingVertical: 12,
     gap: 14,
   },
   sheetTitle: {
@@ -1548,11 +1540,12 @@ const styles = StyleSheet.create({
   choiceOn: {color: C.brand},
   sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   rowText: {flex: 1, minWidth: 0},
-  rowLabel: {...T.body, color: C.text},
+  rowLabel: {...T.listTitle, color: C.text},
   rowLabelAccent: {color: C.brand},
-  rowHint: {...T.sub, color: C.sub, marginTop: 3, lineHeight: 17},
+  rowHint: {...T.listSub, color: C.sub, marginTop: 2},
   rowValue: {
-    ...T.sub,
+    fontSize: fs(14),
+    fontWeight: '400',
     color: C.sub,
     flexShrink: 1,
     maxWidth: 190,
@@ -1568,7 +1561,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 11,
   },
-  resetText: {color: '#fff', fontSize: 15, fontWeight: '800'},
+  resetText: {color: '#fff', fontSize: 15, fontWeight: '700'},
   resetHint: {paddingHorizontal: S.gutter, marginTop: 8},
   tail: {height: 10},
   folderPath: {
@@ -1613,7 +1606,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: C.text,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   stepDots: {flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 10},

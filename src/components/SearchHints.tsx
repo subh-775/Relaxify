@@ -72,5 +72,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  hint: {color: '#6b6b6b', fontSize: 15, fontWeight: '600', flexShrink: 1},
+  hint: {color: '#6b6b6b', fontSize: 15, fontWeight: '500', flexShrink: 1},
 });

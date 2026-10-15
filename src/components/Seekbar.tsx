@@ -202,12 +202,12 @@ export function Seekbar({
   // JS-driven outer anchor that used to be required for that is gone.
   const thumbStyle = useAnimatedStyle(() => ({
     left: `${t.value * 100}%`,
-    transform: [{scale: 1 + grow.value * 0.32}],
+    transform: [{scale: 1 + grow.value * 0.5}],
   }));
 
   return (
     <View style={styles.wrap}>
-      {/* ~28px visual, 44px touch (Fitts') — a 4px bar is unhittable. */}
+      {/* A 2.5px line, 44px touch (Fitts') — the line alone is unhittable. */}
       <GestureDetector gesture={gesture}>
         <View style={styles.touch} onLayout={onLayout}>
           <View style={styles.track}>
@@ -230,20 +230,22 @@ export function Seekbar({
 const styles = StyleSheet.create({
   wrap: {marginTop: 14},
   touch: {justifyContent: 'center', height: 44},
+  // Spotify's: a 2.5px line and a small knob. Brighter behind than it was at
+  // 4px, so the thinner line still reads against the artwork's tint.
   track: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    height: 2.5,
+    borderRadius: 1.25,
+    backgroundColor: 'rgba(255,255,255,0.28)',
     overflow: 'hidden',
   },
-  fill: {height: '100%', backgroundColor: C.text, borderRadius: 2},
+  fill: {height: '100%', backgroundColor: C.text, borderRadius: 1.25},
   thumb: {
     position: 'absolute',
     // Half the thumb's width, so it sits centred on the playhead.
-    marginLeft: -6.5,
-    width: 13,
-    height: 13,
-    borderRadius: 6.5,
+    marginLeft: -5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: C.text,
     shadowColor: '#000',
     shadowOpacity: 0.3,

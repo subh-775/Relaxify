@@ -15,11 +15,8 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import {
-  ArrowDownToLine,
-  ListPlus,
-  MoreVertical,
-} from '../icons';
+import {ArrowDownToLine} from '../icons';
+import {AddToQueue, MoreHorizontal} from '../glyphs';
 import {C, S, T} from '../theme';
 import {formatDuration, type Track} from '../backend';
 import {cleanText, getBestArtworkUrl, thumbArtwork} from '../tracks';
@@ -88,7 +85,7 @@ export const TrackRow = React.memo(function TrackRow({
   showDuration?: boolean;
 }) {
   const dur = showDuration ? formatDuration(track.duration_ms) : '';
-  // thumbArtwork, not the baked 500x500: this draws at 52dp, and a list is
+  // thumbArtwork, not the baked 500x500: this draws at 48dp, and a list is
   // where the difference is multiplied by every row the virtualiser holds.
   const artwork = thumbArtwork(getBestArtworkUrl(track));
   // A small green tick marks anything already on disk — permanent until the
@@ -162,7 +159,7 @@ export const TrackRow = React.memo(function TrackRow({
           still reads clearly against the accent-tinted icon. */}
         <View style={styles.queueHintBg} pointerEvents="none">
           <View style={styles.queueHint}>
-            <ListPlus size={22} color={C.accent} strokeWidth={2.4} />
+            <AddToQueue size={22} color={C.accent} />
           </View>
         </View>
 
@@ -222,7 +219,7 @@ export const TrackRow = React.memo(function TrackRow({
                 onPress={onMenu}
                 hitSlop={8}
                 style={styles.menu}>
-                <MoreVertical size={19} color={C.faint} />
+                <MoreHorizontal size={20} color={C.faint} />
               </TouchableOpacity>
             )}
           </TouchableOpacity>
@@ -253,7 +250,8 @@ const styles = StyleSheet.create({
     gap: 12,
     backgroundColor: C.bg,
   },
-  thumb: {width: 52, height: 52, borderRadius: 6, backgroundColor: C.surface},
+  // Spotify's song row: a 48dp cover with a small corner, regular type.
+  thumb: {width: 48, height: 48, borderRadius: 4, backgroundColor: C.surface},
   thumbFallback: {backgroundColor: C.surfaceHi},
   rank: {
     width: 18,
@@ -265,17 +263,17 @@ const styles = StyleSheet.create({
   },
   rankActive: {color: C.accent},
   index: {
-    width: 52,
+    width: 48,
     textAlign: 'center',
     color: C.faint,
     fontSize: 13,
     fontVariant: ['tabular-nums'],
   },
   text: {flex: 1, minWidth: 0},
-  title: {...T.body, color: C.text},
-  titleActive: {color: C.accent, fontWeight: '800'},
-  metaLine: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3},
-  sub: {...T.sub, color: C.sub, flex: 1},
+  title: {...T.listTitle, color: C.text},
+  titleActive: {color: C.accent, fontWeight: '500'},
+  metaLine: {flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2},
+  sub: {...T.listSub, color: C.sub, flex: 1},
   act: {paddingHorizontal: 5, paddingVertical: 6},
   menu: {paddingLeft: 3, paddingVertical: 6},
   dot: {marginRight: 2},

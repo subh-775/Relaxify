@@ -31,8 +31,9 @@ import Svg, {
 } from 'react-native-svg';
 import {C, S, T} from '../theme';
 import {FONT} from '../font';
-import {Play} from '../icons';
+import {Play} from '../glyphs';
 import {upgradeArtwork} from '../tracks';
+import {HOME_CARD_RADIUS} from '../layout';
 import {surfaceTint, useArtworkColor} from '../artworkColor';
 import type {HomeItem, HomeRow} from '../backend';
 
@@ -41,7 +42,7 @@ type Props = {row: HomeRow; onPick: (i: HomeItem) => void};
 const key = (i: HomeItem) => i.perma_url || `${i.type}|${i.title || i.name}`;
 const label = (i: HomeItem) => i.title || i.name || 'Untitled';
 
-function Cover({item, size, radius = S.radius}: {item: HomeItem; size: number; radius?: number}) {
+function Cover({item, size, radius = HOME_CARD_RADIUS}: {item: HomeItem; size: number; radius?: number}) {
   return item.image ? (
     <Image
       source={{uri: upgradeArtwork(item.image)}}
@@ -287,12 +288,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     marginBottom: 10,
   },
-  rowTitle: {...T.rowTitle, color: C.text},
+  rowTitle: {...T.section, color: C.text},
   note: {color: C.sub, fontSize: 12.5, fontWeight: '700'},
   list: {paddingHorizontal: S.gutter, gap: S.gap},
   empty: {backgroundColor: C.surfaceHi},
-  title: {...T.body, color: C.text, marginTop: 8, lineHeight: 18},
-  sub: {...T.sub, color: C.sub, marginTop: 2},
+  title: {...T.cardTitle, color: C.text, marginTop: 8},
+  sub: {...T.cardSub, color: C.sub, marginTop: 2},
   rank: {flexDirection: 'row', alignItems: 'flex-start'},
   num: {marginRight: -14, zIndex: 0},
   rankCard: {width: RANK_COVER, zIndex: 1},
@@ -314,8 +315,13 @@ const styles = StyleSheet.create({
     shadowOffset: {width: 0, height: 6},
   },
   heroText: {flex: 1, minWidth: 0},
-  heroTitle: {color: C.text, fontSize: 17, lineHeight: 21, fontWeight: '800'},
-  heroSub: {color: 'rgba(255,255,255,0.8)', fontSize: 12.5, marginTop: 3},
+  heroTitle: {color: C.text, fontSize: 17, lineHeight: 21, fontWeight: '700'},
+  heroSub: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '400',
+    marginTop: 3,
+  },
   heroPlay: {
     width: 40,
     height: 40,
@@ -327,9 +333,14 @@ const styles = StyleSheet.create({
   },
   tall: {width: TALL_W, borderRadius: 12, overflow: 'hidden', backgroundColor: C.surface},
   tallBase: {padding: 10, minHeight: 70},
-  tallTitle: {color: C.text, fontSize: 13.5, fontWeight: '800', lineHeight: 17},
-  tallSub: {color: 'rgba(255,255,255,0.75)', fontSize: 12, marginTop: 3},
+  tallTitle: {color: C.text, fontSize: 13.5, fontWeight: '700', lineHeight: 17},
+  tallSub: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12.5,
+    fontWeight: '400',
+    marginTop: 3,
+  },
   shelfCol: {gap: 12},
   shelfItem: {width: SHELF},
-  shelfTitle: {color: C.text, fontSize: 12.5, fontWeight: '700', marginTop: 5},
+  shelfTitle: {color: C.text, fontSize: 12.5, fontWeight: '600', marginTop: 5},
 });

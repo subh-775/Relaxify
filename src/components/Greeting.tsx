@@ -40,35 +40,35 @@ import {PAIRS, setAccent} from '../accent';
 export {PAIRS};
 
 /**
- * What the reel can land on, each with its width at font size 1 in Plus
- * Jakarta Sans ExtraBold at this tracking, measured from the font file. Add a
+ * What the reel can land on, each with its width at font size 1 in DM Sans
+ * ExtraBold at this tracking, measured from the font file. Add a
  * word only with its measurement; nothing longer than Rockstar!, or the line
  * has to shrink on every phone to make room for it.
  */
 export const WORDS: [string, number][] = [
-  ['Buddy!', 3.431],
-  ['Legend!', 3.848],
-  ['Maestro!', 4.204],
-  ['Rockstar!', 4.511],
-  ['Cutie!', 2.857],
-  ['Champ!', 3.75],
-  ['Boss!', 2.599],
-  ['Fam!', 2.361],
-  ['Bestie!', 3.267],
+  ['Buddy!', 3.5],
+  ['Legend!', 3.965],
+  ['Maestro!', 4.397],
+  ['Rockstar!', 4.732],
+  ['Cutie!', 2.995],
+  ['Champ!', 3.871],
+  ['Boss!', 2.638],
+  ['Fam!', 2.409],
+  ['Bestie!', 3.415],
   ['GOAT!', 3.194],
-  ['MVP!', 2.535],
-  ['OG!', 1.979],
-  ['Hero!', 2.608],
-  ['Icon!', 2.376],
-  ['Bro!', 1.989],
-  ['King!', 2.422],
-  ['Queen!', 3.492],
-  ['Chief!', 2.846],
-  ['DJ!', 1.432],
-  ['VIP!', 1.911],
-  ['BFF!', 2.126],
-  ['Genius!', 3.547],
-  ['Star!', 2.265],
+  ['MVP!', 2.532],
+  ['OG!', 1.88],
+  ['Hero!', 2.662],
+  ['Icon!', 2.434],
+  ['Bro!', 1.981],
+  ['King!', 2.473],
+  ['Queen!', 3.552],
+  ['Chief!', 2.933],
+  ['DJ!', 1.569],
+  ['VIP!', 1.918],
+  ['BFF!', 2.072],
+  ['Genius!', 3.754],
+  ['Star!', 2.361],
 ];
 
 /** The largest size the line is set at; narrower phones get less. */
@@ -76,8 +76,8 @@ const MAX_SIZE = 32;
 /** "Listen" and "up" at font size 1, measured the same way. They are set as
  *  two words with the line's GAP between them: the font's own space is only
  *  0.18 em at this weight, which ran "Listen up" together into "Listenup". */
-const LISTEN_EM = 2.747;
-const UP_EM = 1.203;
+const LISTEN_EM = 3.037;
+const UP_EM = 1.279;
 const LONGEST_EM = Math.max(...WORDS.map(w => w[1]));
 const GAP = 7;
 /** The pill's padding either side of its word. */

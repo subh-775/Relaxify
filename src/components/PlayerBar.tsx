@@ -44,9 +44,9 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {Headphones, Pause, Play} from '../icons';
+import {Devices, Headphones, Pause, Play} from '../glyphs';
 import {C, S} from '../theme';
-import {cleanText, getBestArtworkUrl, splitArtists} from '../tracks';
+import {fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from './Marquee';
 import {
   sourceTrackFor,
@@ -138,6 +138,11 @@ export const PlayerBar = React.memo(function PlayerBar({
   const output = useAudioOutput();
 
   const track = useMemo(() => sourceTrackFor(active), [active]);
+  // The whole name, as the full player shows it: entities decoded, nothing
+  // taken off. Every credited artist, comma-separated.
+  const title = fullText(active?.title);
+  const artistList = splitArtists(String(active?.artist ?? ''));
+  const artists = artistList.join(', ');
 
   /**
    * How far the bar's contents are dragged, in pixels.
@@ -349,6 +354,11 @@ export const PlayerBar = React.memo(function PlayerBar({
   }
 
   const artwork = artworkForColor;
+  // What is behind each line, for the edges of a floating one to fade into:
+  // the bar's gradient runs top to bottom, so the first line sits on a
+  // lighter part of it than the second. Untinted, the bar's grey over black.
+  const fadeTop = tint ? surfaceTint(tint, 0.133) : UNTINTED;
+  const fadeBottom = tint ? surfaceTint(tint, 0.117) : UNTINTED;
 
   return (
     /* Rises in rather than appearing. The bar arrives when the first song
@@ -431,26 +441,37 @@ export const PlayerBar = React.memo(function PlayerBar({
                   )}
                 </View>
 
+                {/* With headphones in, the second line is the device's name,
+                    so the song and who sings it share the first, and it
+                    floats when it is too long to read whole. On the phone's
+                    speaker the title stays put and the credit floats under
+                    it, as Spotify's does. */}
                 <View style={styles.text}>
-                  <Marquee
-                    text={cleanText(String(active.title ?? ''))}
-                    style={styles.title}
-                  />
                   {output ? (
-                    // The name only. The 10px glyph that used to sit beside it
-                    // has moved into the controls at control size, which is where
-                    // it is actually legible.
-                    <Text style={styles.output} numberOfLines={1}>
-                      {output}
-                    </Text>
+                    <>
+                      <Marquee
+                        text={title}
+                        tail={artists ? ` • ${artists}` : undefined}
+                        style={styles.title}
+                        tailStyle={styles.plain}
+                        fadeColor={fadeTop}
+                      />
+                      <Text style={styles.output} numberOfLines={1}>
+                        {output}
+                      </Text>
+                    </>
                   ) : (
-                    <Marquee
-                      text={cleanText(String(active.artist ?? ''))}
-                      style={styles.artist}
-                      ticker={
-                        splitArtists(String(active.artist ?? '')).length > 1
-                      }
-                    />
+                    <>
+                      <Text style={styles.title} numberOfLines={1}>
+                        {title}
+                      </Text>
+                      <Marquee
+                        text={artists}
+                        style={styles.artist}
+                        ticker={artistList.length > 1}
+                        fadeColor={fadeBottom}
+                      />
+                    </>
                   )}
                 </View>
               </TouchableOpacity>
@@ -468,25 +489,28 @@ export const PlayerBar = React.memo(function PlayerBar({
             )}
           </View>
 
-          {/* Output, like, play — three identical 38x38 slots, so the row reads
-            as one rhythm instead of three different shapes. The headphones are
-            STATUS rather than an action, which is why they are a bare View: no
-            press feedback on something that cannot be pressed. They appear only
-            when something is actually connected, so they cost nothing the rest
-            of the time. */}
+          {/* Output, like, play — three identical 44x44 slots, so the row reads
+            as one rhythm instead of three different shapes. The output mark is
+            STATUS rather than an action, which is why it is a bare View: no
+            press feedback on something that cannot be pressed. Coral
+            headphones while something is connected; otherwise the phone and
+            speaker, in white, as Spotify shows when the sound is coming from
+            the phone itself. */}
           <View style={styles.controls}>
-            {!!output && (
-              <View style={styles.ctl}>
-                <Headphones size={24} color={C.accent} strokeWidth={2} />
-              </View>
-            )}
+            <View style={styles.ctl}>
+              {output ? (
+                <Headphones size={27} color={C.accent} />
+              ) : (
+                <Devices size={26} color={C.text} />
+              )}
+            </View>
 
             {/* The same control as the full player, so the two can never
                 disagree about what a press does. */}
             <AddButton
               track={track}
               onOpenSheet={onAddToPlaylist}
-              size={23}
+              size={26}
               hitSlop={10}
               style={styles.ctl}
             />
@@ -499,9 +523,9 @@ export const PlayerBar = React.memo(function PlayerBar({
               {buffering ? (
                 <ActivityIndicator color={C.text} />
               ) : playing ? (
-                <Pause size={26} color={C.text} fill={C.text} />
+                <Pause size={28} color={C.text} fill={C.text} />
               ) : (
-                <Play size={26} color={C.text} fill={C.text} />
+                <Play size={28} color={C.text} fill={C.text} />
               )}
             </TouchableOpacity>
           </View>
@@ -517,13 +541,18 @@ export const PlayerBar = React.memo(function PlayerBar({
   );
 });
 
+/** The untinted bar: its 90% #262626 over the black page. */
+const UNTINTED = '#222222';
+
 const styles = StyleSheet.create({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
     // Nearly edge to edge: 4 from each side leaves the title more room.
     marginHorizontal: 4,
-    marginBottom: 4,
+    // None underneath: like Spotify's, the bar rests right on the tab bar,
+    // so the two read as one stack at the foot of the screen.
+    marginBottom: 0,
     borderRadius: BAR_R,
     // Translucent, not opaque. Against the fade at the foot of the page this
     // is what makes the bar read as sitting ABOVE the content rather than
@@ -570,13 +599,16 @@ const styles = StyleSheet.create({
   artFill: {width: '100%', height: '100%'},
   artFallback: {backgroundColor: C.bg},
   text: {flex: 1, minWidth: 0},
-  // 14/600 over 11.5/400-at-62%. The old pair was 13/700 and 12/400 — one pixel
+  // 14/600 over 12.5/400-at-62%. The old pair was 13/700 and 12/400 — one pixel
   // apart, which is no hierarchy at all. The contrast gap does more work here
-  // than the size gap.
+  // than the size gap. (12.5, not 11.5, since DM Sans: its smaller x-height
+  // set the credit at a size Spotify's never is.)
   title: {fontSize: 14, fontWeight: '600', color: C.text, letterSpacing: 0.1},
-  artist: {fontSize: 11.5, color: C.text, opacity: 0.62, marginTop: 2},
+  artist: {fontSize: 12.5, color: C.text, opacity: 0.62, marginTop: 2},
+  /** The credit sharing the title's line: only the song is bold. */
+  plain: {fontWeight: '400'},
   output: {
-    fontSize: 10.5,
+    fontSize: 11.5,
     fontWeight: '600',
     color: C.accent,
     marginTop: 2,
@@ -587,16 +619,16 @@ const styles = StyleSheet.create({
     paddingRight: S.gutter - 8,
   },
   ctl: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The same 42x42 slot as the other two. No disc: `playNudge` went with it,
+  // The same 44x44 slot as the other two. No disc: `playNudge` went with it,
   // since it existed only to optically centre a triangle inside a circle.
   playBtn: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -654,10 +686,10 @@ function NeighbourSlide({
         </View>
         <View style={styles.text}>
           <Text style={styles.title} numberOfLines={1}>
-            {cleanText(String(n.track.title ?? ''))}
+            {fullText(n.track.title)}
           </Text>
           <Text style={styles.artist} numberOfLines={1}>
-            {cleanText(String(n.track.artist ?? ''))}
+            {splitArtists(String(n.track.artist ?? '')).join(', ')}
           </Text>
         </View>
       </View>

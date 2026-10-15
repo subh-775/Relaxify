@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: C.border,
   },
-  title: {color: C.text, fontSize: 18, fontWeight: '800', letterSpacing: 0.1},
+  title: {color: C.text, fontSize: 18, fontWeight: '700', letterSpacing: 0.1},
   message: {color: C.sub, fontSize: 13.5, lineHeight: 20, marginTop: 10},
   actions: {flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22},
   btn: {
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
   cancel: {backgroundColor: C.surface},
   cancelText: {color: C.text, fontWeight: '700', fontSize: 14},
   confirm: {backgroundColor: C.accent},
-  confirmText: {color: C.bg, fontWeight: '800', fontSize: 14},
+  confirmText: {color: C.bg, fontWeight: '700', fontSize: 14},
   confirmDanger: {backgroundColor: C.danger},
-  confirmDangerText: {color: '#fff', fontWeight: '800', fontSize: 14},
+  confirmDangerText: {color: '#fff', fontWeight: '700', fontSize: 14},
 });

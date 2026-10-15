@@ -18,18 +18,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import {ArrowLeftRight, Disc3, Download, ListX, Loader} from '../icons';
 import {
-  ArrowLeftRight,
-  CircleCheck,
-  CirclePlus,
-  Disc3,
-  Download,
-  ListPlus,
-  ListX,
-  Loader,
-  Trash2,
-  User,
-} from '../icons';
+  AddCircle,
+  AddToPlaylist,
+  AddToQueue,
+  Artist,
+  SavedCircle,
+  Trash,
+} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {enqueueDownload, forgetDownloads} from '../downloads';
@@ -132,7 +129,7 @@ function TrackActionSheetView({
 
   const items: Array<{
     key: string;
-    Icon: typeof CirclePlus;
+    Icon: typeof Download | typeof AddCircle;
     label: string;
     onPress: () => void;
     tint?: string;
@@ -153,7 +150,7 @@ function TrackActionSheetView({
       : []),
     {
       key: 'like',
-      Icon: liked ? CircleCheck : CirclePlus,
+      Icon: liked ? SavedCircle : AddCircle,
       label: liked ? 'Remove from Liked Songs' : 'Add to Liked Songs',
       tint: liked ? C.accent : undefined,
       stay: true,
@@ -165,7 +162,7 @@ function TrackActionSheetView({
     downloaded
       ? {
           key: 'undownload',
-          Icon: Trash2,
+          Icon: Trash,
           label: 'Remove download',
           onPress: removeDownload,
         }
@@ -177,7 +174,7 @@ function TrackActionSheetView({
         },
     {
       key: 'queue',
-      Icon: ListPlus,
+      Icon: AddToQueue,
       // In a Jam the queue is everyone's: the song goes there instead.
       label: inJam() ? 'Add to Jam queue' : 'Add to queue',
       onPress: run(() => {
@@ -192,7 +189,7 @@ function TrackActionSheetView({
     },
     {
       key: 'playlist',
-      Icon: ListPlus,
+      Icon: AddToPlaylist,
       label: 'Add to playlist',
       onPress: run(() => onAddToPlaylist(t)),
     },
@@ -214,7 +211,7 @@ function TrackActionSheetView({
       : []),
     {
       key: 'artist',
-      Icon: User,
+      Icon: Artist,
       label: 'Go to artist',
       onPress: run(() => onOpenArtist(t)),
     },

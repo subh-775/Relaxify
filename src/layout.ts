@@ -18,7 +18,16 @@
  * scroll, which moves the content under the reader's thumb.
  *
  * Measured, not guessed: PlayerBar is a 48px cover + 4px padding either side +
- * 3px for the progress line + a 4px margin = 63, and BottomNav is 29px icons +
- * 14px padding either side + 2px = 59. Rounded up for air.
+ * 3px for the progress line = 59 (it rests right on the tab bar, no margin),
+ * and BottomNav is 8 + a 24px icon + 4 + a 13px label + 8 + 2 = 59. Rounded up
+ * for air.
  */
 export const BOTTOM_INSET = 128;
+
+/**
+ * A cover card on Home, and its corner: Spotify's 144dp square with a small
+ * radius. One number for every plain row of cards (the backend's rows, and
+ * Discover and Recents when they are shown as rows), so they line up.
+ */
+export const HOME_CARD = 144;
+export const HOME_CARD_RADIUS = 6;

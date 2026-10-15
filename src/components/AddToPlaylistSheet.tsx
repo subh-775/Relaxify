@@ -35,7 +35,7 @@ import {
 } from '../playlists';
 import {rowId, sortPinned, usePins} from '../pins';
 import {PinGlyph} from './PinGlyph';
-import {toggleLike, useLike} from '../store';
+import {useLike} from '../store';
 import {CollectionArt, LIKED_TINT} from './CollectionArt';
 import {playlistToCollection} from '../collections';
 import {toast} from '../toast';
@@ -146,7 +146,6 @@ function AddToPlaylistSheetView({
         addTrackToPlaylist(id, track);
         toast(`Added to ${playlistName}`, 'info', {
           art: getBestArtworkUrl(track),
-          action: {label: 'Undo', onPress: () => removeTrackFromPlaylist(id, track)},
         });
       }
     },
@@ -166,10 +165,7 @@ function AddToPlaylistSheetView({
   const onLikedRow = useCallback(() => {
     toggleLiked();
     if (!liked && track) {
-      toast('Added to Liked Songs', 'info', {
-        art: getBestArtworkUrl(track),
-        action: {label: 'Undo', onPress: () => toggleLike(track)},
-      });
+      toast('Added to Liked Songs', 'info', {art: getBestArtworkUrl(track)});
     }
   }, [liked, toggleLiked, track]);
 
@@ -318,7 +314,7 @@ const styles = StyleSheet.create({
     ...T.rowTitle,
     color: C.text,
     fontSize: 19,
-    fontWeight: '800',
+    fontWeight: '700',
     paddingHorizontal: S.gutter,
     paddingTop: 12,
   },

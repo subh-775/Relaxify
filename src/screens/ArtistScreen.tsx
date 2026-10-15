@@ -26,7 +26,8 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
-import {ChevronLeft, Pause, Play} from '../icons';
+import {ChevronLeft} from '../icons';
+import {Pause, Play} from '../glyphs';
 import {C, S, T} from '../theme';
 import {getArtist, type ArtistProfile, type Track} from '../backend';
 import {normalizeTracks} from '../tracks';
@@ -426,7 +427,7 @@ const styles = StyleSheet.create({
   initial: {
     color: 'rgba(0,0,0,0.25)',
     fontSize: 160,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   nameBox: {
     position: 'absolute',
@@ -438,7 +439,7 @@ const styles = StyleSheet.create({
     color: C.text,
     fontSize: 52,
     lineHeight: 50,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: -2.2,
     textShadowColor: 'rgba(0,0,0,0.35)',
     textShadowOffset: {width: 0, height: 2},

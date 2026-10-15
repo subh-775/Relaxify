@@ -8,7 +8,7 @@
 import {expect, jest, test} from '@jest/globals';
 import TrackPlayer from 'react-native-track-player';
 import {logEvent} from '../src/analytics';
-import {earnedPlay, kickIfStalled} from '../src/player';
+import {earnedPlay, kickIfStalled, listenOutcome} from '../src/player';
 
 jest.mock('react-native-track-player', () => ({
   __esModule: true,
@@ -71,4 +71,16 @@ test('a play counts after 30 s heard, not on start or a quick skip', () => {
   // A session restored at 2:00 has to be heard for 30 s more.
   expect(earnedPlay(120, 125, 200)).toBe(false);
   expect(earnedPlay(120, 150, 200)).toBe(true);
+});
+
+// song_listened's outcome. A crossfade starts the next song early, so a song
+// that crossfaded out after playing through is still a full listen; the old
+// "last 5 seconds" rule called every one of those unfinished.
+test('listenOutcome: full, partial or skip, crossfade-aware', () => {
+  expect(listenOutcome(237, 240, 0)).toBe('full');
+  expect(listenOutcome(229, 240, 8)).toBe('full'); // crossfaded out at 8 s
+  expect(listenOutcome(229, 240, 0)).toBe('partial');
+  expect(listenOutcome(31, 240, 0)).toBe('partial'); // earned a play
+  expect(listenOutcome(12, 240, 0)).toBe('skip');
+  expect(listenOutcome(40, 0, 0)).toBe('partial'); // unknown length
 });

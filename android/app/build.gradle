@@ -240,6 +240,10 @@ dependencies {
     // the platform's own answer to the problem (it ships in every Material
     // music app) — the WebView build used a canvas, which RN doesn't have.
     implementation 'androidx.palette:palette:1.0.0'
+    // Plays the startup GIF (src/components/Splash.tsx). React Native's Image
+    // decodes only still images on Android without it. Same version as the
+    // Fresco React Native ships (node_modules/react-native/gradle/libs.versions.toml).
+    implementation 'com.facebook.fresco:animated-gif:3.2.0'
 
     // Usage statistics and crash reports (AnalyticsModule.kt). Inert without
     // google-services.json: no config means no FirebaseApp, and neither SDK
