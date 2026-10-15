@@ -9,7 +9,7 @@
 import {useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import gsap from 'gsap';
 import {GET_PAGE, MOVED, PAGES, PAL, SITE} from './nav.js';
-import {Burst, Callout, Deck, DownloadIcon, Logo, Mascot, href, reduceMotion, useReveal} from './brand.jsx';
+import {Callout, Deck, DownloadIcon, Logo, Mascot, href, reduceMotion, useReveal} from './brand.jsx';
 import {mdxComponents} from './mdx.jsx';
 import {Github} from './icons.jsx';
 import '@fontsource-variable/plus-jakarta-sans';
@@ -127,14 +127,13 @@ function Menu({open, onClose, path}) {
       document.body.style.overflow = '';
     };
   }, [open, onClose]);
-  const item = (link, label, line, color, external) => (
+  const item = (link, label, line, external) => (
     <a
       key={link}
       href={external ? link : href(link)}
       className={path === link ? 'on' : ''}
       aria-current={path === link ? 'page' : undefined}
       {...(external ? {target: '_blank', rel: 'noreferrer'} : {})}>
-      <i style={{background: color}} aria-hidden="true" />
       <span>
         {label}
         <small>{line}</small>
@@ -146,10 +145,10 @@ function Menu({open, onClose, path}) {
       <div className={open ? 'scrim on' : 'scrim'} onClick={onClose} aria-hidden="true" />
       <div id="menu" ref={sheet} tabIndex={-1} className={open ? 'sheet on' : 'sheet'} role="dialog" aria-label="Menu" inert={open ? undefined : ''}>
         <div className="grab" aria-hidden="true" />
-        {item('/', 'Home', 'Back to the start', '#FF5A6E')}
-        {item(GET_PAGE, 'Get the app', 'Install in a minute', PAL.coral.bg)}
-        {PAGES.map(p => item(p.link, p.title, p.kicker, PAL[p.pal].bg))}
-        {item(SITE.repo, 'Relaxify on GitHub', 'Free and open source', '#2a2427', true)}
+        {item('/', 'Home', 'Back to the start')}
+        {item(GET_PAGE, 'Get the app', 'Download and install')}
+        {PAGES.map(p => item(p.link, p.title, p.kicker))}
+        {item(SITE.repo, 'Relaxify on GitHub', 'Free and open source', true)}
       </div>
     </>
   );
@@ -199,36 +198,39 @@ function Home() {
               </span>
             ))}
           </h1>
-          <p className="lede">Free on Android. Search once, tap play, vibes on repeat. No account, no ads.</p>
+          <p className="lede">Discover the joy of uninterrupted listening.</p>
         </section>
         <Deck />
       </div>
 
       <section className="quick">
-        <h2 className="reveal">Quick ones</h2>
+        <h2 className="reveal">Why Relaxify</h2>
         <div className="stick reveal">
-          <Glyph color={PAL.lime.bg} d="M13 2 4 14h7l-1 8 9-12h-7z" />
+          <Glyph color={PAL.lime.bg} d="M12 4v11M7 11l5 5 5-5M5 20h14" />
           <span>
-            <b>Installs in a minute</b>
-            It's not on the Play Store, so you install the file yourself. <a href={href(GET_PAGE)}>Show me</a>
+            <b>Easy to install</b>
+            Download one file, open it and tap Install. It takes about a minute, and every step is explained.{' '}
+            <a href={href('/start')}>See how</a>
           </span>
         </div>
         <div className="stick reveal">
-          <Glyph color={PAL.sky.bg} d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5" />
+          <Glyph color={PAL.sky.bg} d="M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm12-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
           <span>
-            <b>Updates in the app</b>
-            When a new update appears, you'll be notified in the app.
+            <b>Features you'll love</b>
+            Save songs for <a href={href('/offline')}>offline listening</a>, <a href={href('/import')}>bring your playlists</a> from Spotify or
+            YouTube, shape the sound with an <a href={href('/sound')}>equalizer</a>, and <a href={href('/together')}>listen together</a> with
+            friends.
           </span>
         </div>
         <div className="stick reveal">
           <Glyph color={PAL.orange.bg} d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z" />
           <span>
-            <b>Free, for real</b>
-            No account, no ads, no paywall.
+            <b>Listen ad-free, no sign-in</b>
+            No ads between songs, no account to create and nothing to pay. Open the app and press play.
           </span>
         </div>
-        <Callout kind="important" title="Never uninstall to update">
-          That wipes your playlists and likes for good. Always update from inside the app.
+        <Callout kind="important" title="Already have Relaxify?">
+          Updates arrive inside the app. Install them from there, and never uninstall first: that deletes your playlists and likes.
         </Callout>
       </section>
     </div>
@@ -239,7 +241,6 @@ function Home() {
 
 function Page({route, page}) {
   const Content = BY_ROUTE[route].default;
-  const p = PAL[page.pal];
   const i = PAGES.indexOf(page);
   const next = PAGES[i + 1];
   const head = useRef(null);
@@ -247,13 +248,12 @@ function Page({route, page}) {
     if (reduceMotion()) {
       return;
     }
-    const t = gsap.fromTo(head.current, {y: 30, autoAlpha: 0, scale: 0.97}, {y: 0, autoAlpha: 1, scale: 1, duration: 0.5, ease: 'back.out(1.5)'});
+    const t = gsap.fromTo(head.current, {y: 16, autoAlpha: 0}, {y: 0, autoAlpha: 1, duration: 0.4, ease: 'power3.out'});
     return () => t.kill();
   }, [route]);
   return (
     <div className="page">
-      <header ref={head} className="phead" style={{background: p.bg, color: p.ink}}>
-        {page.mood ? <Mascot mood={page.mood} size={136} className="phead-art mascot-art" /> : <Burst color={p.art} className="phead-art" spin />}
+      <header ref={head} className="phead">
         <span className="k">{page.kicker}</span>
         <h1>{page.title}</h1>
       </header>
@@ -263,7 +263,7 @@ function Page({route, page}) {
       </article>
 
       {next && (
-        <a className="next reveal" href={href(next.link)} style={{background: PAL[next.pal].bg, color: PAL[next.pal].ink}}>
+        <a className="next reveal" href={href(next.link)}>
           <span>
             <small>Next up</small>
             {next.title}
@@ -288,14 +288,13 @@ function Page({route, page}) {
 function NotFound() {
   return (
     <div className="page">
-      <header className="phead" style={{background: PAL.pink.bg, color: PAL.pink.ink}}>
-        <Mascot mood="huh" size={136} className="phead-art mascot-art" />
-        <span className="k">Hmm, lost?</span>
+      <header className="phead">
+        <span className="k">Page not found</span>
         <h1>Nothing here</h1>
       </header>
       <div className="prose">
         <p>
-          This page moved or never existed. <a href={href('/')}>Go back home</a> and pick a card.
+          This page has moved or never existed. <a href={href('/')}>Go back to the start</a> and choose a page from there.
         </p>
       </div>
     </div>
@@ -316,7 +315,7 @@ export default function App() {
   useReveal(main, path);
 
   useEffect(() => {
-    document.title = page ? `${page.title}: Relaxify` : 'Relaxify: music that just plays';
+    document.title = page ? `${page.title}: Relaxify` : 'Relaxify: free, ad-free music for Android';
   }, [page]);
 
   return (

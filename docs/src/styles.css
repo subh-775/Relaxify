@@ -1,7 +1,8 @@
 /*
- * Relaxify docs, the playful version. Dark like the app, with its Recap card
- * colours doing the talking: every page is a loud flat card, steps and
- * gestures are stickers in the palette, and the two notes keep you company.
+ * Relaxify docs. Dark like the app. Home is the one colourful page (the
+ * hero and the deck of page cards in the app's Recap colours); every other
+ * page reads like a blog post: a plain title, comfortable text, white
+ * buttons, no coloured banners or stickers.
  *
  * Phone first. One column; the menu and Download live in a bar at the bottom
  * (where a thumb is), in portrait and in landscape. Wider screens get the
@@ -154,12 +155,12 @@ main {
 .dl {
   margin-left: auto;
   padding: 0 24px;
-  background: var(--brand);
-  color: var(--brand-ink);
+  background: var(--text);
+  color: var(--ink);
   font-weight: 800;
 }
 .dl:hover {
-  color: var(--brand-ink);
+  color: var(--ink);
 }
 @media (min-width: 720px) {
   .bottom {
@@ -226,12 +227,6 @@ main {
 .sheet a:hover,
 .sheet a.on {
   background: rgba(255, 255, 255, 0.06);
-}
-.sheet a i {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  flex: none;
 }
 .sheet small {
   display: block;
@@ -396,62 +391,52 @@ main {
   font-size: 15.5px;
 }
 
-/* ── a page ─────────────────────────────────────────────────────────────── */
+/* ── a page: plain, like a blog post ───────────────────────────────────── */
 
 .phead {
-  position: relative;
-  overflow: hidden;
-  margin-top: 14px;
-  border-radius: 28px;
-  padding: 22px 20px;
-  min-height: 210px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  margin-top: 30px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
 }
 .phead .k {
-  position: relative;
+  display: block;
+  color: var(--muted);
   font-weight: 700;
-  font-size: 14px;
-  opacity: 0.75;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .phead h1 {
-  position: relative;
-  margin: 4px 0 0;
-  font-size: clamp(38px, 11vw, 52px);
-  line-height: 0.98;
-  letter-spacing: -0.04em;
-  color: inherit;
-}
-.phead-art {
-  position: absolute;
-  right: -24px;
-  top: -24px;
-  width: 180px;
-  height: 180px;
-}
-.phead .mascot-art {
-  right: 6px;
-  top: 8px;
-  width: 136px;
-  height: 136px;
+  margin: 6px 0 0;
+  font-size: clamp(32px, 9vw, 44px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
 }
 
 .prose {
-  padding: 4px 0 8px;
+  padding: 8px 0 8px;
+  font-size: 17px;
+  line-height: 1.75;
+}
+.prose a {
+  color: var(--text);
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+}
+.prose a:hover {
+  text-decoration-color: var(--text);
 }
 .prose h2 {
-  font-size: 23px;
-  line-height: 1.2;
+  font-size: 24px;
+  line-height: 1.25;
   letter-spacing: -0.4px;
-  margin: 34px 0 6px;
+  margin: 40px 0 8px;
 }
 .prose h3 {
-  font-size: 18.5px;
-  margin: 24px 0 4px;
+  font-size: 19px;
+  margin: 26px 0 4px;
 }
 .prose p {
-  margin: 10px 0;
+  margin: 14px 0;
 }
 .prose ul,
 .prose ol:not(.steps) {
@@ -461,146 +446,97 @@ main {
   margin: 7px 0;
 }
 .prose li::marker {
-  color: var(--brand);
+  color: var(--muted);
 }
 .tablewrap {
   overflow-x: auto;
-  margin: 14px 0;
+  margin: 16px 0;
 }
 .prose table {
-  border-collapse: separate;
-  border-spacing: 0 8px;
+  border-collapse: collapse;
   width: 100%;
-  font-size: 15px;
+  font-size: 15.5px;
+  line-height: 1.5;
 }
 .prose th {
   text-align: left;
   color: var(--muted);
   font-weight: 700;
   font-size: 13px;
-  padding: 0 12px;
+  padding: 0 12px 8px 0;
+  border-bottom: 1px solid var(--line);
 }
 .prose td {
-  background: var(--panel);
-  padding: 11px 12px;
+  padding: 11px 12px 11px 0;
   vertical-align: top;
+  border-bottom: 1px solid var(--line);
 }
 .prose td:first-child {
-  border-radius: 14px 0 0 14px;
   color: var(--text);
   font-weight: 700;
   white-space: nowrap;
 }
-.prose td:last-child {
-  border-radius: 0 14px 14px 0;
-}
 
-/* colourful stickers: steps and gestures cycle the palette */
+/* numbered steps: a plain number beside each */
 .steps {
   list-style: none;
   counter-reset: step;
-  margin: 14px 0;
+  margin: 18px 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 16px;
 }
 .steps > li {
   counter-increment: step;
   position: relative;
   margin: 0;
-  padding: 14px 16px 14px 62px;
-  border-radius: 20px;
-  color: var(--ink);
-  font-weight: 600;
-  line-height: 1.45;
-}
-.steps > li b,
-.steps > li strong {
-  color: var(--ink);
-}
-.steps > li a {
-  color: var(--ink);
-  font-weight: 800;
+  padding-left: 46px;
+  min-height: 32px;
 }
 .steps > li::before {
   content: counter(step);
   position: absolute;
-  left: 14px;
-  top: 13px;
-  width: 34px;
-  height: 34px;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--ink);
-  color: #fff;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 15px;
   font-weight: 800;
+  line-height: 1;
 }
 .steps > li > p {
   margin: 0;
 }
 .steps > li > p + p,
 .steps > li > .get-wrap {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 .moves {
-  display: grid;
-  gap: 10px;
-  margin: 14px 0;
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
 }
 .move {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  border-radius: 20px;
-  padding: 14px 16px;
-  color: var(--ink);
-  font-weight: 600;
-  font-size: 14.5px;
-  line-height: 1.45;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
 }
 .move b {
   display: block;
-  color: var(--ink);
-  font-size: 15.5px;
-}
-.move a {
-  color: var(--ink);
-  font-weight: 800;
-}
-.steps > li:nth-child(6n + 1),
-.move:nth-child(6n + 1) {
-  background: var(--lime);
-}
-.steps > li:nth-child(6n + 2),
-.move:nth-child(6n + 2) {
-  background: var(--sky);
-}
-.steps > li:nth-child(6n + 3),
-.move:nth-child(6n + 3) {
-  background: var(--lav);
-}
-.steps > li:nth-child(6n + 4),
-.move:nth-child(6n + 4) {
-  background: var(--orange);
-}
-.steps > li:nth-child(6n + 5),
-.move:nth-child(6n + 5) {
-  background: var(--pink);
-}
-.steps > li:nth-child(6n + 6),
-.move:nth-child(6n + 6) {
-  background: var(--teal);
 }
 
-/* tips and heads-ups */
+/* a note set apart */
 .callout {
-  margin: 16px 0;
-  padding: 15px 17px;
-  border-radius: 20px;
+  margin: 20px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
   background: var(--panel);
-  border: 1.5px dashed rgba(255, 255, 255, 0.18);
-  font-size: 15px;
+  border-left: 3px solid var(--muted);
+  font-size: 15.5px;
+  line-height: 1.6;
 }
 .callout b {
   display: block;
@@ -608,14 +544,7 @@ main {
   margin-bottom: 2px;
 }
 .callout.important {
-  background: var(--coral);
-  border: 0;
-  color: var(--ink);
-  font-weight: 600;
-}
-.callout.important b,
-.callout.important a {
-  color: var(--ink);
+  border-left-color: var(--text);
 }
 .callout > div > p {
   margin: 0;
@@ -657,7 +586,7 @@ main {
 }
 .fold summary::after {
   content: '+';
-  color: var(--pink);
+  color: var(--muted);
   font-size: 22px;
   line-height: 1;
   transition: transform 0.2s;
@@ -667,7 +596,8 @@ main {
 }
 .fold-body {
   padding: 0 0 14px;
-  font-size: 15px;
+  font-size: 15.5px;
+  line-height: 1.65;
 }
 .fold-body > p:first-child {
   margin-top: 0;
@@ -679,29 +609,26 @@ main {
   flex-direction: column;
   gap: 6px;
 }
-.get {
+/* the one button style on a page: plain white */
+.get,
+.btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 50px;
+  min-height: 48px;
   padding: 0 24px;
   border-radius: 999px;
-  background: var(--ink);
-  color: #fff;
+  background: var(--text);
+  color: var(--ink) !important;
+  font-size: 15px;
   font-weight: 800;
   text-decoration: none;
 }
-.get:hover,
-.steps > li a.get,
-.move a.get,
-.callout a.get {
-  color: #fff;
-}
 .get-meta {
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
-  opacity: 0.8;
+  font-weight: 600;
 }
 
 /* what's new, live */
@@ -712,28 +639,28 @@ main {
   margin-top: 16px;
 }
 .stat {
-  border-radius: 22px;
+  border-radius: 18px;
   padding: 16px;
-  color: var(--ink);
+  background: var(--panel);
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .stat .v {
-  font-size: 34px;
+  font-size: 30px;
   font-weight: 800;
   letter-spacing: -1px;
-  line-height: 1.05;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  color: var(--ink);
+  color: var(--text);
 }
 .stat .v.small {
-  font-size: 24px;
+  font-size: 22px;
 }
 .stat .l {
+  color: var(--muted);
   font-size: 13px;
   font-weight: 700;
-  opacity: 0.75;
 }
 .stat.wide {
   grid-column: 1 / -1;
@@ -745,49 +672,29 @@ main {
   display: flex;
   flex-direction: column;
 }
-.livebadge {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--muted);
-}
-.livebadge i {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--lime);
-  flex: none;
-  animation: ping 1.6s infinite;
-}
-@keyframes ping {
-  0% {
-    box-shadow: 0 0 0 0 rgba(184, 240, 60, 0.6);
-  }
-  70%,
-  100% {
-    box-shadow: 0 0 0 8px rgba(184, 240, 60, 0);
-  }
-}
 
 /* next page, edit, footer */
 .next {
-  margin-top: 30px;
+  margin-top: 36px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-radius: 22px;
-  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 18px;
+  color: var(--text);
   font-weight: 800;
   font-size: 18px;
   text-decoration: none;
 }
+.next:hover {
+  background: var(--panel);
+}
 .next small {
   display: block;
+  color: var(--muted);
   font-size: 12.5px;
   font-weight: 700;
-  opacity: 0.7;
 }
 .next-arrow {
   font-size: 34px;
@@ -838,17 +745,6 @@ main {
   .deck {
     height: 210px;
   }
-  .phead {
-    min-height: 140px;
-  }
-  .phead-art {
-    width: 130px;
-    height: 130px;
-  }
-  .moves,
-  .steps {
-    grid-template-columns: 1fr 1fr;
-  }
   :root {
     --col: 860px;
   }
@@ -862,15 +758,9 @@ main {
     align-items: center;
     gap: 28px;
   }
-  .moves {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .livebadge i {
-    animation: none;
-  }
   .sheet,
   .scrim,
   .dots i,
