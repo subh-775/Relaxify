@@ -6,7 +6,7 @@
 // system at load time, and anything that renders before it misses the patch.
 import 'react-native-gesture-handler';
 // Before anything renders: every Text and TextInput defaults to the bundled
-// Plus Jakarta Sans instead of whatever font the phone ships with.
+// DM Sans instead of whatever font the phone ships with.
 import './src/font';
 import {AppRegistry} from 'react-native';
 import TrackPlayer from 'react-native-track-player';

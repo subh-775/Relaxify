@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     ...T.rowTitle,
     color: C.text,
     fontSize: 19,
-    fontWeight: '800',
+    fontWeight: '700',
     paddingHorizontal: S.gutter,
     paddingTop: 12,
   },

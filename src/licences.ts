@@ -35,6 +35,6 @@ export const LICENCES: {group: string; items: [string, string][]}[] = [
   },
   {
     group: 'Fonts',
-    items: [['Plus Jakarta Sans', 'SIL Open Font License 1.1']],
+    items: [['DM Sans', 'SIL Open Font License 1.1']],
   },
 ];

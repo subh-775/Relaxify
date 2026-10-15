@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.brand,
     color: '#fff',
     fontSize: 9.5,
-    fontWeight: '800',
+    fontWeight: '700',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,

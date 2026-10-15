@@ -1561,7 +1561,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 11,
   },
-  resetText: {color: '#fff', fontSize: 15, fontWeight: '800'},
+  resetText: {color: '#fff', fontSize: 15, fontWeight: '700'},
   resetHint: {paddingHorizontal: S.gutter, marginTop: 8},
   tail: {height: 10},
   folderPath: {
@@ -1606,7 +1606,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: C.text,
     fontSize: 16,
-    fontWeight: '800',
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
   stepDots: {flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 10},

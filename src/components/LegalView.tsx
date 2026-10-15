@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   body: {paddingHorizontal: S.gutter + 4, paddingTop: 8, paddingBottom: BOTTOM_INSET + 24},
   updated: {color: C.faint, fontSize: 12.5, fontWeight: '600'},
   intro: {color: C.text, fontSize: 15, lineHeight: 23, fontWeight: '600', marginTop: 10},
-  heading: {color: C.text, fontSize: 15.5, fontWeight: '800', marginTop: 24},
+  heading: {color: C.text, fontSize: 15.5, fontWeight: '700', marginTop: 24},
   para: {color: '#d6d8de', fontSize: 14, lineHeight: 22, marginTop: 6},
   bold: {color: C.text, fontWeight: '700'},
   item: {flexDirection: 'row', gap: 8, paddingLeft: 4},

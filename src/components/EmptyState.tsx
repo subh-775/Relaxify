@@ -66,7 +66,7 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     gap: 8,
   },
-  title: {color: C.text, fontSize: 18, fontWeight: '800', textAlign: 'center'},
+  title: {color: C.text, fontSize: 18, fontWeight: '700', textAlign: 'center'},
   line: {color: C.sub, fontSize: 14, lineHeight: 20, textAlign: 'center'},
   btn: {
     marginTop: 8,
@@ -75,5 +75,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 9,
   },
-  btnText: {color: C.bg, fontSize: 14, fontWeight: '800'},
+  btnText: {color: C.bg, fontSize: 14, fontWeight: '700'},
 });

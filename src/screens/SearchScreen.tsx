@@ -883,7 +883,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 1,
   },
-  firstText: {color: '#111014', fontSize: 11, fontWeight: '800'},
+  firstText: {color: '#111014', fontSize: 11, fontWeight: '700'},
   artistCard: {width: 84, alignItems: 'center'},
   artistPfp: {
     width: 76,

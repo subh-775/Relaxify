@@ -44,7 +44,7 @@ class MainApplication : Application(), ReactApplication {
     // brand. JS names this family on every Text (src/font.ts); the XML in
     // res/font maps each fontWeight to its file.
     ReactFontManager.getInstance()
-      .addCustomFont(this, "Plus Jakarta Sans", R.font.plus_jakarta_sans)
+      .addCustomFont(this, "DM Sans", R.font.dm_sans)
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
       load()

@@ -1070,9 +1070,9 @@ const styles = StyleSheet.create({
   bigPlay: {backgroundColor: C.text},
   // Round, beside the two wide ones: an icon, not a word.
   bigSync: {flex: 0, width: 44},
-  bigPlayText: {color: C.bg, fontSize: 15, fontWeight: '800'},
+  bigPlayText: {color: C.bg, fontSize: 15, fontWeight: '700'},
   bigShuffle: {borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.28)'},
-  bigShuffleText: {color: C.text, fontSize: 15, fontWeight: '800'},
+  bigShuffleText: {color: C.text, fontSize: 15, fontWeight: '700'},
   bigShuffleOn: {color: C.accent},
   tools: {
     flexDirection: 'row',

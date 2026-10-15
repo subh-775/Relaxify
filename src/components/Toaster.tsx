@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   art: {width: 34, height: 34, borderRadius: 6, backgroundColor: C.surfaceHi},
   text: {flex: 1, color: '#fff', fontSize: 13.5, fontWeight: '700', paddingLeft: 4},
   action: {paddingHorizontal: 8, paddingVertical: 4},
-  actionText: {color: '#fff', fontSize: 13.5, fontWeight: '800', opacity: 0.9},
+  actionText: {color: '#fff', fontSize: 13.5, fontWeight: '700', opacity: 0.9},
   /**
    * Warn: a system notice like "press back again to exit", which must not read
    * like a song confirmation. A pill only as wide as its words, on the same

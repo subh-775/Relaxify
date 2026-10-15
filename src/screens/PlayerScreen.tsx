@@ -2021,7 +2021,7 @@ const styles = StyleSheet.create({
   lyricLine: {
     fontSize: 21,
     lineHeight: LINE_H,
-    fontWeight: '800',
+    fontWeight: '700',
     color: 'rgba(255,255,255,0.38)',
   },
   lyricLineOn: {color: C.text},

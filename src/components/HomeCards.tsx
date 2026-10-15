@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   go: {borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8},
-  goText: {fontSize: 13.5, fontWeight: '800'},
+  goText: {fontSize: 13.5, fontWeight: '700'},
   x: {
     width: 36,
     height: 36,
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  xText: {fontSize: 15, fontWeight: '800'},
+  xText: {fontSize: 15, fontWeight: '700'},
   ghost: {
     borderRadius: 999,
     borderWidth: 1.5,
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
   },
   warmFill: {width: 110, height: '100%', borderRadius: 3, backgroundColor: '#111014'},
   counts: {flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6},
-  count: {color: '#111014', fontSize: 12.5, fontWeight: '800'},
+  count: {color: '#111014', fontSize: 12.5, fontWeight: '700'},
   bar: {
     height: 6,
     borderRadius: 3,

@@ -556,7 +556,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: C.text,
   },
-  playAllText: {color: C.bg, fontSize: 13, fontWeight: '800'},
+  playAllText: {color: C.bg, fontSize: 13, fontWeight: '700'},
   tile: {
     borderRadius: 8,
     overflow: 'hidden',
