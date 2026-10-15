@@ -450,8 +450,10 @@ export const PlayerBar = React.memo(function PlayerBar({
                   {output ? (
                     <>
                       <Marquee
-                        text={artists ? `${title} • ${artists}` : title}
+                        text={title}
+                        tail={artists ? ` • ${artists}` : undefined}
                         style={styles.title}
+                        tailStyle={styles.plain}
                         fadeColor={fadeTop}
                       />
                       <Text style={styles.output} numberOfLines={1}>
@@ -603,6 +605,8 @@ const styles = StyleSheet.create({
   // set the credit at a size Spotify's never is.)
   title: {fontSize: 14, fontWeight: '600', color: C.text, letterSpacing: 0.1},
   artist: {fontSize: 12.5, color: C.text, opacity: 0.62, marginTop: 2},
+  /** The credit sharing the title's line: only the song is bold. */
+  plain: {fontWeight: '400'},
   output: {
     fontSize: 11.5,
     fontWeight: '600',

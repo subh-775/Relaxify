@@ -1113,12 +1113,11 @@ export const PlayerScreen = React.memo(function PlayerScreen({
           <View style={styles.metaRow}>
             <View style={styles.metaCarousel}>
               <Animated.View style={[styles.meta, metaStyle]}>
-                {/* One line, as Spotify sets it. A long title is set smaller
-                    until it fits; only one still too long at 70% floats. */}
+                {/* One line, as Spotify sets it, always at the same size: a
+                    long title floats rather than shrinks. */}
                 <Marquee
                   text={title}
                   style={styles.title}
-                  shrinkTo={0.7}
                   paused={!visible}
                   fadeColor={fadeColor}
                 />
@@ -1800,12 +1799,9 @@ function NeighbourMeta({n, slide, span}: NeighbourProps) {
     <Animated.View
       pointerEvents="none"
       style={[styles.meta, styles.metaPreview, style]}>
-      {/* At the size it will have once it lands, so the swipe ends
-          without the title jumping. */}
       <Marquee
         text={fullText(n.track.title)}
         style={styles.title}
-        shrinkTo={0.7}
         paused
       />
       <Text style={styles.artist} numberOfLines={1}>
@@ -1981,8 +1977,8 @@ const styles = StyleSheet.create({
   metaCarousel: {flex: 1, minWidth: 0, overflow: 'hidden'},
   meta: {minWidth: 0},
   metaPreview: {position: 'absolute', top: 0, left: 0, right: 0},
-  // 22, a point under the 23 it was, so more titles fit whole; a fixed line
-  // height, so one that is shrunk to fit keeps the row exactly as tall.
+  // 22, a point under the 23 it was, so more titles fit whole. One size for
+  // every title: a long one floats instead of shrinking.
   title: {
     fontSize: 22,
     lineHeight: 29,
@@ -1990,9 +1986,9 @@ const styles = StyleSheet.create({
     color: C.text,
     letterSpacing: -0.3,
   },
-  // C.text at 15/500, not a 13px caption in C.sub. It is the second most
-  // important thing on the screen and it now has a line to itself.
-  artist: {color: C.text, fontSize: 15, fontWeight: '500', marginTop: 2},
+  // C.text at 15, plain: the title carries the weight, the credit reads
+  // quietly under it. It has a line to itself.
+  artist: {color: C.text, fontSize: 15, fontWeight: '400', marginTop: 2},
   badgeRow: {flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4},
   actionCol: {alignItems: 'flex-end', gap: 6},
   actions: {flexDirection: 'row', alignItems: 'center', gap: 2, paddingTop: 2},

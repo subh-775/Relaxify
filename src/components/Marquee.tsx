@@ -16,11 +16,10 @@
  * is there only while the text is away from its start, so a line at rest
  * begins crisp.
  *
- * `shrinkTo`: a title that would rather get smaller than move.
- * Too long for its line, it is set smaller until it fits, down to that share
- * of its size; only a title still too long at the floor scrolls, at the floor
- * size. The line's height stays where it was (give the style a lineHeight),
- * so a long name never nudges the controls under it.
+ * A line is always set at its own size: a long one floats, it never shrinks.
+ *
+ * `tail` continues the same line in `tailStyle` (the mini player's
+ * "Song • Artists", where only the song is bold).
  *
  * The text sits in a lane far wider than the box, so it is laid out at its
  * full width and clipped by the box. Laid out IN the box, Android set it at
@@ -52,7 +51,8 @@ export function Marquee({
   style,
   ticker = false,
   paused = false,
-  shrinkTo,
+  tail,
+  tailStyle,
   fadeColor,
 }: {
   text: string;
@@ -61,29 +61,17 @@ export function Marquee({
   /** Hold still — for a copy that is laid out but not on screen, where a
    *  native loop would still run every frame for nobody. */
   paused?: boolean;
-  /** Shrink a long line to fit before scrolling it, down to this share of
-   *  its size (0.75 = three quarters). */
-  shrinkTo?: number;
+  /** More of the same line, in its own style. */
+  tail?: string;
+  tailStyle?: StyleProp<TextStyle>;
   /** The colour behind the line, which its edges fade into. No fade without
    *  it. */
   fadeColor?: string;
 }) {
   const [boxWidth, setBoxWidth] = useState(0);
-  /** The text's width at its own size, whatever size it is shown at. */
-  const [naturalWidth, setNaturalWidth] = useState(0);
+  const [textWidth, setTextWidth] = useState(0);
   const shift = useRef(new Animated.Value(0)).current;
 
-  // How far a long line is shrunk. Width scales with size; the 0.985 covers
-  // the letter-spacing, which does not.
-  const baseSize = StyleSheet.flatten(style)?.fontSize ?? 14;
-  const fit =
-    shrinkTo && boxWidth > 0 && naturalWidth - boxWidth > 4
-      ? Math.max(
-          shrinkTo,
-          Math.floor((boxWidth / naturalWidth) * 0.985 * 100) / 100,
-        )
-      : 1;
-  const textWidth = naturalWidth * fit;
   const overflow = textWidth - boxWidth;
   const scrolls =
     !paused && (ticker ? textWidth > 0 && boxWidth > 0 : overflow > 4);
@@ -92,7 +80,7 @@ export function Marquee({
     setBoxWidth(e.nativeEvent.layout.width);
   }, []);
   const onText = useCallback((e: LayoutChangeEvent) => {
-    setNaturalWidth(e.nativeEvent.layout.width);
+    setTextWidth(e.nativeEvent.layout.width);
   }, []);
 
   useEffect(() => {
@@ -126,25 +114,14 @@ export function Marquee({
     tick.start();
     return () => tick.stop();
     // text is in the deps so a track change restarts from the beginning.
-  }, [scrolls, shift, text, textWidth, boxWidth]);
+  }, [scrolls, shift, text, tail, textWidth, boxWidth]);
 
   return (
     <View style={styles.clip} onLayout={onBox}>
       <Animated.View style={[styles.lane, {transform: [{translateX: shift}]}]}>
-        <Text
-          style={[style, styles.text, fit < 1 && {fontSize: baseSize * fit}]}
-          numberOfLines={1}>
+        <Text style={[style, styles.text]} numberOfLines={1} onLayout={onText}>
           {text}
-        </Text>
-        {/* The measure: the same line at its own size, never seen. The
-            shown copy cannot be it once it has been shrunk. */}
-        <Text
-          style={[style, styles.text, styles.measure]}
-          numberOfLines={1}
-          onLayout={onText}
-          accessible={false}
-          importantForAccessibility="no">
-          {text}
+          {!!tail && <Text style={tailStyle}>{tail}</Text>}
         </Text>
       </Animated.View>
       {scrolls && !!fadeColor && (
@@ -200,7 +177,6 @@ const styles = StyleSheet.create({
   // Width must be intrinsic for onLayout to report the real text width; a
   // flexed Text would just report the box and never scroll.
   text: {alignSelf: 'flex-start', flexShrink: 0},
-  measure: {position: 'absolute', left: 0, top: 0, opacity: 0},
   fade: {position: 'absolute', top: 0, bottom: 0, width: FADE},
   fadeLeft: {left: 0},
   fadeRight: {right: 0},
