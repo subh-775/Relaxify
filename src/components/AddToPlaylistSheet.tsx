@@ -7,7 +7,7 @@
  * it to check the next one is not an answer. Three playlists in one visit is
  * one visit.
  *
- * Liked Songs is the first row and it is the SAME toggle as the + button that
+ * Liked Songs is one of the rows and it is the SAME toggle as the + button that
  * opened the sheet — one concept, one place to undo it. Letting "liked" and
  * "in Liked Songs" become two different things is the way this feature breaks.
  *
@@ -22,7 +22,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {Check, Heart, Plus, Search} from '../icons';
+import {Check, Heart, Search} from '../icons';
+import {PlusSlim} from '../glyphs';
 import {C, S, T} from '../theme';
 import type {Track} from '../backend';
 import {cleanText, getBestArtworkUrl} from '../tracks';
@@ -32,6 +33,7 @@ import {
   playlistsContaining,
   removeTrackFromPlaylist,
   usePlaylists,
+  type Playlist,
 } from '../playlists';
 import {rowId, sortPinned, usePins} from '../pins';
 import {PinGlyph} from './PinGlyph';
@@ -83,6 +85,9 @@ export function Tick({on}: {on: boolean}) {
   );
 }
 
+/** A row of the sheet's one list. */
+type Row = {kind: 'new'} | {kind: 'liked'} | {kind: 'playlist'; p: Playlist};
+
 function AddToPlaylistSheetView({
   track,
   onClose,
@@ -104,10 +109,20 @@ function AddToPlaylistSheetView({
    */
   const [shown, setShown] = useState<Track | null>(track);
   const {liked, toggle: toggleLiked} = useLike(track);
+  /**
+   * Where the song already was when the sheet opened: those rows come first.
+   * Taken once per open, so a row you tick stays where it is instead of
+   * jumping to the top under your finger.
+   */
+  const [savedAtOpen, setSavedAtOpen] = useState<{
+    liked: boolean;
+    ids: Set<string>;
+  }>({liked: false, ids: new Set()});
 
   useEffect(() => {
     if (track) {
       setShown(track);
+      setSavedAtOpen({liked, ids: playlistsContaining(playlists, track)});
       return;
     }
     // Closed. A half-typed name or a stale filter must NOT still be sitting
@@ -116,6 +131,9 @@ function AddToPlaylistSheetView({
     setCreating(false);
     setName('');
     setQuery('');
+    // Only a new song (or a close) re-takes the snapshot; ticking rows must
+    // not reorder them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track]);
 
   const memberOf = useMemo(
@@ -123,13 +141,29 @@ function AddToPlaylistSheetView({
     [playlists, track],
   );
 
-  // Pinned first, then filtered — so pinning still means "near the top" inside
-  // a filtered result rather than only in the unfiltered list.
-  const rows = useMemo(() => {
-    const sorted = sortPinned(playlists, pins, p => rowId('playlist', p));
+  /**
+   * One scrolling list: New playlist, then wherever the song already is
+   * (Liked Songs or a playlist), then everything else. Pinned playlists
+   * lead within each group, and a filter keeps the order.
+   */
+  const rows = useMemo((): Row[] => {
     const q = query.trim().toLowerCase();
-    return q ? sorted.filter(p => p.name.toLowerCase().includes(q)) : sorted;
-  }, [playlists, pins, query]);
+    const sorted = sortPinned(playlists, pins, p => rowId('playlist', p))
+      .filter(p => !q || p.name.toLowerCase().includes(q))
+      .map(p => ({kind: 'playlist' as const, p}));
+    const likedRow: Row[] =
+      !q || 'liked songs'.includes(q) ? [{kind: 'liked'}] : [];
+    const isSaved = (r: Row) =>
+      r.kind === 'playlist'
+        ? savedAtOpen.ids.has(r.p.id)
+        : r.kind === 'liked' && savedAtOpen.liked;
+    const all = [...likedRow, ...sorted];
+    return [
+      {kind: 'new'},
+      ...all.filter(isSaved),
+      ...all.filter(r => !isSaved(r)),
+    ];
+  }, [playlists, pins, query, savedAtOpen]);
 
   const toggleIn = useCallback(
     (id: string, playlistName: string) => {
@@ -203,56 +237,6 @@ function AddToPlaylistSheetView({
         </View>
       )}
 
-      {creating ? (
-        <View style={styles.newRow}>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="Playlist name"
-            placeholderTextColor={C.faint}
-            style={styles.input}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={createAndAdd}
-          />
-          <TouchableOpacity
-            onPress={createAndAdd}
-            disabled={!name.trim()}
-            style={styles.newBtn}>
-            <Check size={22} color={name.trim() ? C.accent : C.faint} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={styles.row}
-          activeOpacity={0.7}
-          onPress={() => setCreating(true)}>
-          <View style={styles.plusTile}>
-            <Plus size={22} color={C.sub} />
-          </View>
-          <Text style={styles.rowTitle}>New playlist</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Liked Songs, first of the lists: it is the one destination that is
-          always there, and it is the toggle the + itself drives. */}
-      <TouchableOpacity
-        style={styles.row}
-        activeOpacity={0.7}
-        onPress={onLikedRow}
-        accessibilityRole="checkbox"
-        accessibilityState={{checked: liked}}>
-        <View style={styles.likedTile}>
-          <Heart size={20} color="#fff" fill="#fff" />
-        </View>
-        <View style={styles.rowText}>
-          <Text style={styles.rowTitle} numberOfLines={1}>
-            Liked Songs
-          </Text>
-        </View>
-        <Tick on={liked} />
-      </TouchableOpacity>
-
       {/* Animated, so the offset reaches the sheet's gesture on the UI thread.
           A JS onScroll would be a frame or two stale exactly when it matters —
           at the top of a fling, deciding who owns the finger. */}
@@ -260,11 +244,11 @@ function AddToPlaylistSheetView({
         data={rows}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        keyExtractor={p => p.id}
+        keyExtractor={r => (r.kind === 'playlist' ? r.p.id : r.kind)}
         style={styles.list}
         keyboardShouldPersistTaps="handled"
-        ListEmptyComponent={
-          creating ? null : (
+        ListFooterComponent={
+          creating || rows.some(r => r.kind === 'playlist') ? null : (
             <Text style={styles.empty}>
               {query.trim()
                 ? 'No playlist by that name.'
@@ -272,7 +256,60 @@ function AddToPlaylistSheetView({
             </Text>
           )
         }
-        renderItem={({item}) => {
+        renderItem={({item: row}) => {
+          if (row.kind === 'new') {
+            return creating ? (
+              <View style={styles.newRow}>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Playlist name"
+                  placeholderTextColor={C.faint}
+                  style={styles.input}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={createAndAdd}
+                />
+                <TouchableOpacity
+                  onPress={createAndAdd}
+                  disabled={!name.trim()}
+                  style={styles.newBtn}>
+                  <Check size={22} color={name.trim() ? C.accent : C.faint} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.row}
+                activeOpacity={0.7}
+                onPress={() => setCreating(true)}>
+                <View style={styles.plusTile}>
+                  <PlusSlim size={20} color={C.text} />
+                </View>
+                <Text style={styles.rowTitle}>New playlist</Text>
+              </TouchableOpacity>
+            );
+          }
+          if (row.kind === 'liked') {
+            return (
+              <TouchableOpacity
+                style={styles.row}
+                activeOpacity={0.7}
+                onPress={onLikedRow}
+                accessibilityRole="checkbox"
+                accessibilityState={{checked: liked}}>
+                <View style={styles.likedTile}>
+                  <Heart size={20} color="#fff" fill="#fff" />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    Liked Songs
+                  </Text>
+                </View>
+                <Tick on={liked} />
+              </TouchableOpacity>
+            );
+          }
+          const item = row.p;
           const inPlaylist = memberOf.has(item.id);
           const pinned = pins.includes(rowId('playlist', item));
           return (
@@ -291,7 +328,7 @@ function AddToPlaylistSheetView({
                   {item.name}
                 </Text>
                 <View style={styles.subRow}>
-                  {pinned && <PinGlyph size={11} color={C.sub} />}
+                  {pinned && <PinGlyph size={14} color={C.sub} />}
                   <Text style={styles.rowSub}>
                     {item.tracks.length} song
                     {item.tracks.length === 1 ? '' : 's'}
@@ -346,9 +383,9 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 7,
+    // A plain square edge, as Spotify draws it.
     borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#3a3a40',
+    borderColor: '#5a5a62',
     alignItems: 'center',
     justifyContent: 'center',
   },
