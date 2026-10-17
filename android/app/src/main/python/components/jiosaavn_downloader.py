@@ -12,6 +12,7 @@ Features:
 - Error handling with retries
 """
 
+import json
 import re
 import os
 import time
@@ -99,6 +100,8 @@ class JioSaavnClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.session = requests.Session()
+        # seed song id -> (station id, created at); see station()
+        self._stations: Dict[str, tuple] = {}
         self.session.headers.update(self.DEFAULT_HEADERS)
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
@@ -154,49 +157,91 @@ class JioSaavnClient:
 
         songs_data = data.get("results", []) if isinstance(data, dict) else []
         results = []
-
         for song in songs_data[:limit]:
-            try:
-                more_info = song.get("more_info", {}) or {}
-                # Artist: prefer artistMap primary names (clean), then the
-                # music-director string, then the subtitle.
-                artist_map = more_info.get("artistMap", {}) or {}
-                primary = ", ".join(
-                    a.get("name", "")
-                    for a in (artist_map.get("primary_artists") or [])
-                    if isinstance(a, dict) and a.get("name")
-                )
-                artist = (
-                    primary
-                    or more_info.get("music")
-                    or more_info.get("primary_artists")
-                    or song.get("subtitle", "")
-                    or ""
-                )
-                duration = more_info.get("duration")
-                try:
-                    duration = int(duration) if duration is not None else None
-                except (TypeError, ValueError):
-                    duration = None
-                results.append(
-                    JioSaavnSong(
-                        id=song.get("id", ""),
-                        title=song.get("title", ""),
-                        artist=artist,
-                        album=more_info.get("album", "") or song.get("album", ""),
-                        image_url=song.get("image", ""),
-                        # search.getResults uses `perma_url` (the streamable song
-                        # page); autocomplete used `url`.
-                        url=song.get("perma_url", "") or song.get("url", ""),
-                        duration=duration,
-                        year=song.get("year") or more_info.get("year"),
-                        language=more_info.get("language"),
-                    )
-                )
-            except (KeyError, IndexError):
-                continue  # Skip malformed entries
+            parsed = self.parse_song(song)
+            if parsed:
+                results.append(parsed)
 
         return results
+
+    @staticmethod
+    def parse_song(song: Dict[str, Any]) -> Optional["JioSaavnSong"]:
+        """One song object from the API (search, station) as a JioSaavnSong,
+        or None when it is malformed."""
+        if not isinstance(song, dict):
+            return None
+        try:
+            more_info = song.get("more_info", {}) or {}
+            # Artist: prefer artistMap primary names (clean), then the
+            # music-director string, then the subtitle.
+            artist_map = more_info.get("artistMap", {}) or {}
+            primary = ", ".join(
+                a.get("name", "")
+                for a in (artist_map.get("primary_artists") or [])
+                if isinstance(a, dict) and a.get("name")
+            )
+            artist = (
+                primary
+                or more_info.get("music")
+                or more_info.get("primary_artists")
+                or song.get("subtitle", "")
+                or ""
+            )
+            duration = more_info.get("duration")
+            try:
+                duration = int(duration) if duration is not None else None
+            except (TypeError, ValueError):
+                duration = None
+            return JioSaavnSong(
+                id=song.get("id", ""),
+                title=song.get("title", ""),
+                artist=artist,
+                album=more_info.get("album", "") or song.get("album", ""),
+                image_url=song.get("image", ""),
+                # search.getResults uses `perma_url` (the streamable song
+                # page); autocomplete used `url`.
+                url=song.get("perma_url", "") or song.get("url", ""),
+                duration=duration,
+                year=song.get("year") or more_info.get("year"),
+                language=more_info.get("language"),
+            )
+        except (KeyError, IndexError, AttributeError):
+            return None
+
+    # ==================== STATIONS (song radio) ====================
+
+    def station(self, song_id: str, n: int = 10) -> List["JioSaavnSong"]:
+        """The next `n` songs of JioSaavn's own radio for `song_id`: its
+        recommender, the "autoplay" of the JioSaavn app.
+
+        One station per seed, kept for an hour: each call asks for the NEXT
+        songs, so a seed that comes round again continues where it left off
+        instead of giving the same list. Only answers with ctx=android (the
+        web contexts return []).
+        """
+        if not song_id:
+            return []
+        common = {"api_version": "4", "_format": "json", "_marker": "0", "ctx": "android"}
+        now = time.time()
+        station = self._stations.get(song_id)
+        if not station or now - station[1] > 3600:
+            params = {**common, "__call": "webradio.createEntityStation",
+                      "entity_id": json.dumps([song_id]), "entity_type": "queue",
+                      "freemium": "0", "save": "0"}
+            data = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}").json()
+            sid = data.get("stationid") if isinstance(data, dict) else None
+            if not sid:
+                return []
+            station = (sid, now)
+            self._stations[song_id] = station
+        params = {**common, "__call": "webradio.getSong", "stationid": station[0],
+                  "k": str(n), "next": "1"}
+        data = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}").json()
+        if not isinstance(data, dict):
+            return []
+        picks = [data[k] for k in sorted((k for k in data if k.isdigit()), key=int)]
+        songs = (self.parse_song((p or {}).get("song")) for p in picks if isinstance(p, dict))
+        return [x for x in songs if x and x.url]
 
     # ==================== STREAMING URL GENERATION ====================
 
