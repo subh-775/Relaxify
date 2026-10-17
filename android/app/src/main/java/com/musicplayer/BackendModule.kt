@@ -4,9 +4,7 @@ import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
-import android.graphics.Rect
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.util.Log
@@ -293,64 +291,6 @@ class BackendModule(reactContext: ReactApplicationContext) :
         if (root.isBlank()) "" else if (relative.isBlank()) root else "$root/$relative"
     } catch (e: Exception) {
         ""
-    }
-
-    /**
-     * Ask Android not to claim a strip at the left edge for its own back
-     * gesture, so the app's drawer pull can live there.
-     *
-     * Without this, an edge-swipe drawer is unreachable on any device with
-     * gesture navigation on. The system reserves roughly the outer 20-24dp of
-     * each edge and intercepts those touches BEFORE the app's view hierarchy
-     * sees them — so a pull that starts inside the strip goes to system back,
-     * and one that starts outside it is not in the strip at all. There is no
-     * width that works: too narrow to hit, or fighting the system for most of
-     * it.
-     *
-     * Android allows up to 200dp of exclusion per edge and silently ignores the
-     * excess; 28dp is well inside that, so nothing here is discarded.
-     *
-     * API 29+. On 28 and below there is no gesture navigation to yield, so
-     * `false` here means "not needed", not "failed".
-     */
-    @ReactMethod
-    fun setEdgeExclusion(widthDp: Int, promise: Promise) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            promise.resolve(false)
-            return
-        }
-        val activity = currentActivity
-        if (activity == null) {
-            promise.resolve(false)
-            return
-        }
-        activity.runOnUiThread {
-            try {
-                val root = activity.window?.decorView
-                // height > 0, not just non-null. This is called from Home, and
-                // Home mounts while the splash is still up — at which point the
-                // decor view frequently has no height yet. Rect(0, 0, px, 0)
-                // excludes NOTHING, so Android kept the strip for its own back
-                // gesture and ate the drawer swipe, silently and permanently:
-                // the call had already "succeeded" and nothing ever retried it.
-                // JS now calls this from onLayout, and this bails until there
-                // is something real to measure.
-                if (root != null && root.height > 0) {
-                    val density = reactApplicationContext.resources.displayMetrics.density
-                    val px = (widthDp * density).toInt()
-                    // Height comes from the decor view rather than from a
-                    // measured RN view: the strip is full-height by
-                    // construction, and reading it here means the exclusion
-                    // cannot go stale against a JS layout that has not
-                    // re-reported yet.
-                    root.systemGestureExclusionRects =
-                        listOf(Rect(0, 0, px, root.height))
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "could not set edge exclusion: " + e.message)
-            }
-        }
-        promise.resolve(true)
     }
 
     companion object {

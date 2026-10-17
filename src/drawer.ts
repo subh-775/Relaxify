@@ -13,7 +13,7 @@
  * is written from the gesture worklet on the UI thread, so the panel keeps
  * tracking the finger even while JS is busy.
  */
-import {Dimensions, NativeModules} from 'react-native';
+import {Dimensions} from 'react-native';
 import {
   Easing,
   makeMutable,
@@ -36,52 +36,6 @@ export const DRAWER_W = (({width, height}) =>
 
 /** -DRAWER_W = fully closed (off-screen left), 0 = fully open. */
 export const drawerX: SharedValue<number> = makeMutable(-DRAWER_W);
-
-/** How far right the finger must travel before the drag counts as a drawer pull. */
-export const DRAWER_GRAB = 12;
-
-/**
- * How wide the strip at the left edge that starts a drawer pull is, in dp.
- *
- * The pull used to be armed across the WHOLE of Home, which put it in a
- * permanent contest with the page's own vertical scrolling: a thumb-scroll arcs
- * rather than travelling straight up, so a drag could satisfy activeOffsetX
- * before failOffsetY ruled it out — and the moment the pan activated, RNGH
- * cancelled the scroll that was already under way. That is the "vertical
- * scrolling loses grip" report, and no threshold tuning removes it, because the
- * two gestures genuinely overlap.
- *
- * Restricting where the pull can BEGIN removes the contest instead of
- * arbitrating it, which is what Gmail, Chrome and YouTube all do — and what
- * Android's own system back gesture does, at a comparable inset. Everything
- * outside this strip now scrolls with nothing else even listening.
- *
- * 28, not 36, and it comes with a system-gesture exclusion (see
- * `reserveDrawerEdge`). Android reserves roughly the outer 20-24dp of each edge
- * for its own back gesture and intercepts those touches before the app's views
- * ever see them, so without the exclusion most of a 36dp strip was being eaten
- * by system back — which is why the swipe stopped opening the drawer at all.
- */
-export const DRAWER_EDGE = 28;
-
-/**
- * Ask Android to stop claiming the strip for its back gesture.
- *
- * Best-effort and idempotent. `false` comes back on API 28 and below, where
- * there is no gesture navigation to yield — that is "not needed", not "failed",
- * and the drawer pull works there regardless.
- */
-export async function reserveDrawerEdge(): Promise<void> {
-  try {
-    await (
-      NativeModules.Backend as {
-        setEdgeExclusion?: (widthDp: number) => Promise<boolean>;
-      }
-    )?.setEdgeExclusion?.(DRAWER_EDGE);
-  } catch {
-    /* older APK without the method — the hamburger still works */
-  }
-}
 
 /**
  * Let go: run the rest of the way to open or closed.
@@ -118,10 +72,4 @@ export function settleDrawer(
  *  gesture left it. */
 export function resetDrawer(): void {
   drawerX.value = -DRAWER_W;
-}
-
-/** Did the finger let go far enough (or fast enough) to mean "open"? */
-export function shouldOpen(dx: number, vx: number): boolean {
-  'worklet';
-  return dx > DRAWER_W * 0.4 || vx > 500;
 }

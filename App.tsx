@@ -631,8 +631,8 @@ function Shell() {
   }, [openRecap, openCollection, switchTab]);
 
   /**
-   * Opening by TAP: mount the panel closed, then run it open. The drag path
-   * (below) skips the animation entirely because the finger IS the animation.
+   * Opening by TAP on the app icon, the only way in: mount the panel closed,
+   * then run it open.
    */
   const openDrawer = useCallback(() => {
     resetDrawer();
@@ -644,24 +644,6 @@ function Shell() {
     // which point the answers are usually already back and Settings opens
     // finished instead of filling in.
     prefetchSettingsRemote();
-  }, []);
-
-  /** A drawer pull has begun. Mount without animating — HomeScreen has already
-   *  parked the panel off-screen and is about to drive it directly. */
-  const beginDrawerDrag = useCallback(() => {
-    setDrawerOpen(true);
-    prefetchSettingsRemote();
-  }, []);
-
-  /** The finger lifted. Carry its speed into the settle, and unmount only once
-   *  a close has actually finished — unmounting early would snap it away
-   *  mid-animation. */
-  const endDrawerDrag = useCallback((open: boolean, velocity: number) => {
-    settleDrawer(open, velocity, finished => {
-      if (finished && !open) {
-        setDrawerOpen(false);
-      }
-    });
   }, []);
 
   const navigateFromDrawer = useCallback(
@@ -809,8 +791,6 @@ function Shell() {
             onPickTrack={pickHomeItem}
             onPlayTrack={play}
             onOpenMenu={openDrawer}
-            onBeginDrag={beginDrawerDrag}
-            onEndDrag={endDrawerDrag}
             onReady={onHomeReady}
             onOpenRecap={openRecap}
             onOpenJam={openJam}
