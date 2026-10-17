@@ -10,7 +10,7 @@
  * A Spotify playlist/album link pasted into the field is detected and offered
  * as an import rather than searched for as text.
  */
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -37,7 +37,6 @@ import {
   type Suggestion,
   type Track,
 } from '../backend';
-import {useStats} from '../stats';
 import {useIsActiveTrack} from '../player';
 import {
   cleanText,
@@ -58,7 +57,6 @@ import {MenuMark} from '../components/MenuMark';
 import {logEvent} from '../analytics';
 import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, readLikes, useSettings} from '../store';
-import {useArtistPhotos} from '../artistPhotos';
 import {SearchHints} from '../components/SearchHints';
 import {OfflineScreen} from '../components/OfflineScreen';
 import {checkOnline, useOffline} from '../offline';
@@ -67,14 +65,7 @@ import {codeIn, openShared} from '../sharedPlaylists';
 import {type Collection} from '../collections';
 import {toast} from '../toast';
 import {BRIGHT_PALS, blob} from '../brandArt';
-import Svg, {
-  Circle,
-  Defs,
-  LinearGradient as SvgGradient,
-  Path,
-  Stop,
-} from 'react-native-svg';
-
+import Svg, {Path} from 'react-native-svg';
 
 const DEBOUNCE_MS = 180;
 
@@ -169,10 +160,6 @@ export const SearchScreen = React.memo(function SearchScreen({
   const history = useSearchHistory();
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
-  const {topArtists} = useStats();
-  // Real faces for "Your artists": the stats only know a song's cover.
-  const yourArtists = useMemo(() => topArtists.slice(0, 12), [topArtists]);
-  const faces = useArtistPhotos(yourArtists.map(a => a.name));
 
   // Guards against a slow response for an old query overwriting a newer one.
   const latest = useRef(0);
@@ -296,8 +283,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       ...own,
       ...list.filter(
         x =>
-          x.kind !== 'own' &&
-          !mine.has(`${x.title}|${x.artist}`.toLowerCase()),
+          x.kind !== 'own' && !mine.has(`${x.title}|${x.artist}`.toLowerCase()),
       ),
     ];
     // Over the last answer, which stays until the new one lands.
@@ -406,18 +392,18 @@ export const SearchScreen = React.memo(function SearchScreen({
   // The header and the field, shared by the offline screen below.
   const top = (
     <>
-        <View style={styles.head}>
-          <MenuMark onPress={onOpenMenu} />
-          <Text style={styles.title}>Search</Text>
-        </View>
+      <View style={styles.head}>
+        <MenuMark onPress={onOpenMenu} />
+        <Text style={styles.title}>Search</Text>
+      </View>
 
-        <View style={styles.field}>
-          <SearchIcon size={22} color={C.bg} strokeWidth={2.2} />
-          <View style={styles.inputBox}>
-            {/* The tab stays mounted, and leaving it empties the field: on
+      <View style={styles.field}>
+        <SearchIcon size={22} color={C.bg} strokeWidth={2.2} />
+        <View style={styles.inputBox}>
+          {/* The tab stays mounted, and leaving it empties the field: on
                 its own this ticker ran behind Home and Library all session. */}
-            {!query && visible && <SearchHints />}
-            <TextInput
+          {!query && visible && <SearchHints />}
+          <TextInput
             ref={inputRef}
             value={query}
             onChangeText={setQuery}
@@ -428,14 +414,14 @@ export const SearchScreen = React.memo(function SearchScreen({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onSubmitEditing={() => runSearch(query)}
-            />
-          </View>
-          {!!query && (
-            <TouchableOpacity onPress={() => resetSearch(true)} hitSlop={10}>
-              <X size={20} color={C.bg} />
-            </TouchableOpacity>
-          )}
+          />
         </View>
+        {!!query && (
+          <TouchableOpacity onPress={() => resetSearch(true)} hitSlop={10}>
+            <X size={20} color={C.bg} />
+          </TouchableOpacity>
+        )}
+      </View>
     </>
   );
 
@@ -533,73 +519,87 @@ export const SearchScreen = React.memo(function SearchScreen({
           contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={<Text style={styles.section}>Recommended</Text>}
-          renderItem={({item}) => (
-            <TouchableOpacity
-              style={styles.suggestion}
-              activeOpacity={0.7}
-              onPress={() => {
-                logEvent('suggestion_pick', {kind: item.kind ?? 'song'});
-                // Your song plays; an artist opens; a song is searched for.
-                if (item.kind === 'own' && item.track) {
-                  Keyboard.dismiss();
-                  onlineCopy(item.track).then(t =>
-                    t
-                      ? onPickTrack(t)
-                      : toast("Couldn't find that song online."),
-                  );
-                  return;
-                }
-                if (item.kind === 'artist' && onOpenArtist) {
-                  Keyboard.dismiss();
-                  onOpenArtist(item.title);
-                  return;
-                }
-                const title =
-                  item.kind === 'lyric' ? cleanText(item.title) : item.title;
-                const q = `${title} ${item.artist}`.trim();
-                setQuery(q);
-                runSearch(q);
-              }}>
-              {item.artwork_url ? (
-                <Image
-                  source={{uri: item.artwork_url}}
-                  style={[
-                    styles.suggestionArt,
-                    item.kind === 'artist' && styles.suggestionRound,
-                  ]}
+          renderItem={({item}) => {
+            // Your own songs are song rows like any other: swipe to queue,
+            // + and ⋯. A tap plays the online copy.
+            const own = item.kind === 'own' ? item.track : undefined;
+            if (own) {
+              return (
+                <TrackRow
+                  track={own}
+                  showDuration={false}
+                  onMenu={() => onMenu(own)}
+                  onPress={() => {
+                    logEvent('suggestion_pick', {kind: 'own'});
+                    Keyboard.dismiss();
+                    onlineCopy(own).then(t =>
+                      t
+                        ? onPickTrack(t)
+                        : toast("Couldn't find that song online."),
+                    );
+                  }}
                 />
-              ) : (
-                <View
-                  style={[
-                    styles.suggestionArt,
-                    styles.suggestionArtEmpty,
-                    item.kind === 'artist' && styles.suggestionRound,
-                  ]}>
-                  <SearchIcon size={16} color={C.faint} />
-                </View>
-              )}
-              <View style={styles.suggestionText}>
-                {item.kind === 'artist' ? (
-                  <Text style={styles.suggestionTitle} numberOfLines={1}>
-                    {cleanText(item.title)}
-                  </Text>
+              );
+            }
+            return (
+              <TouchableOpacity
+                style={styles.suggestion}
+                activeOpacity={0.7}
+                onPress={() => {
+                  logEvent('suggestion_pick', {kind: item.kind ?? 'song'});
+                  // An artist opens; a song is searched for.
+                  if (item.kind === 'artist' && onOpenArtist) {
+                    Keyboard.dismiss();
+                    onOpenArtist(item.title);
+                    return;
+                  }
+                  const title =
+                    item.kind === 'lyric' ? cleanText(item.title) : item.title;
+                  const q = `${title} ${item.artist}`.trim();
+                  setQuery(q);
+                  runSearch(q);
+                }}>
+                {item.artwork_url ? (
+                  <Image
+                    source={{uri: item.artwork_url}}
+                    style={[
+                      styles.suggestionArt,
+                      item.kind === 'artist' && styles.suggestionRound,
+                    ]}
+                  />
                 ) : (
-                  <SuggestionTitle item={item} />
+                  <View
+                    style={[
+                      styles.suggestionArt,
+                      styles.suggestionArtEmpty,
+                      item.kind === 'artist' && styles.suggestionRound,
+                    ]}>
+                    <SearchIcon size={16} color={C.faint} />
+                  </View>
                 )}
-                {item.kind === 'artist' ? (
-                  <Text style={styles.suggestionSub} numberOfLines={1}>
-                    Artist
-                  </Text>
-                ) : (
-                  !!item.artist && (
-                    <Text style={styles.suggestionSub} numberOfLines={1}>
-                      {cleanText(item.artist)}
+                <View style={styles.suggestionText}>
+                  {item.kind === 'artist' ? (
+                    <Text style={styles.suggestionTitle} numberOfLines={1}>
+                      {cleanText(item.title)}
                     </Text>
-                  )
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
+                  ) : (
+                    <SuggestionTitle item={item} />
+                  )}
+                  {item.kind === 'artist' ? (
+                    <Text style={styles.suggestionSub} numberOfLines={1}>
+                      Artist
+                    </Text>
+                  ) : (
+                    !!item.artist && (
+                      <Text style={styles.suggestionSub} numberOfLines={1}>
+                        {cleanText(item.artist)}
+                      </Text>
+                    )
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
 
@@ -609,65 +609,8 @@ export const SearchScreen = React.memo(function SearchScreen({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           overScrollMode="never">
-          {topArtists.length > 0 && onOpenArtist && (
-            <>
-              <Text style={styles.section}>Your artists</Text>
-              <FlatList
-                horizontal
-                data={yourArtists}
-                keyExtractor={a => a.name}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.artistStrip}
-                renderItem={({item, index}) => (
-                  <TouchableOpacity
-                    style={styles.artistCard}
-                    activeOpacity={0.75}
-                    onPress={() => onOpenArtist(item.name)}>
-                    <View style={styles.ring}>
-                      {/* Your most played artist wears a colour ring and a
-                          #1 sticker, so the row reads as a ranking. */}
-                      {index === 0 && (
-                        <Svg width={84} height={84} style={styles.ringArt}>
-                          <Defs>
-                            <SvgGradient id="top" x1="0" y1="0" x2="1" y2="1">
-                              <Stop offset="0" stopColor="#FF5A4E" />
-                              <Stop offset="0.5" stopColor="#FFD23F" />
-                              <Stop offset="1" stopColor="#2EC4B6" />
-                            </SvgGradient>
-                          </Defs>
-                          <Circle cx={42} cy={42} r={42} fill="url(#top)" />
-                        </Svg>
-                      )}
-                      {faces[item.name] || item.image ? (
-                        <Image
-                          source={{uri: faces[item.name] || item.image}}
-                          style={[styles.artistPfp, index === 0 && styles.pfpTop]}
-                        />
-                      ) : (
-                        <View style={[styles.artistPfp, styles.artistPfpEmpty]}>
-                          <Text style={styles.artistInitial}>
-                            {item.name.trim().charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                      {index === 0 && (
-                        <View style={styles.first}>
-                          <Text style={styles.firstText}>#1</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.artistName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              />
-            </>
-          )}
-
           {genres.length > 0 && (
             <>
-              <Text style={styles.section}>Browse all</Text>
               <View style={styles.grid}>
                 {genres.map((g, i) => (
                   <TouchableOpacity
@@ -829,10 +772,13 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10,
   },
+  // No heading over the tiles: the coloured tiles are all Search shows when
+  // the field is empty, and say what they are themselves.
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: S.gutter,
+    paddingTop: 12,
     gap: 10,
   },
   // Spotify's Browse tile: 100 tall, a small corner, the name bold.
@@ -865,25 +811,6 @@ const styles = StyleSheet.create({
     transform: [{rotate: '25deg'}],
   },
   artistStrip: {paddingHorizontal: S.gutter, gap: 16, paddingBottom: 6},
-  ring: {
-    width: 84,
-    height: 84,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringArt: {position: 'absolute', left: 0, top: 0},
-  // A black gap between the photo and the ring, as a sticker's edge.
-  pfpTop: {borderWidth: 3, borderColor: C.bg},
-  first: {
-    position: 'absolute',
-    right: -2,
-    top: -2,
-    backgroundColor: '#FFE14D',
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  firstText: {color: '#111014', fontSize: 11, fontWeight: '700'},
   artistCard: {width: 84, alignItems: 'center'},
   artistPfp: {
     width: 76,
