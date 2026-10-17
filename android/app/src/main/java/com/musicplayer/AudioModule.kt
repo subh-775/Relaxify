@@ -852,6 +852,13 @@ class AudioModule(private val ctx: ReactApplicationContext) :
      *   normal speed would be audibly out of step with it for the whole fade.
      */
     private fun prepareOverlap(url: String, rate: Double) {
+        // SoundCloud streams as fragmented-MP4 HLS (player.ts toQueueItem),
+        // which MediaPlayer cannot open: every try was a request and an error,
+        // every four seconds. The song still changes, as a plain cut.
+        if (android.net.Uri.parse(url).getQueryParameter("source") == "soundcloud") {
+            stopCfInternal()
+            return
+        }
         try {
             stopCfInternal()
             val mp = MediaPlayer().apply {

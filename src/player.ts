@@ -20,6 +20,7 @@ import TrackPlayer, {
   Event,
   RepeatMode,
   State,
+  TrackType,
   usePlaybackState,
   useProgress as useProgressPolled,
   type Track as RNTPTrack,
@@ -806,6 +807,12 @@ function toQueueItem(track: Track, bitrate: number) {
     /** The recording (see recordingOf), for the playing highlight. */
     _rec: recordingOf(track),
     url,
+    // SoundCloud streams only as HLS now (soundcloud_downloader.py
+    // pick_audio_format), and the URL is the proxy's, with no .m3u8 for
+    // ExoPlayer to recognise: without this it read the playlist as an audio
+    // file and every SoundCloud song failed.
+    type:
+      source === 'soundcloud' && !track.file_path ? TrackType.HLS : undefined,
     // Sent on the redirect to the CDN too (see STREAM_UA).
     userAgent: STREAM_UA,
     headers:

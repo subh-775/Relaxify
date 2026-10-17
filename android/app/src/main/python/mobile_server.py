@@ -960,6 +960,14 @@ def _verified_stream(url: str, source: str, bitrate: int):
         bitrate = min(bitrate, _quality_cap)
     if source == "jiosaavn":
         ladder = [b for b in dict.fromkeys((bitrate, 320, 160, 96)) if b <= bitrate]
+    elif source in ("youtube", "youtube_music"):
+        # Twice. Every so often a NewPipe extraction comes back with URLs
+        # YouTube refuses (403 on every stream; no PO token), and the next
+        # extraction of the same video plays: measured 2026-10-16, 4 of 30
+        # videos dead on one pass played on another. A dead URL is evicted
+        # below, so the second pass extracts afresh, here and now, rather than
+        # after the player has failed and come back through its retry.
+        ladder = [bitrate, bitrate]
     else:
         ladder = [bitrate]
 
@@ -967,8 +975,8 @@ def _verified_stream(url: str, source: str, bitrate: int):
     for br in ladder or [bitrate]:
         s_url = _resolve_stream_url_cached(url, source, br)
         if not s_url:
-            # The source had no full, progressive stream to hand us
-            # (SoundCloud HLS/preview-only, or a dead page).
+            # The source had no playable stream to hand us
+            # (SoundCloud preview-only, YouTube unextractable, or a dead page).
             print(f"[proxy] {source} could not resolve a stream for {url} (br={br})")
             continue
         # Two bytes, to learn whether the CDN serves this URL at all, before
