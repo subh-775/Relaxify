@@ -174,7 +174,7 @@ export const GLYPHS = {
     {d: 'M10 10.5V17M14 10.5V17', w: 1.8},
   ],
   // A pushpin leaning right, head up: the mark on a pinned Library row and
-  // the Pin action. Solid, so it still reads at the 13px a row draws it.
+  // the Pin action. Solid, so it still reads at the size a row draws it.
   pin: [
     {
       d: 'M17.42 3.13L20.67 6.38C21.31 7.02 21.27 7.97 20.67 8.64L17.21 12.67C16.5 13.52 16.29 14.58 16.43 15.71L16.54 16.46C16.64 17.48 15.58 17.98 14.87 17.27L6.53 8.93C5.82 8.22 6.32 7.16 7.34 7.26L8.09 7.37C9.22 7.51 10.28 7.3 11.13 6.59L15.16 3.13C15.83 2.53 16.78 2.49 17.42 3.13Z',
