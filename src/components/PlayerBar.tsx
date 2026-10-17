@@ -48,6 +48,7 @@ import {Devices, Headphones, Pause, Play} from '../glyphs';
 import {C, S} from '../theme';
 import {fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from './Marquee';
+import {SwipeEdges} from './SwipeEdges';
 import {
   sourceTrackFor,
   togglePlay,
@@ -444,8 +445,9 @@ export const PlayerBar = React.memo(function PlayerBar({
                 {/* With headphones in, the second line is the device's name,
                     so the song and who sings it share the first, and it
                     floats when it is too long to read whole. On the phone's
-                    speaker the title stays put and the credit floats under
-                    it, as Spotify's does. */}
+                    speaker the title has its own line and floats the same
+                    way when it is too long, with the credit floating under
+                    it. */}
                 <View style={styles.text}>
                   {output ? (
                     <>
@@ -462,9 +464,11 @@ export const PlayerBar = React.memo(function PlayerBar({
                     </>
                   ) : (
                     <>
-                      <Text style={styles.title} numberOfLines={1}>
-                        {title}
-                      </Text>
+                      <Marquee
+                        text={title}
+                        style={styles.title}
+                        fadeColor={fadeTop}
+                      />
                       <Marquee
                         text={artists}
                         style={styles.artist}
@@ -487,6 +491,12 @@ export const PlayerBar = React.memo(function PlayerBar({
                   />
                 ),
             )}
+            <SwipeEdges
+              slide={dragX}
+              span={swipeSpan}
+              top={tint ? surfaceTint(tint, 0.145) : UNTINTED}
+              bottom={tint ? surfaceTint(tint, 0.095) : UNTINTED}
+            />
           </View>
 
           {/* Output, like, play — three identical 44x44 slots, so the row reads
@@ -586,9 +596,11 @@ const styles = StyleSheet.create({
     paddingBottom: PAD + 3,
     minWidth: 0,
   },
+  // 42, not 48: the bar is 53 tall instead of 59, nearer Spotify's slim
+  // one, with the controls and the type at the same size as before.
   art: {
-    width: 48,
-    height: 48,
+    width: 42,
+    height: 42,
     borderRadius: ART_R,
     backgroundColor: C.surface,
     // Stops a cover with a light background from bleeding into the bar.

@@ -73,6 +73,7 @@ import {logEvent} from '../analytics';
 import {enqueueDownload, useIsDownloaded} from '../downloads';
 import {cleanText, fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from '../components/Marquee';
+import {SwipeEdges} from '../components/SwipeEdges';
 import {
   RepeatMode,
   isShuffled,
@@ -1165,6 +1166,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     />
                   ),
               )}
+              {/* Soft edges while the titles change places, so the next one
+                  slips in beside the buttons instead of crossing a hard cut. */}
+              <SwipeEdges slide={slide} span={swipeSpan} top={fadeColor} />
             </View>
 
             <View style={styles.actionCol}>
