@@ -127,19 +127,11 @@ updating safely.
 | `docs/` | The documentation site (Vite, React and MDX), published to GitHub Pages from `main`. |
 | `firebase/` | The Jam database's security rules. |
 
-## Credits
-
-- **[Subhansh Malviya](https://github.com/subh-775)** builds and maintains
-  Relaxify.
-- **[Ashirwad Rai](https://github.com/AshirwadRai)** created Fix-Spotify and
-  designed the search, source-matching and API logic that Relaxify's engine is
-  built on.
-
-Relaxify also depends on open-source projects including NewPipeExtractor,
-yt-dlp, react-native-track-player and Chaquopy. See [NOTICE](NOTICE) for the
-full list and their licences.
-
 ## Licence
+
+Relaxify depends on open-source projects including NewPipeExtractor, yt-dlp,
+react-native-track-player and Chaquopy. See [NOTICE](NOTICE) for the full list
+and their licences.
 
 Relaxify is free software, licensed under the
 [GNU General Public License v3.0](LICENSE). Copyright and third-party notices
@@ -158,3 +150,5 @@ misuse of this software.
 
 Support the artists you listen to: buy their music and use official streaming
 services.
+
+<p align="center">Built with care by <a href="https://github.com/subh-775">Subh</a> &amp; <a href="https://github.com/AshirwadRai">Ashirwad</a></p>
