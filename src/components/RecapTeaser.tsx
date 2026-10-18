@@ -1,6 +1,7 @@
 /**
- * The Recap's front door on Home: a card in the Recap's own colours, with the
- * week so far and a button into the full Recap. On Sunday and Monday only,
+ * The Recap's front door on Home: a card in the Recap's own colours that
+ * says the week's Recap is ready, and a button into it. The figures stay
+ * inside the Recap itself. On Sunday and Monday only,
  * for a listener with some history (recapCardDue); the menu has it any day.
  *
  * Its palette is picked by the week, so it holds still while you use the app
@@ -20,12 +21,6 @@ const BURST = burst(CARD_ART / 2, CARD_ART / 2, 88, 54, 12);
 export function weekOf(at: number): string {
   const back = (new Date(at).getDay() + 6) % 7;
   return dayKey(at - back * DAY_MS);
-}
-
-function duration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h ? `${h} h ${m} min` : `${m} min`;
 }
 
 export function RecapTeaser({
@@ -48,13 +43,7 @@ export function RecapTeaser({
     <FeatureCard
       pal={pal}
       kicker="Your week in music"
-      title={
-        empty
-          ? 'Play a song to start it'
-          : `${sum.songs} ${sum.songs === 1 ? 'song' : 'songs'}, ${duration(
-              sum.minutes,
-            )}`
-      }
+      title={empty ? 'Play a song to start it' : 'Your Weekly Recap is here'}
       action="Open Recap"
       onPress={onOpen}
       width={width}
