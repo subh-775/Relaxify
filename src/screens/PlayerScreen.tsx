@@ -951,7 +951,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   // The whole title as the source has it, entities decoded: "(From ...)",
   // "(Live)" and all. The lists keep the tidied one.
   const title = fullText(active.title);
-  // The open player's surface, which the floating lines' edges fade into.
+  // The open player's surface, which a swipe's soft edges fade into.
   const fadeColor = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
   const artistList = splitArtists(String(active.artist ?? ''));
   const artists = artistList.join(', ');
@@ -1116,12 +1116,13 @@ export const PlayerScreen = React.memo(function PlayerScreen({
             <View style={styles.metaCarousel}>
               <Animated.View style={[styles.meta, metaStyle]}>
                 {/* One line, as Spotify sets it, always at the same size: a
-                    long title floats rather than shrinks. */}
+                    long title floats rather than shrinks. No edge fades here:
+                    painted in one colour over the cover's glow they showed
+                    as boxes, so the line just clips at the box. */}
                 <Marquee
                   text={title}
                   style={styles.title}
                   paused={!visible}
-                  fadeColor={fadeColor}
                 />
                 {/* Its OWN line, at full width. The artist is the second most
                     important thing on this screen and it was sharing a row with
@@ -1137,7 +1138,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     style={styles.artist}
                     ticker={artistCount > 1}
                     paused={!visible}
-                    fadeColor={fadeColor}
                   />
                 </TouchableOpacity>
                 {/* Third line. Both badges render nothing when their setting is
