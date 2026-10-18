@@ -9,6 +9,8 @@ Run it directly:  python test_stream_sources.py
   verifier extracts once more before giving up. Other sources do not.
 - A SoundCloud download (fragmented MP4) is rebuilt as a plain MP4 with a
   real length.
+- A JioSaavn song's token is read from both shapes of its page URL: search's
+  and the station's (radio), which carries the language and album too.
 """
 
 import os
@@ -16,6 +18,7 @@ import struct
 import tempfile
 
 import mobile_server as m
+from components.jiosaavn_downloader import JioSaavnClient
 from components.soundcloud_downloader import _box, _boxes, defragment_mp4, pick_audio_format
 
 hls_aac = {"format_id": "hls_aac_160k", "protocol": "m3u8_native",
@@ -109,5 +112,12 @@ assert struct.unpack_from(">I", d, p + 16)[0] == 5 * 1024
 p, _ = find(0, len(d), *stbl, b"stco")
 assert d[struct.unpack_from(">I", d, p + 8)[0]:][:12] == b"aabbbcddddee"
 assert find(0, len(d), b"moov", b"mvex") is None
+
+token = JioSaavnClient.song_token
+assert token("https://www.jiosaavn.com/song/last-night-on-earth/MTEcdEVyUV4") == "MTEcdEVyUV4"
+assert token("https://www.jiosaavn.com/s/song/english/bones/bones/CSwOcCcIcls") == "CSwOcCcIcls"
+assert token("https://www.jiosaavn.com/song/idea-10/HjAfWBJ,TXA/?ref=x") == "HjAfWBJ,TXA"
+assert token("https://www.jiosaavn.com/album/bones/abc") is None
+assert token("") is None
 
 print("ok")

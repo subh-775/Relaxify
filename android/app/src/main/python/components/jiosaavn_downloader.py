@@ -245,6 +245,20 @@ class JioSaavnClient:
 
     # ==================== STREAMING URL GENERATION ====================
 
+    @staticmethod
+    def song_token(song_url: str) -> Optional[str]:
+        """The song's token: the last part of its page URL.
+
+        Search answers with /song/<title>/<token>; the station (radio) answers
+        with /s/song/<language>/<album>/<title>/<token>. Reading the part after
+        "song/<title>/" took "<album>/<title>/<token>" as the token for every
+        station song, so not one radio pick from JioSaavn could play.
+        """
+        path = urllib.parse.urlsplit(song_url or "").path.rstrip("/")
+        if "/song/" not in path:
+            return None
+        return path.rsplit("/", 1)[-1] or None
+
     def _get_encrypted_media_url(self, song_token: str) -> Optional[str]:
         """
         Get encrypted media URL from webapi.get endpoint.
@@ -268,6 +282,8 @@ class JioSaavnClient:
         url = f"{self.BASE_URL}?{urllib.parse.urlencode(params)}"
         response = self._request("GET", url)
         data = response.json()
+        if not isinstance(data, dict):
+            return None  # an unknown token answers with a bare list
 
         songs = data.get("songs", [])
         if songs and "more_info" in songs[0]:
@@ -279,8 +295,8 @@ class JioSaavnClient:
 
         Used to repair saved songs that only kept an iTunes cover: iTunes is a
         separate fuzzy lookup and sometimes matched another song."""
-        match = re.search(r"song/(.*?)/([^/?#]+)", song_url or "")
-        if not match:
+        token = self.song_token(song_url)
+        if not token:
             return None
         params = {
             "__call": "webapi.get",
@@ -288,7 +304,7 @@ class JioSaavnClient:
             "_format": "json",
             "_marker": "0",
             "ctx": "wap6dot0",
-            "token": match.group(2),
+            "token": token,
             "type": "song",
         }
         response = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}")
@@ -353,12 +369,9 @@ class JioSaavnClient:
         Returns:
             Direct streaming URL or None
         """
-        # Extract token from song URL
-        match = re.search(r"song/(.*?)/(.*)", song_url)
-        if not match:
+        song_token = self.song_token(song_url)
+        if not song_token:
             return None
-
-        song_token = match.group(2)
 
         # Step 1: Get encrypted media URL
         encrypted_url = self._get_encrypted_media_url(song_token)
