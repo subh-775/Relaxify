@@ -60,7 +60,8 @@ class AudioModule(private val ctx: ReactApplicationContext) :
      * Every failure path here used to `promise.resolve(false)` and say nothing,
      * so an equalizer that silently did nothing was indistinguishable from one
      * that was working — with no way to tell which without a USB cable. This is
-     * surfaced through getDiagnostics() on the Settings > Diagnostics screen.
+     * surfaced through getDiagnostics(): a refused setEqualizer writes it to the
+     * MPJS log (audioEffects.ts).
      */
     @Volatile private var lastError: String = ""
 
@@ -115,7 +116,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
 
     /**
      * Everything needed to explain a non-working equalizer, without a cable.
-     * Rendered by the in-app Diagnostics screen.
+     * Read when setEqualizer is refused, and written to the MPJS log.
      */
     @ReactMethod
     fun getDiagnostics(promise: Promise) {

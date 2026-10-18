@@ -77,7 +77,6 @@ export const updateSupported = typeof native.check === 'function';
 export type UpdateInfo = {
   available: boolean;
   version: string;
-  notes: string;
   /** Bytes of the .apk asset. 0 when GitHub did not report a size. */
   sizeBytes?: number;
   /** Set when the check could not complete — distinct from "up to date". */

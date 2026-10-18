@@ -31,7 +31,7 @@ import {
   savedName,
   validCode,
 } from './jam';
-import {createStore, useStoreValue} from './storage';
+import {createStore} from './storage';
 import {
   onPlaylistsChanged,
   readPlaylists,
@@ -49,8 +49,6 @@ const shares = createStore<Record<string, Share>>('mp.sharedOut.v1', {}, raw =>
     ? (raw as Record<string, Share>)
     : {},
 );
-
-export const useShares = () => useStoreValue(shares);
 
 /** The most songs one shared playlist carries. */
 const MAX_TRACKS = 500;

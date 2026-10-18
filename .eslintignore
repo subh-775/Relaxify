@@ -1,0 +1,4 @@
+# The docs site (docs/) is its own Vite + React project with its own browser
+# globals, and docs/dist is its build output. The app lint is src/, App.tsx
+# and __tests__/, the same paths CI checks.
+docs/

@@ -1,34 +1,20 @@
 /**
- * A small in-app event log.
+ * A small event log, mirrored to logcat.
  *
- * There is no USB debugging in the loop for this project: builds are installed
- * from a release tag and tested by people who cannot run `adb logcat`. Without
- * something like this, "the equalizer does nothing" and "the update popup
- * sometimes doesn't appear" are unfalsifiable — the app has no way to say what
- * it tried and what came back.
+ * Builds are installed from a release tag and tested by people who cannot run
+ * `adb logcat`, so "the equalizer does nothing" and "the update popup
+ * sometimes doesn't appear" need the app to say what it tried and what came
+ * back. A release build installs no React Native console, so console.log
+ * would die silently; this goes through the native module instead, and
+ * `adb logcat -s MPJS` shows every line.
  *
- * Deliberately tiny: a fixed ring buffer in memory, no persistence, no upload.
- * It costs nothing when nobody opens the Diagnostics screen.
- *
- * It ALSO mirrors to logcat now. USB debugging turned out to be possible after
- * all, and the first capture from a real session contained not one line from
- * our own code — because a release build installs no React Native console, so
- * every diag() call died in the buffer above. `adb logcat -s MPJS` shows them.
+ * It used to keep the last 200 entries in memory as well, for an in-app
+ * Diagnostics screen. That screen is gone, and nothing read the buffer.
  */
 import {NativeModules} from 'react-native';
 
 const nativeLog = (NativeModules?.Audio as {log?: (t: string, m: string) => void} | undefined)
   ?.log;
-
-const MAX = 200;
-
-export type DiagEntry = {at: number; tag: string; msg: string};
-
-const entries: DiagEntry[] = [];
-const listeners = new Set<() => void>();
-let snapshot: DiagEntry[] = [];
-/** Set by diag(), cleared by readDiag() — see the note there. */
-let stale = false;
 
 /** Record an event. Keep `msg` short — this is a log line, not a report. */
 export function diag(tag: string, msg: string): void {
@@ -39,29 +25,4 @@ export function diag(tag: string, msg: string): void {
   } catch {
     // ignore
   }
-  entries.push({at: Date.now(), tag, msg});
-  if (entries.length > MAX) {
-    entries.splice(0, entries.length - MAX);
-  }
-  // Mark the snapshot stale rather than rebuilding it here.
-  //
-  // This module claims to cost nothing when nobody is looking at Diagnostics,
-  // and it did not: every diag() call allocated a 200-element copy and
-  // reversed it, whether or not a single component was subscribed. diag() is
-  // called from the play path, the update path and the boot path, so that was
-  // real work on the JS thread in exchange for a screen almost nobody opens.
-  // readDiag() rebuilds on demand instead, which is the only moment the order
-  // and the fresh identity actually matter.
-  stale = true;
-  if (listeners.size) {
-    listeners.forEach(l => l());
-  }
-}
-
-export function readDiag(): DiagEntry[] {
-  if (stale) {
-    stale = false;
-    snapshot = [...entries].reverse(); // newest first, new identity for React
-  }
-  return snapshot;
 }

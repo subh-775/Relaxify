@@ -68,7 +68,7 @@ export function useListEnd(): {paddingBottom: number} {
  * The update, as one coral line docked above the mini player: the version and
  * Install. A thick black edge and a flat blush slab for its shadow (a black
  * one vanishes on the app's black), so it reads as news without covering the
- * page. The notes live in Settings; the strip says only what to do.
+ * page. The strip says only what to do.
  */
 export function UpdateModal({hidden = false}: {hidden?: boolean}) {
   const u = useUpdate();

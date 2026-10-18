@@ -745,14 +745,3 @@ export async function deleteDownload(path: string): Promise<boolean> {
   const data = (await res.json()) as {ok?: boolean};
   return !!data.ok;
 }
-
-/** mm:ss for a duration in milliseconds. */
-export function formatDuration(ms?: number): string {
-  if (!ms || ms <= 0) {
-    return '';
-  }
-  const total = Math.round(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
-}

@@ -31,7 +31,7 @@ import java.net.URL
  * stable — with it, updating is lossless.
  *
  * Events to JS (never throws — a failed check must not disturb playback):
- *   mp.update.result   {available, version, notes}
+ *   mp.update.result   {available, version, sizeBytes, error, installed}
  *   mp.update.progress  number 0..100, or -1 on failure
  */
 class UpdateModule(private val ctx: ReactApplicationContext) :
@@ -44,7 +44,6 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
     data class Release(
         val version: String,
         val apkUrl: String,
-        val notes: String,
         /** Bytes, straight off the asset. 0 when GitHub did not report it. */
         val sizeBytes: Long,
     )
@@ -77,7 +76,6 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
             val map: WritableMap = Arguments.createMap().apply {
                 putBoolean("available", rel != null)
                 putString("version", rel?.version ?: "")
-                putString("notes", rel?.notes ?: "")
                 // Double, not Int: an APK is comfortably inside Int range today
                 // at 47MB, but the bridge marshals numbers as doubles anyway
                 // and a size field that overflows silently is not worth the
@@ -217,12 +215,7 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
                 lastCheckError = "Release $tag has no .apk attached"
                 null
             } else if (isNewer(tag, installed)) {
-                // org.json quirk: when "body" is present but JSON null (a
-                // GitHub release with no description), optString() coerces
-                // the NULL sentinel to the literal STRING "null" rather than
-                // returning "". isNull() catches that case first.
-                val notes = if (json.isNull("body")) "" else json.optString("body")
-                Release(tag, apkUrl, notes, apkSize)
+                Release(tag, apkUrl, apkSize)
             } else {
                 null // genuinely up to date, NOT an error
             }

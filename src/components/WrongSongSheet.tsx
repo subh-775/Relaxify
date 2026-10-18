@@ -31,13 +31,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import {Search} from '../icons';
 import {C, S, T} from '../theme';
+import {deleteDownload, search, type Track} from '../backend';
 import {
-  deleteDownload,
+  cleanText,
   formatDuration,
-  search,
-  type Track,
-} from '../backend';
-import {cleanText, getBestArtworkUrl, normalizeTracks} from '../tracks';
+  getBestArtworkUrl,
+  normalizeTracks,
+} from '../tracks';
 import {otherCopies, sameCopy, setChoice} from '../songChoice';
 import {swapCurrentCopy} from '../player';
 import {enqueueDownload, forgetDownloads} from '../downloads';

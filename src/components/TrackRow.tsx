@@ -18,8 +18,13 @@ import Animated, {
 import {ArrowDownToLine} from '../icons';
 import {AddToQueue, MoreHorizontal} from '../glyphs';
 import {C, S, T} from '../theme';
-import {formatDuration, type Track} from '../backend';
-import {cleanText, getBestArtworkUrl, thumbArtwork} from '../tracks';
+import type {Track} from '../backend';
+import {
+  cleanText,
+  formatDuration,
+  getBestArtworkUrl,
+  thumbArtwork,
+} from '../tracks';
 import {AddButton} from './AddButton';
 import {openAddToPlaylist} from './AddToPlaylistSheet';
 import {addToQueue, useIsActiveTrack} from '../player';
