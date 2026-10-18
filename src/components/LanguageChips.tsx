@@ -1,6 +1,7 @@
 /**
- * The languages Home and Browse are drawn from, as tiles to tap on and off.
- * Used on the welcome screen, and in the sheet Settings and the drawer open.
+ * The languages Home and Browse are drawn from, as tiles to tap on and off,
+ * on the welcome screen. Settings and the menu open LanguagesScreen, the same
+ * choice as a list of switches.
  *
  * At most MAX_LANGUAGES: with every language on, Home is a blur of all of
  * them. At the limit the rest dim, and tapping one says to unpick one first.
@@ -10,8 +11,7 @@
 import React, {useRef, useState} from 'react';
 import {Animated, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import {Check} from '../icons';
-import {C, S, T} from '../theme';
-import {Sheet} from './Sheet';
+import {C} from '../theme';
 import {MAX_LANGUAGES, useSettings, writeSetting} from '../store';
 
 /** JioSaavn's catalogue languages, the ones most people pick first. */
@@ -21,11 +21,11 @@ export const LANGUAGES: [string, string][] = [
   ['punjabi', 'ਪੰਜਾਬੀ'],
   ['tamil', 'தமிழ்'],
   ['telugu', 'తెలుగు'],
+  ['malayalam', 'മലയാളം'],
   ['marathi', 'मराठी'],
   ['gujarati', 'ગુજરાતી'],
   ['bengali', 'বাংলা'],
   ['kannada', 'ಕನ್ನಡ'],
-  ['malayalam', 'മലയാളം'],
   ['bhojpuri', 'भोजपुरी'],
   ['urdu', 'اردو'],
   ['haryanvi', 'हरियाणवी'],
@@ -36,8 +36,13 @@ export const LANGUAGES: [string, string][] = [
 
 export const languageName = (l: string) => l.charAt(0).toUpperCase() + l.slice(1);
 
-/** "Hindi, English", for a row's value. */
-export const languagesLabel = (ls: string[]) => ls.map(languageName).join(', ');
+/** How a language is named in a list: English is "International", as
+ *  JioSaavn's English catalogue is the world's music. */
+export const languageLabel = (l: string) =>
+  l === 'english' ? 'International' : languageName(l);
+
+/** "Hindi, International", for a row's value. */
+export const languagesLabel = (ls: string[]) => ls.map(languageLabel).join(', ');
 
 export function LanguageChips() {
   const on = useSettings().homeLanguages;
@@ -115,29 +120,7 @@ export function LanguageChips() {
   );
 }
 
-/** The languages, in a sheet: from Settings, and straight from the drawer. */
-export function LanguagesSheet({open, onClose}: {open: boolean; onClose: () => void}) {
-  return (
-    <Sheet open={open} onClose={onClose}>
-      <Text style={styles.sheetTitle}>Home languages</Text>
-      <Text style={styles.sheetHint}>
-        Home and Browse are drawn from these. Search always covers everything.
-      </Text>
-      <LanguageChips />
-    </Sheet>
-  );
-}
-
 const styles = StyleSheet.create({
-  sheetTitle: {
-    ...T.body,
-    color: C.text,
-    fontWeight: '700',
-    paddingHorizontal: S.gutter,
-    paddingTop: 6,
-    paddingBottom: 4,
-  },
-  sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   count: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

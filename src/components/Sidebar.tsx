@@ -96,7 +96,7 @@ const ITEMS: {
   {id: 'equalizer', label: 'Equalizer', Icon: Equalizer},
   {id: 'jam', label: 'Jam', Icon: Jam},
   {id: 'help', label: 'How to use', Icon: Help},
-  {id: 'languages', label: 'Home languages', Icon: Languages},
+  {id: 'languages', label: 'Languages for music', Icon: Languages},
   {id: 'recommend', label: 'Recommend Relaxify', Icon: Share},
   {id: 'settings', label: 'Settings', Icon: SettingsGear},
 ];

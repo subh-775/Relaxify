@@ -6,6 +6,7 @@
  * half its modules), for the sixty-odd drawn here. Import icons from this
  * file; a new one is one more line below.
  */
+export {default as ArrowLeft} from 'lucide-react-native/dist/esm/icons/arrow-left';
 export {default as ArrowDownToLine} from 'lucide-react-native/dist/esm/icons/arrow-down-to-line';
 export {default as ArrowLeftRight} from 'lucide-react-native/dist/esm/icons/arrow-left-right';
 export {default as ArrowUpDown} from 'lucide-react-native/dist/esm/icons/arrow-up-down';

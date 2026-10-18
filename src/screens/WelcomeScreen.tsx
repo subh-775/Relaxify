@@ -44,7 +44,7 @@ const PAGES: Page[] = [
     pal: PALS[0],
     kicker: 'Search anything',
     title: 'Every song, one search',
-    body: 'JioSaavn and SoundCloud together, and YouTube too if you switch it on in Settings.',
+    body: 'JioSaavn, SoundCloud and YouTube, together in one search.',
     art: 'burst',
   },
   {

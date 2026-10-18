@@ -11,6 +11,7 @@ Run it directly:  python test_stream_sources.py
   real length.
 - A JioSaavn song's token is read from both shapes of its page URL: search's
   and the station's (radio), which carries the language and album too.
+- A JioSaavn song's credits: each artist's role, composer and lyricist, label.
 """
 
 import os
@@ -119,5 +120,20 @@ assert token("https://www.jiosaavn.com/s/song/english/bones/bones/CSwOcCcIcls") 
 assert token("https://www.jiosaavn.com/song/idea-10/HjAfWBJ,TXA/?ref=x") == "HjAfWBJ,TXA"
 assert token("https://www.jiosaavn.com/album/bones/abc") is None
 assert token("") is None
+
+record = {"more_info": {"label": " T-Series ", "artistMap": {
+    "primary_artists": [{"name": "Mohammed Irfan"}, {"name": "Gajendra Verma"}],
+    "featured_artists": [{"name": "Guest"}],
+    "artists": [{"name": "Mithoon", "role": "music"}, {"name": "Mohammed Irfan", "role": "singer"},
+                {"name": "Backing", "role": "singer"}, {"name": "Writer", "role": "lyricist"},
+                {"name": "Actor", "role": "starring"}]}}}
+client = JioSaavnClient.__new__(JioSaavnClient)
+client._song_record = lambda t: record if t == "JDgyeENGYFI" else None
+c = client.credits("https://www.jiosaavn.com/s/song/hindi/yaariyan/baarish/JDgyeENGYFI")
+assert c["roles"] == {"Mohammed Irfan": "Main artist", "Gajendra Verma": "Main artist",
+                      "Guest": "Featured artist", "Backing": "Singer"}, c["roles"]
+assert c["writers"] == [{"name": "Mithoon", "role": "Composer"}, {"name": "Writer", "role": "Lyricist"}]
+assert c["label"] == "T-Series"
+assert client.credits("https://www.jiosaavn.com/song/x/NOPE") == {"roles": {}, "writers": [], "label": ""}
 
 print("ok")

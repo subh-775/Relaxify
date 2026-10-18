@@ -221,7 +221,8 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   visible: boolean;
   onClose: () => void;
   onAddToPlaylist: (track: Track) => void;
-  onOpenArtist: (credit: string) => void;
+  /** The credit tapped: one artist opens their page, several the credits. */
+  onOpenArtist: (song: {title?: string | null; artist?: string | null}) => void;
   /** The song's ⋮ menu, opened for the song playing now. */
   onOpenMenu: (track: Track, from: SheetContext) => void;
 }) {
@@ -1127,9 +1128,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     two badges and the output device — which is how "Mitraz"
                     ended up rendered as "Mi...". The WHOLE credit is one
                     target: a single name opens that profile directly, several
-                    open the picker. */}
+                    open the credits. */}
                 <TouchableOpacity
-                  onPress={() => onOpenArtist(String(active.artist ?? ''))}
+                  onPress={() => onOpenArtist(active)}
                   activeOpacity={0.6}>
                   <Marquee
                     text={artists}

@@ -259,16 +259,10 @@ class JioSaavnClient:
             return None
         return path.rsplit("/", 1)[-1] or None
 
-    def _get_encrypted_media_url(self, song_token: str) -> Optional[str]:
-        """
-        Get encrypted media URL from webapi.get endpoint.
+    def _song_record(self, song_token: str) -> Optional[Dict[str, Any]]:
+        """JioSaavn's own record of one song (webapi.get), or None.
 
-        Args:
-            song_token: The token part from song URL (e.g., 'Mg0zcxdSYXg' from /song/title/Mg0zcxdSYXg)
-
-        Returns:
-            Encrypted media URL or None
-        """
+        The stream, the cover and the credits all read it."""
         params = {
             "__call": "webapi.get",
             "api_version": "4",
@@ -278,17 +272,15 @@ class JioSaavnClient:
             "token": song_token,
             "type": "song",
         }
+        data = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}").json()
+        # An unknown token answers with a bare list.
+        songs = data.get("songs") if isinstance(data, dict) else None
+        return songs[0] if songs and isinstance(songs[0], dict) else None
 
-        url = f"{self.BASE_URL}?{urllib.parse.urlencode(params)}"
-        response = self._request("GET", url)
-        data = response.json()
-        if not isinstance(data, dict):
-            return None  # an unknown token answers with a bare list
-
-        songs = data.get("songs", [])
-        if songs and "more_info" in songs[0]:
-            return songs[0]["more_info"].get("encrypted_media_url")
-        return None
+    def _get_encrypted_media_url(self, song_token: str) -> Optional[str]:
+        """The encrypted media URL that song.generateAuthToken signs, or None."""
+        song = self._song_record(song_token)
+        return (song.get("more_info") or {}).get("encrypted_media_url") if song else None
 
     def get_song_image(self, song_url: str) -> Optional[str]:
         """The cover JioSaavn itself shows for this exact song, at 500x500.
@@ -296,24 +288,37 @@ class JioSaavnClient:
         Used to repair saved songs that only kept an iTunes cover: iTunes is a
         separate fuzzy lookup and sometimes matched another song."""
         token = self.song_token(song_url)
-        if not token:
-            return None
-        params = {
-            "__call": "webapi.get",
-            "api_version": "4",
-            "_format": "json",
-            "_marker": "0",
-            "ctx": "wap6dot0",
-            "token": token,
-            "type": "song",
-        }
-        response = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}")
-        data = response.json()
-        songs = data.get("songs") if isinstance(data, dict) else None
-        image = songs[0].get("image") if songs and isinstance(songs[0], dict) else None
+        song = self._song_record(token) if token else None
+        image = song.get("image") if song else None
         if not isinstance(image, str) or not image.startswith("http"):
             return None
         return re.sub(r"\d+x\d+", "500x500", image)
+
+    def credits(self, song_url: str) -> Dict[str, Any]:
+        """Who made this song, for the credits sheet: each credited artist's
+        role, the composer and lyricist, and the label. Empty when JioSaavn
+        has no record of it. Names come as JioSaavn writes them (entities and
+        all); the app cleans them for display."""
+        token = self.song_token(song_url)
+        song = self._song_record(token) if token else None
+        info = (song.get("more_info") or {}) if song else {}
+        cast = info.get("artistMap") or {}
+
+        def people(key):
+            return [a for a in (cast.get(key) or []) if isinstance(a, dict) and a.get("name")]
+
+        roles: Dict[str, str] = {}
+        for key, role in (("primary_artists", "Main artist"), ("featured_artists", "Featured artist")):
+            for a in people(key):
+                roles.setdefault(a["name"], role)
+        writers = []
+        for a in people("artists"):
+            role = {"music": "Composer", "lyricist": "Lyricist"}.get(a.get("role"))
+            if role:
+                writers.append({"name": a["name"], "role": role})
+            elif a.get("role") == "singer":
+                roles.setdefault(a["name"], "Singer")
+        return {"roles": roles, "writers": writers, "label": str(info.get("label") or "").strip()}
 
     def _generate_auth_token(
         self, encrypted_url: str, bitrate: int = 320

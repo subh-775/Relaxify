@@ -41,9 +41,7 @@ import {
   getDownloadsInfo,
   getLocalLibrary,
   getStorageInfo,
-  getYouTubeExperimental,
   setDownloadsDir,
-  setYouTubeExperimental,
   type DownloadsInfo,
   type StorageInfo,
 } from '../backend';
@@ -64,7 +62,8 @@ import {LegalView} from '../components/LegalView';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
-import {LanguagesSheet, languagesLabel} from '../components/LanguageChips';
+import {languagesLabel} from '../components/LanguageChips';
+import {LanguagesScreen} from './LanguagesScreen';
 import {EqualizerScreen} from './EqualizerScreen';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {applyAudioEffects} from '../audioEffects';
@@ -94,9 +93,9 @@ function formatBytes(n: number): string {
  * What the last visit to this screen learned from the backend.
  *
  * Settings is an overlay that UNMOUNTS when closed, so every reopen started
- * from scratch: sources showed "Checking sources…", the YouTube switch sat
- * disabled, the download folder was blank and the cache size was missing —
- * every single time, for as long as four backend round trips took. None of it
+ * from scratch: the download folder was blank and the cache size and storage
+ * bar were missing — every single time, for as long as the backend round trips
+ * took. None of it
  * changes between two opens a minute apart, so it is remembered here and used
  * as the initial state; the fetch still runs and overwrites it, but the screen
  * is already complete while that happens.
@@ -105,7 +104,7 @@ function formatBytes(n: number): string {
  * reasoning that a cache of remote answers should — which is true of the
  * answers and false of the experience: the open that dies with the process is
  * the FIRST open of every launch, which is exactly the one where you sit and
- * watch empty sources, a blank folder path and no cache size fill themselves
+ * watch a blank folder path and no cache size fill themselves
  * in. Every launch showed the loading state once, so "it loads every time" was
  * an accurate description of it.
  *
@@ -114,14 +113,12 @@ function formatBytes(n: number): string {
  */
 type RemoteCache = {
   downloads: DownloadsInfo | null;
-  yt: {supported: boolean; enabled: boolean} | null;
   cacheBytes: number | null;
   storage: StorageInfo | null;
 };
 
 const EMPTY_REMOTE: RemoteCache = {
   downloads: null,
-  yt: null,
   cacheBytes: null,
   storage: null,
 };
@@ -133,7 +130,6 @@ const remoteCache = createStore<RemoteCache>(
     const r = (raw ?? {}) as Partial<RemoteCache>;
     return {
       downloads: r.downloads ?? null,
-      yt: r.yt ?? null,
       cacheBytes: typeof r.cacheBytes === 'number' ? r.cacheBytes : null,
       storage:
         r.storage && typeof r.storage === 'object'
@@ -148,7 +144,7 @@ function patchRemote(p: Partial<RemoteCache>): void {
 }
 
 /**
- * Fetch the four backend-backed answers Settings shows.
+ * Fetch the backend-backed answers Settings shows.
  *
  * Each lands INDEPENDENTLY. They used to be awaited together through
  * Promise.allSettled, which means nothing appeared until the slowest returned —
@@ -167,9 +163,6 @@ export function prefetchSettingsRemote(): void {
   // time. Its client was deleted with it; nothing else read it.
   getDownloadsInfo()
     .then(v => patchRemote({downloads: v}))
-    .catch(() => {});
-  getYouTubeExperimental()
-    .then(v => patchRemote({yt: v}))
     .catch(() => {});
   getCacheSize()
     .then(v => patchRemote({cacheBytes: v.bytes}))
@@ -579,7 +572,7 @@ export function SettingsScreen({
   focus?: 'update' | null;
 }) {
   const [panel, setPanel] = useState<
-    'equalizer' | 'playback' | 'about' | 'terms' | 'privacy' | null
+    'equalizer' | 'playback' | 'languages' | 'about' | 'terms' | 'privacy' | null
   >(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -588,14 +581,12 @@ export function SettingsScreen({
   const [cacheOpen, setCacheOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const {settings} = useStore();
-  // One subscription, four values. Four pieces of local state mirroring a cache
+  // One subscription, three values. Local state mirroring each answer
   // meant every answer had to be written twice and could disagree with itself;
   // the store IS the state now, so a prefetch that lands while the screen is
   // open simply shows up.
-  const {downloads, yt, cacheBytes, storage} = useStoreValue(remoteCache);
-  const [ytBusy, setYtBusy] = useState(false);
+  const {downloads, cacheBytes, storage} = useStoreValue(remoteCache);
   const [qualityOpen, setQualityOpen] = useState(false);
-  const [langOpen, setLangOpen] = useState(false);
 
   const sleep = useSleepTimer();
   const scrollRef = useRef<ScrollView>(null);
@@ -623,21 +614,6 @@ export function SettingsScreen({
   // updates in place rather than filling in from nothing.
   useEffect(() => {
     prefetchSettingsRemote();
-  }, []);
-
-  const toggleYt = useCallback(async (next: boolean) => {
-    setYtBusy(true);
-    try {
-      const res = await setYouTubeExperimental(next);
-      patchRemote({
-        yt: (() => {
-          const v = remoteCache.get().yt;
-          return v ? {...v, enabled: !!res.enabled} : v;
-        })(),
-      });
-    } finally {
-      setYtBusy(false);
-    }
   }, []);
 
   const qualityLabel =
@@ -817,6 +793,9 @@ export function SettingsScreen({
   // not an inline expander — the list stays scannable.
   if (panel === 'equalizer') {
     return <EqualizerScreen onClose={() => setPanel(null)} />;
+  }
+  if (panel === 'languages') {
+    return <LanguagesScreen onClose={() => setPanel(null)} />;
   }
   if (panel === 'playback') {
     return (
@@ -1206,57 +1185,15 @@ export function SettingsScreen({
 
         <Section title="Your music">
           <NavRow
-            label="Home languages"
+            label="Languages for music"
             value={languagesLabel(settings.homeLanguages)}
-            onPress={() => setLangOpen(true)}
+            onPress={() => setPanel('languages')}
           />
           <ToggleRow
             label="Home style as Speed Dial"
             value={settings.homeGrid}
             onChange={v => writeSetting('homeGrid', v)}
           />
-          <LanguagesSheet open={langOpen} onClose={() => setLangOpen(false)} />
-        </Section>
-
-        {/*
-          Rendered from a STATIC list, not from the network answer.
-
-          These three are known at build time, so their rows never had any
-          business waiting on a reachability probe — and rendering
-          `Object.entries(sources)` meant that until it returned, the section
-          was one line of "Checking sources…" and nothing else. The row's
-          existence is a fact about the app; only its status is a fact about
-          the network.
-        */}
-        <Section
-          title="Sources"
-          footer="JioSaavn and SoundCloud are always on. YouTube is optional: its streams are protected, and the app has to decode each one before it can play it. Turning YouTube on first tests this by opening one YouTube stream on this phone, and it turns on only if the test succeeds.">
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>JioSaavn</Text>
-            </View>
-            {/* On and locked: the core catalogues cannot be switched off,
-                and a switch in the slot reads as a setting at a glance. */}
-            <Toggle value disabled onChange={() => {}} />
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>SoundCloud</Text>
-            </View>
-            <Toggle value disabled onChange={() => {}} />
-          </View>
-
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>YouTube</Text>
-            </View>
-            <Toggle
-              value={!!yt?.enabled}
-              disabled={ytBusy || (!!yt && !yt.supported)}
-              onChange={toggleYt}
-            />
-          </View>
         </Section>
 
         {/* Three ghost buttons in a row read as a toolbar, not as settings.

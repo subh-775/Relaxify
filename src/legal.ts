@@ -34,7 +34,7 @@ export const SHARE_NOTE =
 /** The music services Relaxify plays from, credited wherever the terms are. */
 export const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
 
-export const LEGAL_UPDATED = '15 October 2026';
+export const LEGAL_UPDATED = '18 October 2026';
 
 export type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
@@ -189,9 +189,8 @@ export const PRIVACY: LegalDoc = {
       ],
       list: [
         '**JioSaavn**, **SoundCloud** and **YouTube**, for search and ' +
-          'playback (YouTube when switched on in Settings, and for songs ' +
-          'imported from it); JioSaavn also for new releases from the artists ' +
-          'you follow and the right cover for songs you saved;',
+          'playback; JioSaavn also for new releases from the artists you ' +
+          'follow, the right cover for songs you saved, and who wrote a song;',
         'public **Invidious** servers, independent ones that relay YouTube, ' +
           'only when a YouTube search or download cannot reach YouTube itself: ' +
           'the search or the song is sent to one of them instead;',

@@ -480,21 +480,16 @@ export async function getDiscover(
   return Array.isArray(data.tracks) ? data.tracks : [];
 }
 
-export type YouTubeExperimental = {supported: boolean; enabled: boolean};
+/** Who made a JioSaavn song (the credits sheet). Names as JioSaavn writes
+ *  them; run them through cleanText. Empty for a song JioSaavn doesn't know. */
+export type Credits = {
+  roles?: Record<string, string>;
+  writers?: {name: string; role: string}[];
+  label?: string;
+};
 
-export const getYouTubeExperimental = () =>
-  apiGet<YouTubeExperimental>('/youtube/experimental');
-
-export async function setYouTubeExperimental(
-  enabled: boolean,
-): Promise<{ok: boolean; enabled: boolean; error?: string}> {
-  const res = await fetch(apiUrl('/youtube/experimental'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({enabled}),
-  });
-  return (await res.json()) as {ok: boolean; enabled: boolean; error?: string};
-}
+export const getCredits = (url: string) =>
+  apiGet<Credits>(`/credits?url=${encodeURIComponent(url)}`);
 
 // ─── Search suggestions ─────────────────────────────────────────────────────
 

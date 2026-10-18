@@ -34,7 +34,6 @@ What is NOT here (vs. the desktop backend)
 """
 
 import hmac
-import io
 import json
 import os
 import re
@@ -89,23 +88,11 @@ from components.metadata_enricher import MetadataEnricher
 _DISABLED_SOURCES = {SourceType.YOUTUBE, SourceType.YOUTUBE_MUSIC}
 _original_get_client = UnifiedSearchService._get_client
 
-# YouTube via NewPipeExtractor (newpipe_yt). Off unless the user enables it in
-# Settings AND an on-device self-test resolves a real stream. While False the
-# kill-switch below is fully active and behaviour is identical to a build that
-# never had this code — the default JioSaavn/SoundCloud path is untouched.
+# YouTube via NewPipeExtractor (newpipe_yt). On once this phone has passed the
+# self-test (a real stream resolved on the device; see _start_youtube). While
+# False the kill-switch below is fully active and behaviour is identical to a
+# build that never had this code — the JioSaavn/SoundCloud path is untouched.
 _youtube_enabled = False
-
-
-def _yt_cookies_path() -> str:
-    """Where the user-imported YouTube cookies.txt lives (app-private)."""
-    return os.path.join(android_env.files_dir(), "youtube_cookies.txt")
-
-
-def _drop_yt_client():
-    """Forget the cached YouTube client so the next use picks up new cookies."""
-    if _search_service is not None:
-        for st in _DISABLED_SOURCES:
-            _search_service._clients.pop(st, None)
 
 
 class _NewPipeYouTubeClient:
@@ -1622,6 +1609,16 @@ def get_lyrics():
 
 
 # ─── Discovery / profiles ─────────────────────────────────────────────────────
+@app.get("/api/credits")
+def song_credits():
+    """Who made a JioSaavn song, by its song link: the credits sheet's artist
+    roles, composer and lyricist, and label."""
+    try:
+        return jsonify(_source_client("jiosaavn").credits(_arg("url")))
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 @app.get("/api/artwork")
 def get_artwork():
     # A JioSaavn song's own cover, by its song link (the app's cover repair).
@@ -2196,147 +2193,6 @@ def spotify_import():
     return jsonify(_import_snapshot(job))
 
 
-@app.get("/api/sources/status")
-def sources_status():
-    sources = {
-        "jiosaavn": {"status": "ready", "type": "audio", "quality": "320kbps AAC"},
-        "soundcloud": {"status": "ready", "type": "audio", "quality": "128kbps MP3"},
-        "itunes": {"status": "ready", "type": "metadata", "quality": "artwork/tags"},
-        "musicbrainz": {"status": "ready", "type": "metadata", "quality": "ISRC/lookup"},
-    }
-
-    # YouTube is real on THIS build: NewPipeExtractor bundles Rhino and solves
-    # the signature challenge on-device, so the old "needs Deno" copy was a
-    # leftover from the desktop build and simply untrue here. Report what the
-    # extractor actually says, and whether the user has switched it on.
-    try:
-        import newpipe_yt
-        yt_ok = newpipe_yt.is_supported()
-    except Exception:
-        yt_ok = False
-
-    sources["youtube"] = {
-        "status": "ready" if (yt_ok and _youtube_enabled) else
-                  "off" if yt_ok else "unavailable",
-        "type": "audio",
-        "quality": "up to 160kbps Opus" if yt_ok else "n/a",
-        "error": None if yt_ok else "Not supported on this device.",
-    }
-    return jsonify({"sources": sources})
-
-
-# ─── YouTube endpoints: permanent stubs ───────────────────────────────────────
-# SettingsView still calls these. They must answer (never 404) or the settings
-# screen shows a spinner forever — but they always report "not connected".
-@app.get("/api/youtube/status")
-def youtube_status():
-    return jsonify({"connected": False, "method": None, "browser": None,
-                    "browsers": [], "supported": False,
-                    "reason": "YouTube is not supported on mobile."})
-
-
-@app.post("/api/youtube/connect")
-@app.post("/api/youtube/connect_file")
-def youtube_connect():
-    return jsonify({"connected": False,
-                    "error": "YouTube is not supported on the mobile build."})
-
-
-@app.post("/api/youtube/disconnect")
-def youtube_disconnect():
-    return jsonify({"connected": False})
-
-
-# ─── YouTube via NewPipeExtractor ─────────────────────────────────────────────
-@app.get("/api/youtube/experimental")
-def youtube_experimental_status():
-    """Report whether YouTube extraction is available on this device, and whether
-    it is currently enabled. Cheap — no extraction — so Settings shows it live."""
-    try:
-        import newpipe_yt
-        supported = newpipe_yt.is_supported()
-    except Exception:
-        supported = False
-    return jsonify({
-        "supported": supported,
-        "enabled": _youtube_enabled,
-        "saved": bool(android_env.read_settings().get("youtube_experimental")),
-    })
-
-
-@app.post("/api/youtube/experimental")
-def youtube_experimental_toggle():
-    """Turn experimental YouTube on/off.
-
-    Turning ON runs a real on-device self-test (extract a known video). Only if
-    that SUCCEEDS do we flip the source on — so the UI can honestly say whether
-    it works on THIS phone rather than promising something that silently fails.
-    """
-    want = bool(_body().get("enabled"))
-
-    settings = android_env.read_settings()
-
-    if not want:
-        _set_youtube(False)
-        settings["youtube_experimental"] = False
-        android_env.write_settings(settings)
-        return jsonify({"enabled": False, "ok": True})
-
-    try:
-        import newpipe_yt
-        if not newpipe_yt.is_supported():
-            return jsonify({"enabled": False, "ok": False,
-                            "error": "The YouTube extractor could not start on "
-                                     "this device."}), 200
-        # Resolves a REAL audio URL — the step that needs the signature and
-        # throttling deobfuscation. Searching alone would prove nothing.
-        passed = newpipe_yt.self_test()
-    except Exception as e:
-        return jsonify({"enabled": False, "ok": False, "error": str(e)}), 200
-
-    if not passed:
-        return jsonify({"enabled": False, "ok": False,
-                        "error": "Couldn't get a playable YouTube stream on this "
-                                 "device. Leaving YouTube off."}), 200
-
-    _set_youtube(True)
-    settings["youtube_experimental"] = True
-    android_env.write_settings(settings)
-    return jsonify({"enabled": True, "ok": True})
-
-
-@app.get("/api/youtube/cookies")
-def youtube_cookies_status():
-    return jsonify({"present": os.path.exists(_yt_cookies_path())})
-
-
-@app.post("/api/youtube/cookies")
-def youtube_cookies_set():
-    """Import (or remove, with empty content) the user's YouTube cookies.txt.
-
-    Cookies are the auth fallback for "sign in to confirm you're not a bot" —
-    exported from a logged-in browser on a PC. Stored app-private; never leaves
-    the device (yt-dlp sends them to YouTube only).
-    """
-    content = (_body().get("content") or "").strip()
-    path = _yt_cookies_path()
-    if not content:
-        try:
-            os.remove(path)
-        except FileNotFoundError:
-            pass
-        _drop_yt_client()
-        return jsonify({"present": False, "ok": True})
-    if "youtube.com" not in content:
-        return jsonify({"ok": False, "present": os.path.exists(path),
-                        "error": "That file has no YouTube cookies — export "
-                                 "cookies.txt from a browser signed in to YouTube."})
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    _drop_yt_client()   # rebuilt with cookies on next use
-    return jsonify({"present": True, "ok": True})
-
-
 # ─── Cache ────────────────────────────────────────────────────────────────────
 # Subdirectories of the cache dir that are app MACHINERY, not the user's cache.
 # `chaquopy` holds the Python runtime's extracted assets — deleting it under a
@@ -2482,29 +2338,44 @@ def spa_assets(filename):
 # ──────────────────────────────────────────────────────────────────────────────
 # Lifecycle — called from Kotlin
 # ──────────────────────────────────────────────────────────────────────────────
-def _restore_youtube() -> None:
-    """Re-apply the saved YouTube toggle. Cheap: is_supported() only checks that
-    the extractor class loads — no network, no extraction — so this runs BEFORE
-    the server starts serving rather than on the warm-up thread.
+def _start_youtube() -> None:
+    """Turn YouTube on wherever this phone can play it.
 
-    It used to sit at the END of _warm_up(), behind an lrclib request (10s
-    timeout) and a full test search (15s). For up to ~25s after every backend
-    start, GET /api/youtube/experimental honestly reported enabled=False — so
-    opening Settings inside that window showed the switch OFF, and the user
-    turned "back on" something that was never off in their settings file. That
-    window is the whole bug: it explains why it looked random (it depended only
-    on how fast Settings was opened) and why it recurred without them changing
-    anything.
+    It used to wait for a Settings switch that was off by default, so most
+    people never had YouTube at all. Now every phone does, once it has passed
+    newpipe_yt.self_test(): a real YouTube stream resolved on this device, the
+    part that needs the signature solved. A phone that has passed (or passed
+    under the old switch) turns YouTube on here, before the first request.
+    Until then the test runs on its own thread, a network round trip that must
+    not hold up startup; a phone that fails it (offline at first launch, an
+    extractor that can't start) simply tries again next launch.
     """
     try:
-        if not android_env.read_settings().get("youtube_experimental"):
-            return
         import newpipe_yt
-        if newpipe_yt.is_supported():
+        if not newpipe_yt.is_supported():
+            return
+        settings = android_env.read_settings()
+        if settings.get("youtube_ok") or settings.get("youtube_experimental"):
             _set_youtube(True)
-            print("[backend] YouTube restored")
+            return
     except Exception as e:
-        print(f"[backend] YouTube restore skipped: {e}")
+        print(f"[backend] YouTube start skipped: {e}")
+        return
+
+    def test():
+        try:
+            if not newpipe_yt.self_test():
+                print("[backend] YouTube self-test failed; trying again next launch")
+                return
+            saved = android_env.read_settings()
+            saved["youtube_ok"] = True
+            android_env.write_settings(saved)
+            _set_youtube(True)
+            print("[backend] YouTube on")
+        except Exception as e:
+            print(f"[backend] YouTube self-test skipped: {e}")
+
+    threading.Thread(target=test, daemon=True).start()
 
 
 def _warm_up():
@@ -2579,9 +2450,9 @@ def start_server(files_dir: str, downloads_dir: str, web_dir: str,
     _enricher = MetadataEnricher()
     _download_manager.set_finalizer(_finalize_track_info)
 
-    # Before the first request can be served, so the toggle never reads as OFF
-    # while the saved setting says ON.
-    _restore_youtube()
+    # Before the first request can be served: a phone that has passed the
+    # self-test has YouTube in its very first search.
+    _start_youtube()
 
     threading.Thread(target=_warm_up, daemon=True).start()
 
