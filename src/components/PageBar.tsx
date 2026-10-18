@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
     marginRight: 44,
     textAlign: 'center',
     color: C.text,
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: '700',
   },
 });

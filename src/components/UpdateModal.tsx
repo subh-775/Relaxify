@@ -20,12 +20,10 @@ import {BOTTOM_INSET} from '../layout';
 
 /** The strip's height, and the room a page's list leaves for it. */
 const STRIP_H = 52;
-/** The hard shadow's offset: a flat blush slab, no blur. */
-const SLAB = 4;
-const STRIP_ROOM = STRIP_H + SLAB + 10;
+const STRIP_ROOM = STRIP_H + 10;
 const INK = '#000000';
-/** The download's fill: the accent, a step deeper. */
-const DEEP = '#D9364C';
+/** The download's fill: the strip, a step lighter. */
+const FILL = 'rgba(255,255,255,0.3)';
 
 /** Is the update strip up? The same test UpdateModal renders by. */
 function stripUp(u: ReturnType<typeof useUpdate>): boolean {
@@ -52,10 +50,9 @@ export function useListEnd(): {paddingBottom: number} {
 }
 
 /**
- * The update, as one coral line docked above the mini player: the version and
- * Install. A thick black edge and a flat blush slab for its shadow (a black
- * one vanishes on the app's black), so it reads as news without covering the
- * page. The strip says only what to do.
+ * The update, as one light coral line docked above the mini player: the
+ * version and Install. Plain: no edge, no shadow. The strip says only what to
+ * do.
  */
 export function UpdateModal({hidden = false}: {hidden?: boolean}) {
   const u = useUpdate();
@@ -84,7 +81,6 @@ export function UpdateModal({hidden = false}: {hidden?: boolean}) {
       exiting={FadeOutDown.duration(180)}
       style={styles.dock}
       accessibilityLiveRegion="polite">
-      <View style={styles.slab} />
       <View style={styles.strip}>
         {/* While downloading, the strip itself fills up. */}
         {downloading && (
@@ -134,29 +130,16 @@ const styles = StyleSheet.create({
   dock: {
     position: 'absolute',
     left: S.gutter,
-    right: S.gutter + SLAB, // room for the slab
-    bottom: BOTTOM_INSET + 10 + SLAB,
+    right: S.gutter,
+    bottom: BOTTOM_INSET + 10,
     height: STRIP_H,
-  },
-  // The neobrutalist hard shadow: an offset slab, no blur. elevation would
-  // blur it on Android.
-  slab: {
-    ...StyleSheet.absoluteFillObject,
-    top: SLAB,
-    left: SLAB,
-    right: -SLAB,
-    bottom: -SLAB,
-    borderRadius: 10,
-    backgroundColor: C.tone,
   },
   strip: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 2.5,
-    borderColor: INK,
-    backgroundColor: C.accent,
+    borderRadius: 12,
+    backgroundColor: C.tone,
     overflow: 'hidden',
     paddingLeft: 14,
     paddingRight: 8,
@@ -166,7 +149,7 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: DEEP,
+    backgroundColor: FILL,
   },
   body: {flex: 1, minWidth: 0, justifyContent: 'center'},
   stripTitle: {
@@ -179,11 +162,11 @@ const styles = StyleSheet.create({
   meta: {color: INK, fontSize: 11.5, fontWeight: '700', opacity: 0.7},
   stripBtn: {
     backgroundColor: INK,
-    borderRadius: 7,
+    borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 6,
     marginLeft: 8,
   },
-  stripBtnText: {color: C.accent, fontSize: 13.5, fontWeight: '700'},
+  stripBtnText: {color: C.tone, fontSize: 13.5, fontWeight: '700'},
   close: {padding: 6, marginLeft: 4},
 });

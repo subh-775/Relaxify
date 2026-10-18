@@ -749,8 +749,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowText: {flex: 1, minWidth: 0},
-  rowTitle: {...T.listTitle, color: C.text},
-  rowTitlePlaying: {color: C.accent, fontWeight: '500'},
+  // Settings' row size (15): a name in the Library reads the same as one there.
+  rowTitle: {...T.listTitle, color: C.text, fontSize: 15, lineHeight: 20},
+  rowTitlePlaying: {color: C.accent},
   metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 2},
   // The glyph draws at about two thirds of its box, so 20 is a pin as tall
   // as the subtitle's text, Spotify's size. The negative margin keeps the

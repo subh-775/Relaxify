@@ -486,9 +486,9 @@ function StepSlider({
 }
 
 /**
- * A size picked from a short list, with arrows either side of it and a dot
- * per step underneath: for the cache limit, where only a few sizes make sense
- * and a slider made you hunt for them.
+ * A size picked from a short list, with arrows either side of it, on the
+ * row's own line: for the cache limit, where only a few sizes make sense and
+ * a slider made you hunt for them.
  */
 function SizeStepper({
   label,
@@ -518,26 +518,16 @@ function SizeStepper({
     </TouchableOpacity>
   );
   return (
-    <View style={styles.slider}>
+    <View style={styles.row}>
       <View style={styles.rowText}>
         <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.rowHint}>{hint}</Text>
       </View>
-      <View style={styles.stepper}>
-        {arrow(at - 1, ChevronLeft, 'Smaller')}
-        <Text style={[styles.sizeValue, !value && styles.sliderOff]}>
-          {value ? `${value} MB` : 'Off'}
-        </Text>
-        {arrow(at + 1, ChevronRight, 'Bigger')}
-      </View>
-      <View style={styles.stepDots}>
-        {steps.map((s, i) => (
-          <View
-            key={s}
-            style={[styles.stepDot, i === at && styles.stepDotOn]}
-          />
-        ))}
-      </View>
+      {arrow(at - 1, ChevronLeft, 'Smaller')}
+      <Text style={[styles.sizeValue, !value && styles.sliderOff]}>
+        {value ? `${value} MB` : 'Off'}
+      </Text>
+      {arrow(at + 1, ChevronRight, 'Bigger')}
     </View>
   );
 }
@@ -651,8 +641,8 @@ function Pill({
   );
 }
 
-/** A thing to do, said in a line, with its button under it (Remove all
- *  downloads, Clear cache): no red, the confirmation asks first. */
+/** A thing to do, said beside its button (Remove all downloads, Clear
+ *  cache), one line as Spotify has it: no red, the confirmation asks first. */
 function ActionRow({
   label,
   hint,
@@ -667,9 +657,11 @@ function ActionRow({
   disabled?: boolean;
 }) {
   return (
-    <View style={styles.action}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowHint}>{hint}</Text>
+    <View style={styles.row}>
+      <View style={styles.rowText}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowHint}>{hint}</Text>
+      </View>
       <Pill label={action} onPress={onPress} disabled={disabled} />
     </View>
   );
@@ -1052,13 +1044,13 @@ export function SettingsScreen({
                     cacheBytes,
                   )} of temporary files, lyrics and search history. Downloads are kept.`
             }
-            action={clearing ? 'Clearing…' : 'Clear cache'}
+            action={clearing ? 'Clearing…' : 'Clear'}
             onPress={() => setCacheOpen(true)}
             disabled={clearing}
           />
           <SizeStepper
             label="Cache limit"
-            hint="When the cache passes this size, it is cleared the next time you open the app. Downloads and search history are kept."
+            hint="Cleared on the next launch once it grows past this"
             value={settings.cacheLimitMb}
             steps={CACHE_STEPS}
             onChange={mb => {
@@ -1175,7 +1167,7 @@ export function SettingsScreen({
           onPress={() => setPanel('about')}
         />
         <View style={styles.resetWrap}>
-          <Pill label="Reset all settings" onPress={() => setResetOpen(true)} />
+          <Pill label="Reset" onPress={() => setResetOpen(true)} />
           <Text style={styles.resetHint}>
             Puts everything back to defaults. Your library isn&apos;t touched.
           </Text>
@@ -1377,10 +1369,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
     paddingVertical: 10,
   },
-  action: {paddingHorizontal: S.gutter, paddingVertical: 12},
   pill: {
-    alignSelf: 'flex-start',
-    marginTop: 12,
     minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: 18,
@@ -1389,7 +1378,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.45)',
   },
   pillFilled: {
-    marginTop: 0,
     backgroundColor: C.accent,
     borderColor: C.accent,
   },
@@ -1399,7 +1387,7 @@ const styles = StyleSheet.create({
   divider: {height: 1, backgroundColor: C.border, marginVertical: 6},
   resetWrap: {
     alignItems: 'center',
-    paddingTop: 22,
+    paddingTop: 56,
     paddingHorizontal: S.gutter,
   },
   slider: {paddingHorizontal: S.gutter, paddingTop: 14, paddingBottom: 6},
@@ -1415,39 +1403,23 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   sliderOff: {color: C.faint},
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    padding: 4,
-    borderRadius: 999,
-    backgroundColor: C.surfaceHi,
-  },
   stepBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2a2a30',
+    backgroundColor: C.surfaceHi,
   },
   stepOff: {opacity: 0.3},
   sizeValue: {
-    flex: 1,
+    minWidth: 58,
     textAlign: 'center',
     color: C.text,
     fontSize: 16,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  stepDots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 5,
-    marginTop: 10,
-  },
-  stepDot: {width: 5, height: 5, borderRadius: 3, backgroundColor: '#3a3a40'},
-  stepDotOn: {backgroundColor: C.text},
   sliderTouch: {justifyContent: 'center', height: 44, marginTop: 4},
   sliderTrack: {
     height: 4,
