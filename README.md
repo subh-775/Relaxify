@@ -74,7 +74,7 @@ Download `Relaxify.apk` from the
 [latest release](https://github.com/subh-775/Relaxify/releases/latest) and open
 it on your phone. Android 8.0 or newer is required.
 
-To update, use **Settings → Check for updates** in the app. Do not uninstall
+Updates show up in the app by themselves; install from there. Do not uninstall
 first: uninstalling deletes your playlists, likes and history.
 
 The [documentation](https://subh-775.github.io/Relaxify/) walks through every

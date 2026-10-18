@@ -32,8 +32,6 @@ export type Settings = {
   showQualityBadge: boolean;
   /** Where a playlist came from (Spotify, YouTube, a friend's link). */
   showPlaylistSource: boolean;
-  /** Check GitHub for a new release on launch (at most once a day). */
-  autoUpdateCheck: boolean;
   autoplay: boolean;
   crossfadeDuration: number; // seconds; 0 = off
   /** Playback speed, 1 = normal. ExoPlayer pitch-corrects, so a voice at 1.5x
@@ -77,7 +75,6 @@ export const DEFAULT_SETTINGS: Settings = {
   showSourceBadge: true,
   showQualityBadge: true,
   showPlaylistSource: true,
-  autoUpdateCheck: true,
   autoplay: true,
   crossfadeDuration: 0,
   playbackRate: 1,

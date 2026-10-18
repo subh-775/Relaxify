@@ -386,6 +386,43 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         }
     }
 
+    private fun isBluetooth(d: AudioDeviceInfo): Boolean =
+        d.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+            d.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+            (android.os.Build.VERSION.SDK_INT >= 31 &&
+                d.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+
+    /**
+     * The name the person gave these headphones in the phone's Bluetooth
+     * settings ("Subh's realme Buds Air8"), or null.
+     *
+     * AudioDeviceInfo only carries the model. The person's own name is on the
+     * paired BluetoothDevice, found by its address, and reading it needs
+     * Nearby devices (BLUETOOTH_CONNECT) on Android 12 and up; the app asks for
+     * it once (audioOutput.ts). Without it, or on any failure, the model name
+     * stands, as before.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun bluetoothAlias(d: AudioDeviceInfo): String? {
+        if (android.os.Build.VERSION.SDK_INT < 30 || !isBluetooth(d)) return null
+        if (android.os.Build.VERSION.SDK_INT >= 31 &&
+            ctx.checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
+        }
+        return try {
+            val bt = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager
+            bt?.adapter?.getRemoteDevice(d.address)?.alias?.trim()?.takeIf { it.isNotEmpty() }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** {name, model, bluetooth} of where the sound goes, or null for the
+     *  phone's own speaker. `name` is the person's own name for it when it can
+     *  be read, `model` never changes (headphone memory is keyed by it), and
+     *  `bluetooth` lets JS ask for the headphones' own names. */
     @ReactMethod
     fun getAudioOutput(promise: Promise) {
         try {
@@ -432,15 +469,18 @@ class AudioModule(private val ctx: ReactApplicationContext) :
             val phoneOwn = name.isEmpty() ||
                 name.equals(android.os.Build.MODEL, true) ||
                 name.equals(android.os.Build.PRODUCT, true)
-            promise.resolve(
-                when {
-                    !phoneOwn -> name
-                    routed.type == AudioDeviceInfo.TYPE_USB_HEADSET -> "USB headphones"
-                    routed.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
-                        routed.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired headphones"
-                    else -> "Bluetooth"
-                },
-            )
+            val model = when {
+                !phoneOwn -> name
+                routed.type == AudioDeviceInfo.TYPE_USB_HEADSET -> "USB headphones"
+                routed.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    routed.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired headphones"
+                else -> "Bluetooth"
+            }
+            val out = Arguments.createMap()
+            out.putString("name", bluetoothAlias(routed) ?: model)
+            out.putString("model", model)
+            out.putBoolean("bluetooth", isBluetooth(routed))
+            promise.resolve(out)
         } catch (e: Exception) {
             promise.resolve(null)
         }

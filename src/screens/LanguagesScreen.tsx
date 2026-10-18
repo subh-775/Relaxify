@@ -8,18 +8,11 @@
  * turned off either, so Home always has a language to draw from.
  */
 import React from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import {ArrowLeft} from '../icons';
+import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {C, S, T} from '../theme';
+import {PageBar} from '../components/PageBar';
 import {Toggle} from '../components/Toggle';
-import {LANGUAGES, languageLabel} from '../components/LanguageChips';
+import {LANGUAGES, languageLabel} from '../languages';
 import {MAX_LANGUAGES, useSettings, writeSetting} from '../store';
 import {BOTTOM_INSET} from '../layout';
 
@@ -29,19 +22,7 @@ export function LanguagesScreen({onClose}: {onClose: () => void}) {
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.bar}>
-        <TouchableOpacity
-          onPress={onClose}
-          hitSlop={12}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel="Back">
-          <ArrowLeft size={24} color={C.text} strokeWidth={2.2} />
-        </TouchableOpacity>
-        <Text style={styles.title} numberOfLines={1}>
-          Languages for music
-        </Text>
-      </View>
+      <PageBar title="Languages for music" onBack={onClose} />
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -95,25 +76,6 @@ export function LanguagesScreen({onClose}: {onClose: () => void}) {
 
 const styles = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: C.bg},
-  bar: {
-    height: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    backgroundColor: C.surface,
-  },
-  back: {width: 44, height: 44, alignItems: 'center', justifyContent: 'center'},
-  // Centred on the screen, not in the space beside the arrow: the right
-  // margin matches the arrow's width.
-  title: {
-    ...T.body,
-    flex: 1,
-    marginRight: 44,
-    textAlign: 'center',
-    color: C.text,
-    fontSize: 17,
-    fontWeight: '700',
-  },
   scroll: {paddingBottom: BOTTOM_INSET},
   ask: {
     color: C.text,
@@ -136,7 +98,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: S.gutter,
   },
   frozen: {opacity: 0.35},
-  name: {...T.listTitle, color: C.text, fontSize: 16.5},
+  name: {...T.listTitle, color: C.text, fontSize: 15, lineHeight: 20},
   foot: {
     color: C.sub,
     fontSize: 13,

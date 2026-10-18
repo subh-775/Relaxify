@@ -8,9 +8,8 @@
  * `**bold**` inside a string is the only markup; both renderers understand it.
  */
 
-/** What is collected, in the words the app shows people: once as a notice,
- *  in Settings ("What we collect"), and in the Privacy statement. There is no
- *  switch; this is the disclosure. */
+/** What is collected, as the Privacy Policy states it. There is no switch;
+ *  the Privacy Policy is the disclosure. */
 export const COLLECTED_ITEMS =
   'songs played and how long you listened, searches, likes, playlists and ' +
   'downloads, which features you use, whether lyrics were found for a song, ' +

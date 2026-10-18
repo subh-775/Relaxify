@@ -1,8 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  Animated,
   BackHandler,
-  Easing,
   Linking,
   NativeModules,
   Platform,
@@ -12,15 +10,21 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {Check, ChevronLeft, ChevronRight, HardDrive, RefreshCw} from '../icons';
-import {Trash} from '../glyphs';
 import {
-  COLLECTED_ITEMS,
-  COLLECTED_PROMISE,
-  JAM_NOTE,
-  SHARE_NOTE,
-  logEvent,
-} from '../analytics';
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CirclePlay,
+  ExternalLink,
+  Info,
+  Layers,
+  Monitor,
+  Signal,
+} from '../icons';
+import {PageBar} from '../components/PageBar';
+import {SleepSheet} from '../components/SleepSheet';
+import {formatSize} from '../updateNotes';
+import {logEvent} from '../analytics';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 // Aliased: this file already has react-native's own Animated, for the refresh
 // glyph's rotation loop. Two different `Animated`s in one file is a bug waiting
@@ -62,7 +66,7 @@ import {LegalView} from '../components/LegalView';
 import {clearSearchHistory} from '../searchHistory';
 import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
-import {languagesLabel} from '../components/LanguageChips';
+import {languagesLabel} from '../languages';
 import {LanguagesScreen} from './LanguagesScreen';
 import {EqualizerScreen} from './EqualizerScreen';
 import {ConfirmModal} from '../components/ConfirmModal';
@@ -71,14 +75,8 @@ import {dropQueuedRadio} from '../player';
 import {EQ_PRESETS} from '../eq';
 import {toast} from '../toast';
 import {enforceCacheLimit} from '../cacheLimit';
-import {checkUpdate, startUpdateInstall, useUpdate} from '../update';
-import {
-  cancelSleepTimer,
-  sleepAtEndOfTrack,
-  sleepLabel,
-  startSleepTimer,
-  useSleepTimer,
-} from '../sleepTimer';
+import {startUpdateInstall, useUpdate} from '../update';
+import {sleepLabel, useSleepTimer} from '../sleepTimer';
 import {BOTTOM_INSET} from '../layout';
 
 function formatBytes(n: number): string {
@@ -196,17 +194,13 @@ function Section({
   title,
   Icon,
   footer,
-  highlight,
   children,
 }: {
   title: string;
-  Icon?: typeof HardDrive;
+  Icon?: RowIcon;
   /** One line under the card, for the explanation that would otherwise be
    *  crammed into a row's `hint`. */
   footer?: string;
-  /** Briefly ring the card — used when Settings is opened straight at a
-   *  specific section, so it is obvious which one you were sent to. */
-  highlight?: boolean;
   children: React.ReactNode;
 }) {
   const items = React.Children.toArray(children);
@@ -216,7 +210,7 @@ function Section({
         {!!Icon && <Icon size={13} color={C.faint} strokeWidth={2.6} />}
         <Text style={styles.sectionTitle}>{title}</Text>
       </View>
-      <View style={[styles.card, !!highlight && styles.cardHighlight]}>
+      <View style={styles.card}>
         {items.map((child, i) => (
           // child.key, not the index. These children are conditional (the
           // update row's states, the sources list), and an index key makes
@@ -250,12 +244,15 @@ function Row({
   hint,
   onPress,
   Icon,
+  external,
 }: {
   label: string;
   value?: string;
   hint?: string;
   onPress?: () => void;
   Icon?: RowIcon;
+  /** Leaves the app (a web page, the file manager): marked as such. */
+  external?: boolean;
 }) {
   const Wrap: React.ElementType = onPress ? TouchableOpacity : View;
   return (
@@ -273,7 +270,12 @@ function Row({
       {/* A row that DOES something has to look different from one that just
           reports a number. Without this, "Streaming quality — Very High" was
           indistinguishable from a read-only line, so nobody knew it opened. */}
-      {!!onPress && <ChevronRight size={17} color={C.faint} />}
+      {!!onPress &&
+        (external ? (
+          <ExternalLink size={17} color={C.faint} />
+        ) : (
+          <ChevronRight size={17} color={C.faint} />
+        ))}
     </Wrap>
   );
 }
@@ -530,7 +532,10 @@ function SizeStepper({
       </View>
       <View style={styles.stepDots}>
         {steps.map((s, i) => (
-          <View key={s} style={[styles.stepDot, i === at && styles.stepDotOn]} />
+          <View
+            key={s}
+            style={[styles.stepDot, i === at && styles.stepDotOn]}
+          />
         ))}
       </View>
     </View>
@@ -562,53 +567,168 @@ function NavRow({
   );
 }
 
+type Panel =
+  | 'playback'
+  | 'data'
+  | 'display'
+  | 'storage'
+  | 'about'
+  | 'equalizer'
+  | 'languages'
+  | 'terms'
+  | 'privacy';
+
+/** Where Back goes from a page opened inside another one; every other page
+ *  returns to the main list. */
+const PARENT: Partial<Record<Panel, Panel>> = {
+  equalizer: 'playback',
+  languages: 'display',
+  terms: 'about',
+  privacy: 'about',
+};
+
+const TITLES: Partial<Record<Panel, string>> = {
+  playback: 'Playback',
+  data: 'Data saver and quality',
+  display: 'Display preferences',
+  storage: 'Storage',
+  about: 'About and support',
+};
+
+/** One of the main list's categories: its icon, its name, what is inside. */
+function CategoryRow({
+  Icon,
+  label,
+  hint,
+  onPress,
+}: {
+  Icon: typeof Info;
+  label: string;
+  hint: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.category}
+      onPress={onPress}
+      activeOpacity={0.7}>
+      <Icon size={23} color={C.text} strokeWidth={1.8} />
+      <View style={styles.rowText}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowHint}>{hint}</Text>
+      </View>
+      <ChevronRight size={18} color={C.faint} />
+    </TouchableOpacity>
+  );
+}
+
+/** A rounded button, outlined white as Spotify's settings have them; filled
+ *  in the accent for the one thing to do now (Install). */
+function Pill({
+  label,
+  onPress,
+  disabled,
+  filled,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  filled?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      style={[
+        styles.pill,
+        filled && styles.pillFilled,
+        disabled && styles.pillOff,
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
+      accessibilityRole="button">
+      <Text style={styles.pillText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/** A thing to do, said in a line, with its button under it (Remove all
+ *  downloads, Clear cache): no red, the confirmation asks first. */
+function ActionRow({
+  label,
+  hint,
+  action,
+  onPress,
+  disabled,
+}: {
+  label: string;
+  hint: string;
+  action: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={styles.action}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowHint}>{hint}</Text>
+      <Pill label={action} onPress={onPress} disabled={disabled} />
+    </View>
+  );
+}
+
 export function SettingsScreen({
   onClose,
   focus,
 }: {
   onClose: () => void;
-  /** Open the screen AT something. 'update' scrolls to Software update and
-   *  rings it briefly — what the dot on the hamburger now points at. */
+  /** Open the screen AT something. 'update' opens About and support, where
+   *  a waiting update sits on the Version row: what the dot on the menu
+   *  button points at. */
   focus?: 'update' | null;
 }) {
-  const [panel, setPanel] = useState<
-    'equalizer' | 'playback' | 'languages' | 'about' | 'terms' | 'privacy' | null
-  >(null);
+  const [panel, setPanel] = useState<Panel | null>(
+    focus === 'update' ? 'about' : null,
+  );
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [licencesOpen, setLicencesOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [cacheOpen, setCacheOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const {settings} = useStore();
-  // One subscription, three values. Local state mirroring each answer
-  // meant every answer had to be written twice and could disagree with itself;
-  // the store IS the state now, so a prefetch that lands while the screen is
-  // open simply shows up.
-  const {downloads, cacheBytes, storage} = useStoreValue(remoteCache);
   const [qualityOpen, setQualityOpen] = useState(false);
-
+  const [sleepOpen, setSleepOpen] = useState(false);
+  const {settings} = useStore();
+  // One subscription, three values: the store IS the state, so a prefetch
+  // that lands while the screen is open simply shows up.
+  const {downloads, cacheBytes, storage} = useStoreValue(remoteCache);
   const sleep = useSleepTimer();
-  const scrollRef = useRef<ScrollView>(null);
-  const [glow, setGlow] = useState(false);
+  const update = useUpdate();
 
-  // A sub-panel (Equalizer, Playback) must catch the hardware back itself and
-  // return to Settings — NOT fall through to the app-level handler, which would
-  // close Settings entirely and drop you on Home. Registered after the app's
-  // handler, so it runs first; when no panel is open it declines and the app's
-  // handler closes Settings as before.
+  const back = useCallback(
+    () => setPanel(p => (p ? PARENT[p] ?? null : null)),
+    [],
+  );
+
+  // A page inside Settings catches the hardware back itself and steps out one
+  // page, NOT the app-level handler, which would close Settings entirely.
+  // Registered after the app's handler, so it runs first; on the main list it
+  // declines and the app's handler closes Settings as before.
   useEffect(() => {
     const onBack = () => {
       if (panel) {
-        // Terms and Privacy open from About, so back returns there.
-        setPanel(p => (p === 'terms' || p === 'privacy' ? 'about' : null));
+        back();
         return true;
       }
       return false;
     };
     const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
     return () => sub.remove();
-  }, [panel]);
+  }, [panel, back]);
+
+  useEffect(() => {
+    if (focus === 'update') {
+      setPanel('about');
+    }
+  }, [focus]);
 
   // Refresh on open. The screen is already populated from the cache, so this
   // updates in place rather than filling in from nothing.
@@ -710,58 +830,6 @@ export function SettingsScreen({
     }
   }, []);
 
-  // Real check: asks GitHub for the latest release. A newer one raises the
-  // in-app update popup (UpdateModal); the RESULT of a manual check shows inline
-  // in the row (updateStatusText) — no toasts, so spamming the button can't pile
-  // up a stack of notifications. The spinning icon is the whole feedback.
-  const update = useUpdate();
-  const checking = update.phase === 'checking';
-  const spin = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!checking) {
-      spin.stopAnimation();
-      spin.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 800,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [checking, spin]);
-  const spinDeg = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-  const checkUpdates = useCallback(() => checkUpdate(), []);
-
-  /**
-   * Land ON the update rather than at the top of the list.
-   *
-   * The dot said "there is an update"; tapping it opened Settings and left you
-   * to scroll eight sections looking for it. The short delay lets the overlay
-   * finish appearing first — scrolling a view that is still animating in lands
-   * in the wrong place.
-   */
-  useEffect(() => {
-    if (focus !== 'update') {
-      return;
-    }
-    setPanel('about');
-    const t = setTimeout(() => setGlow(true), 260);
-    // Long enough to say "this one", gone before it nags.
-    const off = setTimeout(() => setGlow(false), 2100);
-    return () => {
-      clearTimeout(t);
-      clearTimeout(off);
-    };
-  }, [focus]);
-
   /** Delete every downloaded song, one by one through the same guarded
    *  endpoint a single delete uses, then tell the library what is gone. */
   const doRemoveDownloads = useCallback(async () => {
@@ -771,7 +839,10 @@ export function SettingsScreen({
       const {tracks} = await getLocalLibrary();
       const gone = [];
       for (const t of tracks) {
-        if (t.file_path && (await deleteDownload(t.file_path).catch(() => false))) {
+        if (
+          t.file_path &&
+          (await deleteDownload(t.file_path).catch(() => false))
+        ) {
           gone.push(t);
         }
       }
@@ -789,401 +860,117 @@ export function SettingsScreen({
     }
   }, []);
 
-  // Anything with more than a switch's worth of choice gets its OWN screen,
-  // not an inline expander — the list stays scannable.
+  // Anything with more than a switch's worth of choice gets its OWN page.
   if (panel === 'equalizer') {
-    return <EqualizerScreen onClose={() => setPanel(null)} />;
+    return <EqualizerScreen onClose={back} />;
   }
   if (panel === 'languages') {
-    return <LanguagesScreen onClose={() => setPanel(null)} />;
+    return <LanguagesScreen onClose={back} />;
   }
-  if (panel === 'playback') {
+  if (panel === 'terms' || panel === 'privacy') {
     return (
-      <View style={styles.wrap}>
-        <View style={styles.bar}>
-          <TouchableOpacity
-            onPress={() => setPanel(null)}
-            hitSlop={12}
-            style={styles.back}>
-            <ChevronLeft size={28} color={C.text} />
-          </TouchableOpacity>
-          <Text style={styles.barTitle}>Crossfade and sleep</Text>
-        </View>
-        <ScrollView
-          key="playback" // its own scroll position, as About's (below)
-          ref={scrollRef}
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          bounces={false}>
-          <Section title="Crossfade">
-            <StepSlider
-              label="Crossfade"
-              hint="Overlap the end of one song into the next. Skipped when the next song can't buffer in time."
-              value={settings.crossfadeDuration}
-              max={CROSSFADE_MAX}
-              step={1}
-              format={secs => `${secs}s`}
-              onChange={secs => writeSetting('crossfadeDuration', secs)}
-            />
-          </Section>
-
-          <Section title="Sleep timer">
-            <View style={styles.row}>
-              <View style={styles.rowText}>
-                <Text style={styles.rowLabel}>Stop playing</Text>
-                <Text style={styles.rowHint}>
-                  {sleepLabel(sleep)
-                    ? `Music stops in ${sleepLabel(sleep)}`
-                    : 'Fade out and stop after a while'}
-                </Text>
-                <View style={styles.btnRow}>
-                  {[15, 30, 60].map(m => (
-                    <TouchableOpacity
-                      key={m}
-                      style={styles.ghostBtn}
-                      onPress={() => startSleepTimer(m)}
-                      activeOpacity={0.7}>
-                      <Text style={styles.ghostBtnText}>{m}m</Text>
-                    </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={styles.ghostBtn}
-                    onPress={sleepAtEndOfTrack}
-                    activeOpacity={0.7}>
-                    <Text style={styles.ghostBtnText}>End of track</Text>
-                  </TouchableOpacity>
-                  {sleep.mode !== 'off' && (
-                    <TouchableOpacity
-                      style={styles.ghostBtn}
-                      onPress={cancelSleepTimer}
-                      activeOpacity={0.7}>
-                      <Text style={styles.dangerBtnText}>Cancel</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            </View>
-          </Section>
-          <View style={styles.tail} />
-        </ScrollView>
-      </View>
+      <LegalView doc={panel === 'terms' ? TERMS : PRIVACY} onBack={back} />
     );
   }
 
   const updateAvailable = update.info?.available === true;
-  const updateStatusText =
-    update.phase === 'checking'
-      ? 'Checking…'
-      : updateAvailable
-      ? `Version ${update.info?.version} is ready to install`
-      : update.phase === 'downloading'
-      ? 'Keep the app open until this finishes'
-      : update.phase === 'failed'
-      ? 'Check failed — tap to retry'
-      : update.phase === 'current'
-      ? 'You are up to date'
-      : 'See whether a newer version is out';
+  // Android's own fields; React Native's shared type does not list them.
+  const phone = Platform.constants as {
+    Brand?: string;
+    Model?: string;
+    Release?: string;
+  };
 
-  if (panel === 'terms' || panel === 'privacy') {
-    return (
-      <LegalView
-        doc={panel === 'terms' ? TERMS : PRIVACY}
-        onBack={() => setPanel('about')}
-      />
-    );
-  }
-
-  if (panel === 'about') {
-    // Android's own fields; React Native's shared type does not list them.
-    const phone = Platform.constants as {
-      Brand?: string;
-      Model?: string;
-      Release?: string;
-    };
-    return (
-      <View style={styles.wrap}>
-        <View style={styles.bar}>
-          <TouchableOpacity
-            onPress={() => setPanel(null)}
-            hitSlop={12}
-            style={styles.back}>
-            <ChevronLeft size={28} color={C.text} />
-          </TouchableOpacity>
-          <Text style={styles.barTitle}>About and support</Text>
-        </View>
-        {/* Keyed: without it React reuses the Settings list's ScrollView,
-            scroll offset and all, and About opened at the bottom (its row
-            is at the end of Settings). */}
-        <ScrollView
-          key="about"
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-          overScrollMode="never"
-          bounces={false}>
-        {/* Its OWN section, not a composite row buried in "About".
-              The update was a RefreshCw icon, an "Installed" label, a version,
-              a status line and a nested button all inside one styles.row —
-              nothing else on this screen looked like that. And the update dot
-              on the hamburger dropped you at the top of an eight-section list
-              to go hunting for it; see `focus`. */}
-        <View>
-          <Section
-            title="Updates"
-            highlight={glow}
-            footer={
-              update.phase === 'failed'
-                ? 'The last check could not reach GitHub. Check your connection and try again.'
-                : undefined
-            }>
-            <Row label="App version" value={appVersion || '—'} />
-            {/* ONE row, four states — check / found / downloading / failed.
-                That is the pattern both iOS and Android use, and it means the
-                thing you came here to press is always in the same place. */}
-            <TouchableOpacity
-              style={styles.row}
-              activeOpacity={0.7}
-              onPress={updateAvailable ? startUpdateInstall : checkUpdates}
-              disabled={checking || update.phase === 'downloading'}>
-              <Animated.View style={{transform: [{rotate: spinDeg}]}}>
-                <RefreshCw
-                  size={19}
-                  color={updateAvailable ? C.brand : C.sub}
-                  strokeWidth={2}
-                />
-              </Animated.View>
-              <View style={styles.rowText}>
-                <Text
-                  style={[
-                    styles.rowLabel,
-                    updateAvailable && styles.rowLabelAccent,
-                  ]}>
-                  {update.phase === 'downloading'
-                    ? `Downloading… ${update.pct}%`
-                    : updateAvailable
-                    ? 'Download and install'
-                    : 'Check for updates'}
-                </Text>
-                <Text style={styles.rowHint}>{updateStatusText}</Text>
-              </View>
-              {!updateAvailable && <ChevronRight size={17} color={C.faint} />}
-            </TouchableOpacity>
-            <ToggleRow
-              label="Automatic updates"
-              hint="Check when the app opens and when it returns to the foreground"
-              value={settings.autoUpdateCheck}
-              onChange={v => writeSetting('autoUpdateCheck', v)}
-            />
-          </Section>
-        </View>
-
-
-          <Section title="Help">
-            <Row
-              label="How to use"
-              hint="The guide, in your browser"
-              onPress={() =>
-                Linking.openURL(DOCS_URL).catch(() =>
-                  toast('Could not open the guide'),
-                )
-              }
-            />
-            <Row
-              label="Report a problem"
-              hint="Opens a report on GitHub with your version and phone filled in"
-              onPress={() =>
-                Linking.openURL(
-                  reportUrl(
-                    appVersion,
-                    `${phone.Brand ?? ''} ${phone.Model ?? ''}`.trim(),
-                    String(phone.Release ?? Platform.Version),
-                  ),
-                ).catch(() => toast('Could not open GitHub'))
-              }
-            />
-          </Section>
-
-        {/* A statement, not a setting: there is nothing to switch, so it is
-            set as a boxed paragraph rather than dressed as a row. */}
-        <View style={styles.section}>
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>What we collect</Text>
-          </View>
-          <View style={styles.statement}>
-            <Text style={styles.statementText}>
-              We collect usage statistics to make Relaxify better:{' '}
-              <Text style={styles.statementStrong}>{COLLECTED_ITEMS}</Text>.{' '}
-              {COLLECTED_PROMISE}
-            </Text>
-            <Text style={[styles.statementText, styles.statementMore]}>
-              {JAM_NOTE}
-            </Text>
-            <Text style={[styles.statementText, styles.statementMore]}>
-              {SHARE_NOTE}
-            </Text>
-          </View>
-        </View>
-
-
-          <Section title="Legal">
-            <Row label="Terms of Use" onPress={() => setPanel('terms')} />
-            <Row label="Privacy" onPress={() => setPanel('privacy')} />
-            <Row
-              label="Licence"
-              value="GPL-3.0"
-              onPress={() => Linking.openURL(LICENCE_URL).catch(() => {})}
-            />
-            <Row
-              label="Open-source licences"
-              onPress={() => setLicencesOpen(true)}
-            />
-          </Section>
-          <Text style={styles.credit}>{CREDITS}</Text>
-          <View style={styles.tail} />
-        </ScrollView>
-
-        <Sheet open={licencesOpen} onClose={() => setLicencesOpen(false)}>
-          <Text style={styles.sheetTitle}>Open-source licences</Text>
-          <ScrollView style={styles.licences}>
-            {LICENCES.map(g => (
-              <View key={g.group} style={styles.licenceGroup}>
-                <Text style={styles.sectionTitle}>{g.group}</Text>
-                {g.items.map(([name, licence]) => (
-                  <View key={name} style={styles.licenceRow}>
-                    <Text style={styles.licenceName}>{name}</Text>
-                    <Text style={styles.rowValue}>{licence}</Text>
-                  </View>
-                ))}
-              </View>
-            ))}
-          </ScrollView>
-        </Sheet>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.wrap}>
-      <View style={styles.bar}>
-        <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.back}>
-          <ChevronLeft size={28} color={C.text} />
-        </TouchableOpacity>
-        <Text style={styles.barTitle}>Settings</Text>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        overScrollMode="never"
-        bounces={false}>
-        {/* Order is deliberate: the things you change often first, the
-              things you set once near the bottom, and the destructive one
-              last and on its own. */}
-        <Section title="Playback">
-          <ToggleRow
-            label="Autoplay"
-            hint="Keep playing similar songs when the queue ends"
-            value={settings.autoplay}
-            onChange={v => {
-              writeSetting('autoplay', v);
-              // Switching it OFF has to clear the picks radio already
-              // queued, or the setting reads as ignored: the top-up runs a
-              // few songs ahead, so there are normally eight of them sitting
-              // there and playback carried straight on into them.
-              if (!v) {
-                dropQueuedRadio().catch(() => {});
-              }
-            }}
-          />
-          <ToggleRow
-            label="Normalize volume"
-            hint="Play every track at the same loudness"
-            value={settings.normalizeVolume}
-            onChange={v => {
-              writeSetting('normalizeVolume', v);
-              applyAudioEffects();
-            }}
-          />
-          <ToggleRow
-            label="Headphone memory"
-            hint="Each pair of headphones, speaker or car keeps its own equalizer"
-            value={settings.deviceMemory}
-            onChange={v => writeSetting('deviceMemory', v)}
-          />
-          <ToggleRow
-            label="Resume when headphones connect"
-            hint="Carry on playing when you put your headphones on"
-            value={settings.resumeOnConnect}
-            onChange={v => writeSetting('resumeOnConnect', v)}
-          />
-          <NavRow
-            label="Crossfade"
-            value={
-              settings.crossfadeDuration > 0
-                ? `${settings.crossfadeDuration} seconds`
-                : 'Off'
+  let body: React.ReactNode;
+  if (panel === 'playback') {
+    body = (
+      <>
+        <ToggleRow
+          label="Autoplay"
+          hint="Keep playing similar songs when the queue ends"
+          value={settings.autoplay}
+          onChange={v => {
+            writeSetting('autoplay', v);
+            // Switching it OFF has to clear the picks radio already
+            // queued, or the setting reads as ignored: the top-up runs a
+            // few songs ahead, so there are normally eight of them sitting
+            // there and playback carried straight on into them.
+            if (!v) {
+              dropQueuedRadio().catch(() => {});
             }
-            onPress={() => setPanel('playback')}
-          />
-          <NavRow
-            label="Equalizer"
-            value={
-              settings.eqEnabled
-                ? EQ_PRESETS.find(p => p.id === settings.eqPreset)?.label ||
-                  'Custom'
-                : 'Off'
-            }
-            onPress={() => setPanel('equalizer')}
-          />
-        </Section>
-
-        <Section
-          title="Sound"
-          footer="Downloads always use the best quality a source offers, regardless of this setting.">
-          <Row
-            label="Streaming quality"
-            value={qualityLabel}
-            onPress={() => setQualityOpen(true)}
-          />
-          <ToggleRow
-            label="Data saver on mobile data"
-            hint={`Streams at ${DATA_SAVER_KBPS} kbps off Wi-Fi`}
-            value={settings.dataSaver}
-            onChange={v => writeSetting('dataSaver', v)}
-          />
-          {/* A sheet, not an inline expander: five rows appearing in the
-              middle of the list shoved everything below them down with no
-              motion, on a grey slab that matched nothing else here. */}
-          <Sheet open={qualityOpen} onClose={() => setQualityOpen(false)}>
-            <Text style={styles.sheetTitle}>Streaming quality</Text>
-            {QUALITIES.map(q => (
-              <TouchableOpacity
-                key={q.value}
-                style={styles.row}
-                activeOpacity={0.7}
-                onPress={() => {
-                  writeSetting('audioQuality', q.value);
-                  setQualityOpen(false);
-                }}>
-                <View style={styles.rowText}>
-                  <Text
-                    style={[
-                      styles.rowLabel,
-                      settings.audioQuality === q.value && styles.choiceOn,
-                    ]}>
-                    {q.label}
-                  </Text>
-                  <Text style={styles.rowHint}>{q.hint}</Text>
-                </View>
-                {settings.audioQuality === q.value && (
-                  <Check size={18} color={C.brand} strokeWidth={2.6} />
-                )}
-              </TouchableOpacity>
-            ))}
-          </Sheet>
-        </Section>
-
-        <Section title="Your music">
+          }}
+        />
+        <ToggleRow
+          label="Normalize volume"
+          hint="Play every track at the same loudness"
+          value={settings.normalizeVolume}
+          onChange={v => {
+            writeSetting('normalizeVolume', v);
+            applyAudioEffects();
+          }}
+        />
+        <ToggleRow
+          label="Headphone memory"
+          hint="Each pair of headphones, speaker or car keeps its own equalizer"
+          value={settings.deviceMemory}
+          onChange={v => writeSetting('deviceMemory', v)}
+        />
+        <ToggleRow
+          label="Resume when headphones connect"
+          hint="Carry on playing when you put your headphones on"
+          value={settings.resumeOnConnect}
+          onChange={v => writeSetting('resumeOnConnect', v)}
+        />
+        <StepSlider
+          label="Crossfade"
+          hint="Overlap the end of one song into the next. Skipped when the next song can't buffer in time."
+          value={settings.crossfadeDuration}
+          max={CROSSFADE_MAX}
+          step={1}
+          format={secs => `${secs}s`}
+          onChange={secs => writeSetting('crossfadeDuration', secs)}
+        />
+        <NavRow
+          label="Equalizer"
+          value={
+            settings.eqEnabled
+              ? EQ_PRESETS.find(p => p.id === settings.eqPreset)?.label ||
+                'Custom'
+              : 'Off'
+          }
+          onPress={() => setPanel('equalizer')}
+        />
+        <NavRow
+          label="Sleep timer"
+          value={sleepLabel(sleep) || 'Off'}
+          onPress={() => setSleepOpen(true)}
+        />
+      </>
+    );
+  } else if (panel === 'data') {
+    body = (
+      <>
+        <ToggleRow
+          label="Data saver on mobile data"
+          hint={`Streams at ${DATA_SAVER_KBPS} kbps off Wi-Fi`}
+          value={settings.dataSaver}
+          onChange={v => writeSetting('dataSaver', v)}
+        />
+        <Row
+          label="Streaming quality"
+          value={qualityLabel}
+          onPress={() => setQualityOpen(true)}
+        />
+        <Text style={styles.sectionFooter}>
+          Downloads always use the best quality a source offers, regardless of
+          this setting.
+        </Text>
+      </>
+    );
+  } else if (panel === 'display') {
+    body = (
+      <>
+        <Section title="Home">
           <NavRow
             label="Languages for music"
             value={languagesLabel(settings.homeLanguages)}
@@ -1195,97 +982,7 @@ export function SettingsScreen({
             onChange={v => writeSetting('homeGrid', v)}
           />
         </Section>
-
-        {/* Three ghost buttons in a row read as a toolbar, not as settings.
-            Each is its own row now, and the path is a VALUE — right-aligned,
-            middle-ellipsised, so a long path shows the start and the end
-            rather than wrapping to two lines of body text. */}
-        <Section title="Storage">
-          {storage && storage.total_bytes > 0 && (
-            <StorageBreakdown info={storage} savedBytes={storedBytes()} />
-          )}
-          <TouchableOpacity
-            style={styles.row}
-            onPress={pickDownloadFolder}
-            activeOpacity={0.7}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>Download location</Text>
-              {/* A path, set as one: its own box, a fixed-width face, cut in
-                  the middle so the start and the end both stay visible. */}
-              <View style={styles.pathBox}>
-                <Text
-                  style={styles.pathText}
-                  numberOfLines={1}
-                  ellipsizeMode="middle">
-                  {folder ||
-                    (downloads?.using_fallback ? 'App storage' : 'Not set yet')}
-                </Text>
-              </View>
-            </View>
-            <ChevronRight size={17} color={C.faint} />
-          </TouchableOpacity>
-
-          <Row
-            label="Open in Files"
-            onPress={openDownloadFolder}
-          />
-
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => setRemoveOpen(true)}
-            disabled={removing || !storage?.downloads_count}
-            activeOpacity={0.7}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>
-                {removing ? 'Removing…' : 'Remove all downloads'}
-              </Text>
-              <Text style={styles.rowHint}>
-                {storage?.downloads_count
-                  ? `Deletes the ${storage.downloads_count} songs saved on this phone. Playlists and likes stay.`
-                  : 'No downloaded songs on this phone.'}
-              </Text>
-            </View>
-            <ChevronRight size={17} color={C.faint} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.row}
-            onPress={() => setCacheOpen(true)}
-            disabled={clearing}
-            activeOpacity={0.7}>
-            <Lead Icon={Trash} />
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>
-                {clearing ? 'Clearing…' : 'Clear cached data'}
-              </Text>
-              <Text style={styles.rowHint}>
-                {cacheBytes == null
-                  ? 'Downloaded songs are kept.'
-                  : `Frees ${formatBytes(
-                      cacheBytes,
-                    )}. Downloaded songs are kept.`}
-              </Text>
-            </View>
-            <ChevronRight size={17} color={C.faint} />
-          </TouchableOpacity>
-
-          <SizeStepper
-            label="Clear cache automatically"
-            hint="When cached data passes this size, it is cleared the next time you open the app. Downloaded songs and search history are kept."
-            value={settings.cacheLimitMb}
-            steps={CACHE_STEPS}
-            onChange={mb => {
-              writeSetting('cacheLimitMb', mb);
-              enforceCacheLimit(true).then(() =>
-                getCacheSize()
-                  .then(r => patchRemote({cacheBytes: r.bytes}))
-                  .catch(() => {}),
-              );
-            }}
-          />
-        </Section>
-
-        <Section title="Appearance">
+        <Section title="Labels">
           <ToggleRow
             label="Show source label"
             hint="Marks which service each track came from"
@@ -1305,27 +1002,253 @@ export function SettingsScreen({
             onChange={v => writeSetting('showPlaylistSource', v)}
           />
         </Section>
-
-        <Section title="About">
-          <NavRow
-            label="About and support"
-            value={updateAvailable ? 'Update ready' : appVersion || undefined}
-            onPress={() => setPanel('about')}
+      </>
+    );
+  } else if (panel === 'storage') {
+    body = (
+      <>
+        {storage && storage.total_bytes > 0 && (
+          <StorageBreakdown info={storage} savedBytes={storedBytes()} />
+        )}
+        <Section title="Downloads">
+          <TouchableOpacity
+            style={styles.row}
+            onPress={pickDownloadFolder}
+            activeOpacity={0.7}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Download location</Text>
+              {/* Cut in the middle, so the start and the end of a long path
+                  both stay visible. */}
+              <Text
+                style={styles.rowHint}
+                numberOfLines={1}
+                ellipsizeMode="middle">
+                {folder ||
+                  (downloads?.using_fallback ? 'App storage' : 'Not set yet')}
+              </Text>
+            </View>
+            <ChevronRight size={17} color={C.faint} />
+          </TouchableOpacity>
+          <Row label="Open in Files" onPress={openDownloadFolder} external />
+          <ActionRow
+            label="Remove all downloads"
+            hint={
+              storage?.downloads_count
+                ? `Deletes the ${storage.downloads_count} songs saved on this phone. Playlists and likes stay.`
+                : 'No downloaded songs on this phone.'
+            }
+            action={removing ? 'Removing…' : 'Remove'}
+            onPress={() => setRemoveOpen(true)}
+            disabled={removing || !storage?.downloads_count}
           />
         </Section>
+        <Section title="Cache">
+          <ActionRow
+            label="Clear cache"
+            hint={
+              cacheBytes == null
+                ? 'Temporary files, lyrics and search history. Downloads are kept.'
+                : `${formatBytes(
+                    cacheBytes,
+                  )} of temporary files, lyrics and search history. Downloads are kept.`
+            }
+            action={clearing ? 'Clearing…' : 'Clear cache'}
+            onPress={() => setCacheOpen(true)}
+            disabled={clearing}
+          />
+          <SizeStepper
+            label="Cache limit"
+            hint="When the cache passes this size, it is cleared the next time you open the app. Downloads and search history are kept."
+            value={settings.cacheLimitMb}
+            steps={CACHE_STEPS}
+            onChange={mb => {
+              writeSetting('cacheLimitMb', mb);
+              enforceCacheLimit(true).then(() =>
+                getCacheSize()
+                  .then(r => patchRemote({cacheBytes: r.bytes}))
+                  .catch(() => {}),
+              );
+            }}
+          />
+        </Section>
+      </>
+    );
+  } else if (panel === 'about') {
+    const size = formatSize(update.info?.sizeBytes);
+    body = (
+      <>
+        {/* A waiting update lives on the Version row: the coral strip shows
+            it by itself, and this is where it stays after the strip is put
+            away. Checks run on their own, at launch and on every return to
+            the app; there is nothing to press to look. */}
+        {updateAvailable || update.phase === 'downloading' ? (
+          <View style={styles.row}>
+            <View style={styles.rowText}>
+              <Text style={styles.rowLabel}>Version</Text>
+              <Text style={[styles.rowHint, styles.accentHint]}>
+                {update.phase === 'downloading'
+                  ? `Downloading ${update.info?.version}… ${update.pct}%`
+                  : update.phase === 'failed'
+                  ? "Couldn't download it. Try again."
+                  : `${update.info?.version} is ready${
+                      size ? `, ${size}` : ''
+                    }`}
+              </Text>
+            </View>
+            {update.phase !== 'downloading' && (
+              <Pill label="Install" filled onPress={startUpdateInstall} />
+            )}
+          </View>
+        ) : (
+          <Row label="Version" value={appVersion || '—'} />
+        )}
+        <View style={styles.divider} />
+        <Row label="Privacy Policy" onPress={() => setPanel('privacy')} />
+        <Row label="Terms of Use" onPress={() => setPanel('terms')} />
+        <Row
+          label="Third-party licences"
+          onPress={() => setLicencesOpen(true)}
+        />
+        <Row
+          label="Licence"
+          hint="GNU GPL v3, free and open source"
+          onPress={() => Linking.openURL(LICENCE_URL).catch(() => {})}
+          external
+        />
+        <View style={styles.divider} />
+        <Row
+          label="How to use"
+          onPress={() =>
+            Linking.openURL(DOCS_URL).catch(() =>
+              toast('Could not open the guide'),
+            )
+          }
+          external
+        />
+        <Row
+          label="Report a problem"
+          external
+          onPress={() =>
+            Linking.openURL(
+              reportUrl(
+                appVersion,
+                `${phone.Brand ?? ''} ${phone.Model ?? ''}`.trim(),
+                String(phone.Release ?? Platform.Version),
+              ),
+            ).catch(() => toast('Could not open GitHub'))
+          }
+        />
+        <Text style={styles.credit}>{CREDITS}</Text>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <CategoryRow
+          Icon={CirclePlay}
+          label="Playback"
+          hint="Autoplay, crossfade, equalizer, sleep"
+          onPress={() => setPanel('playback')}
+        />
+        <CategoryRow
+          Icon={Signal}
+          label="Data saver and quality"
+          hint="Data saver, streaming quality"
+          onPress={() => setPanel('data')}
+        />
+        <CategoryRow
+          Icon={Monitor}
+          label="Display preferences"
+          hint="Labels, Home style, languages"
+          onPress={() => setPanel('display')}
+        />
+        <CategoryRow
+          Icon={Layers}
+          label="Storage"
+          hint="Downloads, cache"
+          onPress={() => setPanel('storage')}
+        />
+        <CategoryRow
+          Icon={Info}
+          label="About and support"
+          hint="Version, privacy policy"
+          onPress={() => setPanel('about')}
+        />
+        <View style={styles.resetWrap}>
+          <Pill label="Reset all settings" onPress={() => setResetOpen(true)} />
+          <Text style={styles.resetHint}>
+            Puts everything back to defaults. Your library isn&apos;t touched.
+          </Text>
+        </View>
+      </>
+    );
+  }
 
-        <TouchableOpacity
-          style={styles.reset}
-          activeOpacity={0.7}
-          onPress={() => setResetOpen(true)}>
-          <Text style={styles.resetText}>Reset all settings</Text>
-        </TouchableOpacity>
-        <Text style={[styles.rowHint, styles.resetHint]}>
-          Puts everything back to defaults. Your library isn&apos;t touched.
-        </Text>
-
+  return (
+    <View style={styles.wrap}>
+      <PageBar
+        title={(panel && TITLES[panel]) || 'Settings'}
+        onBack={panel ? back : onClose}
+      />
+      {/* Keyed per page: without it React reuses one ScrollView, scroll
+          offset and all, and a page could open half-way down. */}
+      <ScrollView
+        key={panel ?? 'main'}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        bounces={false}>
+        {body}
         <View style={styles.tail} />
       </ScrollView>
+
+      {/* A sheet, not an inline expander: five rows appearing in the middle
+          of the list shoved everything below them down with no motion. */}
+      <Sheet open={qualityOpen} onClose={() => setQualityOpen(false)}>
+        <Text style={styles.sheetTitle}>Streaming quality</Text>
+        {QUALITIES.map(q => (
+          <TouchableOpacity
+            key={q.value}
+            style={styles.row}
+            activeOpacity={0.7}
+            onPress={() => {
+              writeSetting('audioQuality', q.value);
+              setQualityOpen(false);
+            }}>
+            <View style={styles.rowText}>
+              <Text
+                style={[
+                  styles.rowLabel,
+                  settings.audioQuality === q.value && styles.choiceOn,
+                ]}>
+                {q.label}
+              </Text>
+              <Text style={styles.rowHint}>{q.hint}</Text>
+            </View>
+            {settings.audioQuality === q.value && (
+              <Check size={18} color={C.brand} strokeWidth={2.6} />
+            )}
+          </TouchableOpacity>
+        ))}
+      </Sheet>
+      <Sheet open={licencesOpen} onClose={() => setLicencesOpen(false)}>
+        <Text style={styles.sheetTitle}>Open-source licences</Text>
+        <ScrollView style={styles.licences}>
+          {LICENCES.map(g => (
+            <View key={g.group} style={styles.licenceGroup}>
+              <Text style={styles.sectionTitle}>{g.group}</Text>
+              {g.items.map(([name, licence]) => (
+                <View key={name} style={styles.licenceRow}>
+                  <Text style={styles.licenceName}>{name}</Text>
+                  <Text style={styles.rowValue}>{licence}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      </Sheet>
+
+      <SleepSheet open={sleepOpen} onClose={() => setSleepOpen(false)} />
 
       <ConfirmModal
         visible={resetOpen}
@@ -1340,7 +1263,9 @@ export function SettingsScreen({
       <ConfirmModal
         visible={removeOpen}
         title="Remove all downloads?"
-        message={`Deletes the ${storage?.downloads_count ?? 0} songs saved on this phone. Your playlists and likes are kept, and every song can be downloaded again.`}
+        message={`Deletes the ${
+          storage?.downloads_count ?? 0
+        } songs saved on this phone. Your playlists and likes are kept, and every song can be downloaded again.`}
         confirmLabel="Remove"
         danger
         onConfirm={doRemoveDownloads}
@@ -1361,17 +1286,6 @@ export function SettingsScreen({
 
 const styles = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: C.bg},
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingTop: 12,
-    paddingHorizontal: 8,
-    paddingBottom: 4,
-  },
-  back: {padding: 4},
-  barTitle: {...T.screenTitle, color: C.text},
-  center: {flex: 1, alignItems: 'center', justifyContent: 'center'},
   // Enough tail room that the last row clears the mini player + bottom nav —
   // the reset button was getting clipped by a small amount.
   // The bars at the foot of the app float OVER the page now, so a list has to
@@ -1389,33 +1303,6 @@ const styles = StyleSheet.create({
   licenceGroup: {paddingHorizontal: S.gutter, paddingTop: 14, gap: 8},
   licenceRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
   licenceName: {flex: 1, color: C.text, fontSize: 14},
-  pathBox: {
-    marginTop: 8,
-    alignSelf: 'stretch',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: '#0b0b0d',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  pathText: {
-    fontFamily: 'monospace',
-    color: '#cfd1d6',
-    fontSize: 12.5,
-  },
-  statement: {
-    marginHorizontal: S.gutter,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 14,
-  },
-  statementText: {color: '#d3d5da', fontSize: 13.5, lineHeight: 21},
-  statementMore: {marginTop: 10},
-  // Its own weight, stated: a nested span without one falls back to Regular.
-  statementStrong: {color: C.text, fontWeight: '700'},
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1444,13 +1331,6 @@ const styles = StyleSheet.create({
   // No lines at all now: the heading and the space around a group are
   // what separate it.
   card: {},
-  // A brief accent ring, for "this is the thing you came here for". Still a
-  // ring, because with no card fill there is nothing else to tint.
-  cardHighlight: {
-    borderWidth: 1.5,
-    borderColor: C.brand,
-    borderRadius: 10,
-  },
   sectionFooter: {
     ...T.sub,
     color: C.faint,
@@ -1475,10 +1355,9 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   choiceOn: {color: C.brand},
-  sheetHint: {color: C.sub, fontSize: 13, lineHeight: 18, marginBottom: 14},
   rowText: {flex: 1, minWidth: 0},
-  rowLabel: {...T.listTitle, color: C.text},
-  rowLabelAccent: {color: C.brand},
+  // 15 px, Spotify's settings size: the list's 16 read heavy here.
+  rowLabel: {...T.listTitle, color: C.text, fontSize: 15, lineHeight: 20},
   rowHint: {...T.listSub, color: C.sub, marginTop: 2},
   rowValue: {
     fontSize: fs(14),
@@ -1488,25 +1367,40 @@ const styles = StyleSheet.create({
     maxWidth: 190,
     textAlign: 'right',
   },
-  // Filled red: the one button here that undoes everything you set.
-  reset: {
-    marginTop: 26,
-    marginHorizontal: S.gutter,
-    alignSelf: 'flex-start',
-    backgroundColor: C.danger,
-    borderRadius: 999,
-    paddingHorizontal: 20,
-    paddingVertical: 11,
-  },
-  resetText: {color: '#fff', fontSize: 15, fontWeight: '700'},
-  resetHint: {paddingHorizontal: S.gutter, marginTop: 8},
+  resetHint: {...T.listSub, color: C.sub, textAlign: 'center', marginTop: 8},
   tail: {height: 10},
-  folderPath: {
-    ...T.sub,
-    color: C.sub,
+  category: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    minHeight: 64,
     paddingHorizontal: S.gutter,
-    paddingBottom: 10,
-    marginTop: -6,
+    paddingVertical: 10,
+  },
+  action: {paddingHorizontal: S.gutter, paddingVertical: 12},
+  pill: {
+    alignSelf: 'flex-start',
+    marginTop: 12,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
+  },
+  pillFilled: {
+    marginTop: 0,
+    backgroundColor: C.accent,
+    borderColor: C.accent,
+  },
+  pillOff: {opacity: 0.4},
+  pillText: {color: C.text, fontSize: 14, fontWeight: '700'},
+  accentHint: {color: C.accent},
+  divider: {height: 1, backgroundColor: C.border, marginVertical: 6},
+  resetWrap: {
+    alignItems: 'center',
+    paddingTop: 22,
+    paddingHorizontal: S.gutter,
   },
   slider: {paddingHorizontal: S.gutter, paddingTop: 14, paddingBottom: 6},
   sliderHead: {flexDirection: 'row', alignItems: 'flex-start', gap: 14},
@@ -1546,7 +1440,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
   },
-  stepDots: {flexDirection: 'row', justifyContent: 'center', gap: 5, marginTop: 10},
+  stepDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 5,
+    marginTop: 10,
+  },
   stepDot: {width: 5, height: 5, borderRadius: 3, backgroundColor: '#3a3a40'},
   stepDotOn: {backgroundColor: C.text},
   sliderTouch: {justifyContent: 'center', height: 44, marginTop: 4},
@@ -1573,35 +1472,4 @@ const styles = StyleSheet.create({
   },
   sliderEnds: {flexDirection: 'row', justifyContent: 'space-between'},
   sliderEnd: {...T.sub, color: C.faint, fontSize: 11},
-  stepValue: {
-    color: C.text,
-    fontSize: 15,
-    fontWeight: '700',
-    minWidth: 46,
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
-  },
-  dot: {width: 8, height: 8, borderRadius: 4},
-  btnRow: {flexDirection: 'row', gap: 10, marginTop: 12},
-  setBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: C.surfaceHi,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.border,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  setBtnText: {color: C.text, fontWeight: '700', fontSize: 13},
-  ghostBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  ghostBtnText: {color: C.sub, fontWeight: '700', fontSize: 13},
-  dangerBtnText: {color: C.danger, fontWeight: '700', fontSize: 13},
-  updateHead: {flexDirection: 'row', justifyContent: 'space-between'},
-  checkBtn: {alignSelf: 'flex-start', marginTop: 12},
 });

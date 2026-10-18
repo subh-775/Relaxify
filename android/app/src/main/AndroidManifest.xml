@@ -20,6 +20,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Your own name for your headphones ("Subh's realme Buds Air8"), shown
+         where the music is playing. Nearby devices is asked once, the first
+         time Bluetooth headphones are in use with the app open; without it
+         the model name shows. BLUETOOTH covers Android 11, where the name
+         needs no prompt. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Cleartext is NOT permitted app-wide. network_security_config scopes it
          to 127.0.0.1/localhost (the embedded Python backend) and leaves every

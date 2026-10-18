@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import {C, S, T} from '../theme';
 import {readSettings, setSlot, useSettings, writeSetting} from '../store';
-import {LANGUAGES, languageName} from './LanguageChips';
+import {LANGUAGES, languageName} from '../languages';
 import {logEvent} from '../analytics';
 
 const ITEM_W = 92;

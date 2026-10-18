@@ -479,7 +479,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                       state of a control they do not have says nothing. */}
                     {isPinned(idOf(item)) && (
                       <View style={styles.pin}>
-                        <PinGlyph size={20} color={DOWNLOAD_TINT} />
+                        <PinGlyph size={18.5} color={DOWNLOAD_TINT} />
                       </View>
                     )}
                     <Text

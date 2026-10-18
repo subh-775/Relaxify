@@ -11,11 +11,7 @@
 import {NativeModules} from 'react-native';
 import type {Track} from './backend';
 
-// The disclosure's words live with the Privacy statement (legal.ts), so the
-// notice, Settings and the statement cannot drift apart.
-import {COLLECTED_ITEMS, COLLECTED_PROMISE, JAM_NOTE, SHARE_NOTE} from './legal';
-export {COLLECTED_ITEMS, COLLECTED_PROMISE, JAM_NOTE, SHARE_NOTE};
-export const ANALYTICS_NOTE = `Relaxify sends usage statistics to help improve the app: ${COLLECTED_ITEMS}. ${COLLECTED_PROMISE}`;
+// What is collected is stated in the Privacy Policy (legal.ts), and only there.
 
 type AnalyticsNative = {
   log?: (name: string, params: Record<string, string | number>) => void;

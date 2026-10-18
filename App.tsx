@@ -18,7 +18,11 @@ import {JamScreen} from './src/screens/JamScreen';
 import {DOCS_URL, inviteMessage} from './src/links';
 import {startDeviceMemory} from './src/deviceMemory';
 import {startDevice} from './src/device';
-import {WelcomeScreen, settleWelcome, useWelcomed} from './src/screens/WelcomeScreen';
+import {
+  WelcomeScreen,
+  settleWelcome,
+  useWelcomed,
+} from './src/screens/WelcomeScreen';
 import {rememberCollection} from './src/lastCollection';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
@@ -30,6 +34,7 @@ import {EqualizerScreen} from './src/screens/EqualizerScreen';
 import {CollectionScreen} from './src/screens/CollectionScreen';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {SpotifyImportScreen} from './src/screens/SpotifyImportScreen';
+import {ImportLinkScreen} from './src/screens/ImportLinkScreen';
 import {ArtistScreen} from './src/screens/ArtistScreen';
 import {PlayerScreen} from './src/screens/PlayerScreen';
 import {PlayerBar} from './src/components/PlayerBar';
@@ -116,6 +121,8 @@ function Shell() {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [collectionLoading, setCollectionLoading] = useState(false);
   const [importUrl, setImportUrl] = useState<string | null>(null);
+  /** The page that asks for a playlist link (Home's import card). */
+  const [importAsk, setImportAsk] = useState(false);
   const [artist, setArtist] = useState<string | null>(null);
   // Whichever overlay was opened LAST renders on top. Fixed JSX order put the
   // album under the artist page — it opened invisibly, which read as "albums
@@ -489,6 +496,7 @@ function Shell() {
     setCollection(null);
     setArtist(null);
     setImportUrl(null);
+    setImportAsk(false);
     setSettingsOpen(false);
     setActivity(null);
     // Every full-screen overlay closes on a tab change. The Equalizer and Jam
@@ -546,6 +554,10 @@ function Shell() {
     }
     if (jamOpen) {
       setJamOpen(false);
+      return true;
+    }
+    if (importAsk) {
+      setImportAsk(false);
       return true;
     }
     if (importUrl) {
@@ -618,6 +630,12 @@ function Shell() {
   const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
   const closeLanguages = useCallback(() => setLangOpen(false), []);
+  const openImportAsk = useCallback(() => setImportAsk(true), []);
+  const closeImportAsk = useCallback(() => setImportAsk(false), []);
+  const importLink = useCallback((url: string) => {
+    setImportAsk(false);
+    setImportUrl(url);
+  }, []);
   // Sunday's Recap notification opens the app on relaxify://recap, and a
   // shared playlist link's page on relaxify://p/CODE, whether the app was
   // closed (the initial URL) or already running (a url event).
@@ -806,6 +824,7 @@ function Shell() {
             onOpenRecap={openRecap}
             onOpenJam={openJam}
             onImportSpotify={setImportUrl}
+            onAskImport={openImportAsk}
             onOpenCollection={openFromLibrary}
             onOpenAlbum={openAlbumById}
             visible={tab === 'home'}
@@ -869,6 +888,12 @@ function Shell() {
                 setLibraryNonce(n => n + 1);
               }}
             />
+          </View>
+        )}
+
+        {importAsk && (
+          <View style={StyleSheet.absoluteFill}>
+            <ImportLinkScreen onImport={importLink} onClose={closeImportAsk} />
           </View>
         )}
 

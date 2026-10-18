@@ -11,7 +11,6 @@
 import {useSyncExternalStore} from 'react';
 import {AppState, NativeEventEmitter, NativeModules} from 'react-native';
 import {createStore} from './storage';
-import {readSettings} from './store';
 import {diag} from './diag';
 import {logEvent} from './analytics';
 
@@ -53,17 +52,16 @@ const lastAutoCheck = createStore<number>('mp.updateCheckedAt.v1', 0, raw =>
 const RECHECK_MS = 15 * 60 * 1000;
 
 /**
- * The version whose popup the user has already dismissed.
+ * The version whose strip was put away (its ✕), for this run of the app.
  *
- * Now that a check also runs on every return to the foreground, "dismiss" has
- * to mean something durable — otherwise the popup would come back every time
- * the app was resumed, which is a nag, not a notice. It suppresses only the
- * POPUP: `useUpdateAvailable` reads `info`, not `phase`, so the dot stays lit
- * and Settings still offers to install.
+ * A check also runs on every return to the foreground, so the dismissal has to
+ * outlast those, or the strip would come straight back on every resume: a nag,
+ * not a notice. It does NOT outlast the app: the strip returns at the next
+ * launch, because there is no update button anywhere else to come back to.
+ * Meanwhile `info` is kept, so the menu's dot stays lit and About and support
+ * offers it on the Version row.
  */
-const dismissedVersion = createStore<string>('mp.updateDismissed.v1', '', raw =>
-  typeof raw === 'string' ? raw : '',
-);
+let dismissedVersion = '';
 
 type UpdaterNative = {
   check?: () => Promise<boolean>;
@@ -150,7 +148,7 @@ function ensureRegistered() {
       logEvent('update_check_failed', {error: String(res.error)});
     }
     const alreadySeen =
-      !!res?.available && res.version === dismissedVersion.get();
+      !!res?.available && res.version === dismissedVersion;
     state = {
       ...state,
       info: res,
@@ -239,14 +237,10 @@ export function checkUpdate(): void {
 
 /**
  * The automatic check: at launch, and every time the app comes back to the
- * foreground. Identical to checkUpdate apart from the settings switch and a
- * short debounce.
+ * foreground. Identical to checkUpdate apart from a short debounce. There is
+ * no switch for it and no button: an update shows itself when it is out.
  */
 export function checkUpdateOnLaunch(): void {
-  if (!readSettings().autoUpdateCheck) {
-    diag('update', 'auto check skipped — automatic updates are off');
-    return;
-  }
   if (Date.now() - lastAutoCheck.get() < RECHECK_MS) {
     diag('update', 'auto check skipped — checked a few minutes ago');
     return;
@@ -297,7 +291,7 @@ export function startUpdateInstall(): void {
  */
 export function dismissUpdate(): void {
   if (state.info?.version) {
-    dismissedVersion.set(state.info.version);
+    dismissedVersion = state.info.version;
   }
   state = {...state, phase: 'idle', attempted: false};
   emit();

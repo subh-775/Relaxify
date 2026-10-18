@@ -20,10 +20,12 @@ export {default as ChevronDown} from 'lucide-react-native/dist/esm/icons/chevron
 export {default as ChevronLeft} from 'lucide-react-native/dist/esm/icons/chevron-left';
 export {default as ChevronRight} from 'lucide-react-native/dist/esm/icons/chevron-right';
 export {default as CircleCheck} from 'lucide-react-native/dist/esm/icons/circle-check';
+export {default as CirclePlay} from 'lucide-react-native/dist/esm/icons/circle-play';
 export {default as Clock} from 'lucide-react-native/dist/esm/icons/clock';
 export {default as Disc3} from 'lucide-react-native/dist/esm/icons/disc-3';
 export {default as Download} from 'lucide-react-native/dist/esm/icons/download';
 export {default as Drum} from 'lucide-react-native/dist/esm/icons/drum';
+export {default as ExternalLink} from 'lucide-react-native/dist/esm/icons/external-link';
 export {default as Flame} from 'lucide-react-native/dist/esm/icons/flame';
 export {default as Gauge} from 'lucide-react-native/dist/esm/icons/gauge';
 export {default as Guitar} from 'lucide-react-native/dist/esm/icons/guitar';
@@ -32,12 +34,15 @@ export {default as Headphones} from 'lucide-react-native/dist/esm/icons/headphon
 export {default as Heart} from 'lucide-react-native/dist/esm/icons/heart';
 export {default as Home} from 'lucide-react-native/dist/esm/icons/house';
 export {default as ImagePlus} from 'lucide-react-native/dist/esm/icons/image-plus';
+export {default as Info} from 'lucide-react-native/dist/esm/icons/info';
+export {default as Layers} from 'lucide-react-native/dist/esm/icons/layers';
 export {default as Library} from 'lucide-react-native/dist/esm/icons/library';
 export {default as ListX} from 'lucide-react-native/dist/esm/icons/list-x';
 export {default as Loader} from 'lucide-react-native/dist/esm/icons/loader';
 export {default as Menu} from 'lucide-react-native/dist/esm/icons/menu';
 export {default as Mic2} from 'lucide-react-native/dist/esm/icons/mic-vocal';
 export {default as Minus} from 'lucide-react-native/dist/esm/icons/minus';
+export {default as Monitor} from 'lucide-react-native/dist/esm/icons/monitor';
 export {default as MoreVertical} from 'lucide-react-native/dist/esm/icons/ellipsis-vertical';
 export {default as Music2} from 'lucide-react-native/dist/esm/icons/music-2';
 export {default as Music4} from 'lucide-react-native/dist/esm/icons/music-4';
@@ -51,6 +56,7 @@ export {default as RefreshCw} from 'lucide-react-native/dist/esm/icons/refresh-c
 export {default as Search} from 'lucide-react-native/dist/esm/icons/search';
 export {default as Share2} from 'lucide-react-native/dist/esm/icons/share-2';
 export {default as Shuffle} from 'lucide-react-native/dist/esm/icons/shuffle';
+export {default as Signal} from 'lucide-react-native/dist/esm/icons/signal';
 export {default as SkipBack} from 'lucide-react-native/dist/esm/icons/skip-back';
 export {default as SkipForward} from 'lucide-react-native/dist/esm/icons/skip-forward';
 export {default as SlidersHorizontal} from 'lucide-react-native/dist/esm/icons/sliders-horizontal';

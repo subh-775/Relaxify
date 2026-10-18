@@ -101,8 +101,10 @@ type Props = {
   onOpenRecap?: () => void;
   /** Open the Jam screen, from the Jam card. */
   onOpenJam?: () => void;
-  /** Start importing a Spotify link, from the import card. */
+  /** Open an import's progress, from the import card. */
   onImportSpotify?: (url: string) => void;
+  /** Ask for a playlist link, from the import card. */
+  onAskImport?: () => void;
   /** Open a playlist or album, from the Continue and import cards. */
   onOpenCollection?: (c: Collection) => void;
   /** Open an album by name, artist and JioSaavn id (From artists you love). */
@@ -151,6 +153,7 @@ export const HomeScreen = React.memo(function HomeScreen({
   onOpenRecap,
   onOpenJam,
   onImportSpotify,
+  onAskImport,
   onOpenCollection,
   onOpenAlbum,
   visible,
@@ -323,11 +326,11 @@ export const HomeScreen = React.memo(function HomeScreen({
   const header = (
     <>
       {/* The cards, one shape, one swiped row with dots (HomeCards). */}
-      {onOpenRecap && onOpenJam && onImportSpotify && onOpenCollection && (
+      {onOpenRecap && onOpenJam && onImportSpotify && onAskImport && onOpenCollection && (
         <HomeCardCarousel
           onOpenRecap={onOpenRecap}
           onOpenJam={onOpenJam}
-          onImport={onImportSpotify}
+          onAskImport={onAskImport}
           onOpenImport={onImportSpotify}
           onOpenCollection={onOpenCollection}
           starter={starter}
