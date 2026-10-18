@@ -479,7 +479,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
                       state of a control they do not have says nothing. */}
                     {isPinned(idOf(item)) && (
                       <View style={styles.pin}>
-                        <PinGlyph size={13} color={DOWNLOAD_TINT} />
+                        <PinGlyph size={18.5} color={DOWNLOAD_TINT} />
                       </View>
                     )}
                     <Text
@@ -749,10 +749,14 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowText: {flex: 1, minWidth: 0},
-  rowTitle: {...T.listTitle, color: C.text},
-  rowTitlePlaying: {color: C.accent, fontWeight: '500'},
+  // Settings' row size (15): a name in the Library reads the same as one there.
+  rowTitle: {...T.listTitle, color: C.text, fontSize: 15, lineHeight: 20},
+  rowTitlePlaying: {color: C.accent},
   metaLine: {flexDirection: 'row', alignItems: 'center', marginTop: 2},
-  pin: {marginRight: 6},
+  // The glyph draws at about two thirds of its box, so 20 is a pin as tall
+  // as the subtitle's text, Spotify's size. The negative margin keeps the
+  // 20px box from making the 18px line taller.
+  pin: {marginRight: 5, marginVertical: -1},
   rowSub: {...T.listSub, color: C.sub, flex: 1},
   empty: {
     color: C.faint,

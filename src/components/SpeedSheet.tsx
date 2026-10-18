@@ -113,7 +113,7 @@ export function SpeedSheet({
   const fill = useAnimatedStyle(() => ({width: `${t.value * 100}%`}));
   const thumb = useAnimatedStyle(() => ({
     left: `${t.value * 100}%`,
-    transform: [{translateX: -9}, {scale: 1 + grow.value * 0.25}],
+    transform: [{translateX: -THUMB / 2}, {scale: 1 + grow.value * 0.5}],
   }));
 
   const nudge = useCallback(
@@ -187,7 +187,9 @@ export function SpeedSheet({
   );
 }
 
-const THUMB = 18;
+// The player's seekbar (Seekbar.tsx): a 2.5px line and a 10px thumb that
+// grows under the finger.
+const THUMB = 10;
 
 const styles = StyleSheet.create({
   head: {
@@ -201,6 +203,7 @@ const styles = StyleSheet.create({
     ...T.screenTitle,
     color: C.text,
     fontSize: 30,
+    fontWeight: '400',
     textAlign: 'center',
     paddingTop: 6,
     paddingBottom: 14,
@@ -220,12 +223,12 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceHi,
   },
   roundOff: {opacity: 0.45},
-  // A tall touch area around a thin bar: the bar is 4px and a 4px target is
-  // not a target. Same trick the crossfade bar and the EQ bands use.
+  // A tall touch area around a thin bar: a 2.5px target is not a target.
+  // Same trick the seekbar, the crossfade bar and the EQ bands use.
   touch: {flex: 1, height: 44, justifyContent: 'center'},
   track: {
-    height: 4,
-    borderRadius: 2,
+    height: 2.5,
+    borderRadius: 1.25,
     backgroundColor: 'rgba(255,255,255,0.16)',
     overflow: 'hidden',
   },
@@ -252,6 +255,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.surfaceHi,
   },
   chipOn: {backgroundColor: C.accent},
-  chipText: {...T.body, color: C.text},
-  chipTextOn: {color: '#000', fontWeight: '700'},
+  chipText: {...T.body, fontWeight: '400', color: C.text},
+  chipTextOn: {color: '#000'},
 });

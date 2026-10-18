@@ -17,12 +17,12 @@
  * use, and it costs nothing — unlike a value that changes under a list mid
  * scroll, which moves the content under the reader's thumb.
  *
- * Measured, not guessed: PlayerBar is a 48px cover + 4px padding either side +
- * 3px for the progress line = 59 (it rests right on the tab bar, no margin),
+ * Measured, not guessed: PlayerBar is a 42px cover + 4px padding either side +
+ * 3px for the progress line = 53 (it rests right on the tab bar, no margin),
  * and BottomNav is 8 + a 24px icon + 4 + a 13px label + 8 + 2 = 59. Rounded up
  * for air.
  */
-export const BOTTOM_INSET = 128;
+export const BOTTOM_INSET = 122;
 
 /**
  * A cover card on Home, and its corner: Spotify's 144dp square with a small

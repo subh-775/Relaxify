@@ -11,7 +11,6 @@
  * phone. When a map is full the least-recently-played half is dropped, so the
  * artists you still listen to survive and the one-off from a year ago doesn't.
  */
-import {useMemo} from 'react';
 import {createStore, useStoreValue} from './storage';
 import {getTrackId, splitArtists} from './tracks';
 import type {Track} from './backend';
@@ -221,10 +220,6 @@ export function recordPlay(track: Track, startedAt: number = Date.now()): void {
   });
 }
 
-function byCount<T extends {count: number; last: number}>(a: T, b: T): number {
-  return b.count - a.count || b.last - a.last;
-}
-
 export type WeekStat = {
   /** Whole minutes of music actually listened to in the last 7 days. */
   minutes: number;
@@ -286,20 +281,4 @@ export function summarizeWeek(log: Play[], now: number): WeekStat {
  *  store changes, which is once per song. */
 export function useStatsState(): Stats {
   return useStoreValue(store);
-}
-
-export function useStats(): {
-  topTracks: TrackStat[];
-  topArtists: ArtistStat[];
-  plays: number;
-} {
-  const s = useStoreValue(store);
-  return useMemo(
-    () => ({
-      topTracks: Object.values(s.tracks).sort(byCount),
-      topArtists: Object.values(s.artists).sort(byCount),
-      plays: s.plays,
-    }),
-    [s],
-  );
 }

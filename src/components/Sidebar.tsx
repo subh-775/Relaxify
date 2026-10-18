@@ -96,7 +96,7 @@ const ITEMS: {
   {id: 'equalizer', label: 'Equalizer', Icon: Equalizer},
   {id: 'jam', label: 'Jam', Icon: Jam},
   {id: 'help', label: 'How to use', Icon: Help},
-  {id: 'languages', label: 'Home languages', Icon: Languages},
+  {id: 'languages', label: 'Languages for music', Icon: Languages},
   {id: 'recommend', label: 'Recommend Relaxify', Icon: Share},
   {id: 'settings', label: 'Settings', Icon: SettingsGear},
 ];
@@ -341,7 +341,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.text, // no colour in the drawer, the update dot too
     marginRight: 4,
   },
-  itemLabel: {...T.listTitle, color: C.text},
+  // Settings' row size (15), as Spotify's drawer and settings share it.
+  itemLabel: {...T.listTitle, color: C.text, fontSize: 15, lineHeight: 20},
   itemValue: {color: C.accent, fontSize: 12.5, fontWeight: '700'},
   foot: {paddingBottom: 22, gap: 3},
   version: {

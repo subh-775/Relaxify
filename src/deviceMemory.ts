@@ -12,7 +12,7 @@
  * of earbuds connecting with the screen off still switches the EQ.
  */
 import {DeviceEventEmitter} from 'react-native';
-import {getAudioOutput} from './audioOutput';
+import {getOutputModel} from './audioOutput';
 import {applyAudioEffects} from './audioEffects';
 import {onSettingsChange, readSettings, writeSettings, type Settings} from './store';
 import {createStore} from './storage';
@@ -73,7 +73,7 @@ function remember(): void {
 
 /** The output changed: switch to that device's EQ, if it has one. */
 async function switched(added: boolean, headset: boolean): Promise<void> {
-  const key = keyOf(await getAudioOutput());
+  const key = keyOf(await getOutputModel());
   const s = readSettings();
   if (key !== current) {
     current = key;
@@ -113,7 +113,7 @@ export async function startDeviceMemory(): Promise<void> {
   }
   started = true;
   try {
-    current = keyOf(await getAudioOutput());
+    current = keyOf(await getOutputModel());
     const saved = profiles.get()[current];
     const s = readSettings();
     if (s.deviceMemory && saved && !sameProfile(saved, snapshot(s))) {

@@ -67,6 +67,7 @@ jest.mock('react-native-track-player', () => {
     Event: {PlaybackActiveTrackChanged: 'x'},
     RepeatMode: {Off: 0, Track: 1, Queue: 2},
     State: {Playing: 'playing', Ready: 'ready'},
+    TrackType: {HLS: 'hls'},
     usePlaybackState: () => ({state: 'playing'}),
     useProgress: () => ({position: 0, duration: 0}),
   };
@@ -176,4 +177,21 @@ test('the playing row is found by identity, not a stale index', () => {
   // Unknown row (an engine that outlived the JS): the index stands.
   expect(rowIndex(queue, {_qid: 'gone'}, 1)).toBe(1);
   expect(rowIndex(queue, null, 3)).toBe(3);
+});
+
+test('a SoundCloud song is queued as HLS, any other as a plain stream', async () => {
+  // SoundCloud serves HLS only since October 2026, behind a proxy URL with no
+  // .m3u8 in it: unmarked, ExoPlayer read the playlist as an audio file and
+  // every SoundCloud song failed.
+  await playTrack({
+    title: 'Cloud',
+    artist: 'Someone',
+    playable_source: 'soundcloud',
+    sources: {soundcloud: {url: 'https://soundcloud.com/a/b'}},
+  } as any);
+  await addToQueue(song('Saavn'));
+  const cloud = engine.__queue.find(t => t.title === 'Cloud');
+  const saavn = engine.__queue.find(t => t.title === 'Saavn');
+  expect(cloud.type).toBe('hls');
+  expect(saavn.type).toBeUndefined();
 });

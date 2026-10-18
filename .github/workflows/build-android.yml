@@ -25,7 +25,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: that label moves to Ubuntu 26 from 2026-10-19,
+    # and a new image is a change to the build that nobody chose. Move it
+    # deliberately, on a test tag.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -255,7 +258,7 @@ jobs:
   device-test:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-rc') && vars.DEVICE_TESTS != 'off'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true
     # Backstop for the 25-minute cap below: never hold a runner for hours.
     timeout-minutes: 35

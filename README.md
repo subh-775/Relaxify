@@ -74,7 +74,7 @@ Download `Relaxify.apk` from the
 [latest release](https://github.com/subh-775/Relaxify/releases/latest) and open
 it on your phone. Android 8.0 or newer is required.
 
-To update, use **Settings → Check for updates** in the app. Do not uninstall
+Updates show up in the app by themselves; install from there. Do not uninstall
 first: uninstalling deletes your playlists, likes and history.
 
 The [documentation](https://subh-775.github.io/Relaxify/) walks through every
@@ -127,19 +127,11 @@ updating safely.
 | `docs/` | The documentation site (Vite, React and MDX), published to GitHub Pages from `main`. |
 | `firebase/` | The Jam database's security rules. |
 
-## Credits
-
-- **[Subhansh Malviya](https://github.com/subh-775)** builds and maintains
-  Relaxify.
-- **[Ashirwad Rai](https://github.com/AshirwadRai)** created Fix-Spotify and
-  designed the search, source-matching and API logic that Relaxify's engine is
-  built on.
-
-Relaxify also depends on open-source projects including NewPipeExtractor,
-yt-dlp, react-native-track-player and Chaquopy. See [NOTICE](NOTICE) for the
-full list and their licences.
-
 ## Licence
+
+Relaxify depends on open-source projects including NewPipeExtractor, yt-dlp,
+react-native-track-player and Chaquopy. See [NOTICE](NOTICE) for the full list
+and their licences.
 
 Relaxify is free software, licensed under the
 [GNU General Public License v3.0](LICENSE). Copyright and third-party notices
@@ -158,3 +150,5 @@ misuse of this software.
 
 Support the artists you listen to: buy their music and use official streaming
 services.
+
+<p align="center">Built with care by <a href="https://github.com/subh-775">Subh</a> &amp; <a href="https://github.com/AshirwadRai">Ashirwad</a></p>

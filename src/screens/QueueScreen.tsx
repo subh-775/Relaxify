@@ -345,7 +345,7 @@ export function QueuePane({
         <View style={styles.sectionRow}>
           {shuffled && <Shuffle size={12} color={C.sub} strokeWidth={2.4} />}
           <Text style={styles.section}>
-            {shuffled ? 'Shuffling from' : 'Next up'}
+            {shuffled ? 'Shuffling from' : 'Next in queue'}
           </Text>
         </View>
       )}

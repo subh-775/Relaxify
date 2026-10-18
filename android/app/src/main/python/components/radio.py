@@ -3,7 +3,19 @@ Radio / Autoplay
 ================
 Given a seed (title + artist), return ~12 *similar* playable tracks.
 
-Pipeline (all on-demand, nothing pre-loaded):
+Two recommenders built on millions of listeners do the choosing, asked in
+parallel and dealt out in turn:
+- JioSaavn's own station for the seed song (its app's autoplay). Endless: each
+  call continues the station, so the same seed never repeats a list.
+- YouTube Music's radio for the seed (the "Mix" after a song), through
+  NewPipe. Wider: other artists, other labels. Its names are matched back to
+  JioSaavn, and a name that does not match is dropped rather than guessed.
+Last.fm's similar-songs pipeline below is the fallback when both are short.
+It used to be the whole radio, and by October 2026 its track.getSimilar
+answered nothing for 7 of 8 test seeds ("Blinding Lights" included), so
+every seed by an artist got the same "similar artists' top four" songs.
+
+Last.fm pipeline (on-demand, nothing pre-loaded):
 1. Last.fm `track.getSimilar` gives song NAMES similar to the seed
    (collaborative-filtering from real listening data — works well for both
    Western and Indian/Bollywood music).
@@ -20,6 +32,7 @@ common case costs exactly what it did before.
 
 import os
 import random
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -254,9 +267,8 @@ def _resolve_elsewhere(pair):
     return None
 
 
-def resolve_radio(title, artist, limit=12, shuffle=True):
-    """Return up to `limit` playable similar tracks as plain dicts
-    (UnifiedTrack.to_dict shape, ready for the frontend to queue).
+def _lastfm_radio(title, artist, limit=12, shuffle=True):
+    """Raw result dicts (with `source_type`) from the Last.fm pipeline.
 
     `shuffle` (the default) draws a fresh, front-weighted order each call, so
     the same seed does not give the same list twice; see _weighted_shuffle."""
@@ -298,6 +310,115 @@ def resolve_radio(title, artist, limit=12, shuffle=True):
             except Exception:
                 pass
 
+    return raw
+
+
+def jiosaavn_station(title, artist, n=12):
+    """The next `n` songs of JioSaavn's station for the seed, as raw dicts."""
+    try:
+        seed = _jiosaavn().search(f"{title} {_primary_artist(artist)}".strip(), limit=1)
+        if not seed:
+            return []
+        songs = _jiosaavn().station(seed[0].id, n)
+    except Exception:
+        return []
+    return [{"source_type": "jiosaavn", **s.to_dict()} for s in songs]
+
+
+def _yt_song(title, channel):
+    """A YouTube Music radio item's (song, artist), without the video dressing:
+    "LYRICAL: Kaise Hua | Kabir Singh | ..." is "Kaise Hua", "Talwiinder -
+    KHAYAAL (prod. by NDS) | Official Music Video" is "KHAYAAL", and a channel
+    "Javed - Mohsin - Topic" is the artist "Javed - Mohsin"."""
+    from components.spotify_import import clean_title
+
+    artist = re.sub(r"\s*-\s*topic$|vevo$", "", channel or "", flags=re.I).strip()
+    t = re.sub(r"^\s*(lyrical|lyric video|full video|full song|video)\s*:\s*", "", title or "", flags=re.I)
+    t = re.sub(r"[\(\[][^\)\]]*[\)\]]", " ", t.split("|")[0])
+    if " - " in t:
+        left, right = (x.strip() for x in t.split(" - ", 1))
+        if artist and artist.lower() in left.lower():
+            t = right
+        elif artist and artist.lower() in right.lower():
+            t = left
+    t = re.sub(r"\s+(ft|feat)\.?\s.*$", "", t, flags=re.I)
+    t = re.sub(r"[\"']", "", re.sub(r"\s{2,}", " ", t)).strip(" -")
+    return clean_title(t), artist
+
+
+def _on_saavn(item):
+    """`item` ({title, artist, duration_ms}) as a JioSaavn result, only when
+    it is that song: the importer's own check (title, length and a credited
+    artist; no lofi or slowed copies). The artist is required: a mix's
+    "Jhol" by Maanu matched a different "Jhol" on title and length alone."""
+    from types import SimpleNamespace
+    from components.spotify_import import is_good_match
+
+    try:
+        hits = _jiosaavn().search(f"{item['title']} {item['artist']}".strip(), limit=3)
+    except Exception:
+        return None
+    for h in hits:
+        cand = SimpleNamespace(title=h.title, artist=h.artist, duration_ms=(h.duration or 0) * 1000)
+        if is_good_match(item, cand):
+            return {"source_type": "jiosaavn", **h.to_dict()}
+    return None
+
+
+def youtube_radio(title, artist, n=12):
+    """YouTube Music's radio for the seed, matched to JioSaavn, as raw dicts.
+    Nothing when YouTube is switched off on the phone, or off the phone (no
+    NewPipe)."""
+    try:
+        from components.source_merger import SourceType
+        import newpipe_yt
+
+        if _svc()._get_client(SourceType.YOUTUBE) is None:
+            return []
+        hits = newpipe_yt.search(f"{title} {_primary_artist(artist)}".strip(), 1, music=True)
+        vid = re.search(r"[?&]v=([\w-]{11})", (hits[0].get("url") or "") if hits else "")
+        if not vid:
+            return []
+        v = vid.group(1)
+        mix = newpipe_yt.playlist(f"https://www.youtube.com/watch?v={v}&list=RDAMVM{v}", n + 8) or {}
+    except Exception:
+        return []
+    items = []
+    for t in (mix.get("tracks") or [])[1:]:          # the first is the seed itself
+        name, art = _yt_song(t.get("title"), t.get("artist"))
+        if name:
+            items.append({"title": name, "artist": art, "duration_ms": t.get("duration_ms") or 0})
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        return [r for r in ex.map(_on_saavn, items[: n + 4]) if r]
+
+
+def _deal(*lists):
+    """One from each list in turn, then the rest."""
+    out = []
+    for i in range(max((len(x) for x in lists), default=0)):
+        out += [x[i] for x in lists if i < len(x)]
+    return out
+
+
+def resolve_radio(title, artist, limit=12, shuffle=True):
+    """Return up to `limit` playable similar tracks as plain dicts
+    (UnifiedTrack.to_dict shape, ready for the frontend to queue)."""
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        station = ex.submit(jiosaavn_station, title, artist, limit)
+        mix = ex.submit(youtube_radio, title, artist, limit)
+        raw = _deal(station.result(), mix.result())
+
+    seed_key = ((title or "").lower().strip(), _primary_artist(artist).lower())
+    seen, picks = {seed_key}, []
+    for r in raw:
+        key = ((r.get("title") or "").lower().strip(), _primary_artist(r.get("artist", "")).lower())
+        if key not in seen:
+            seen.add(key)
+            picks.append(r)
+    raw = picks
+    if len(raw) < limit // 2:
+        raw += _lastfm_radio(title, artist, limit, shuffle)
+
     if not raw:
         return []
 
@@ -314,7 +435,14 @@ def resolve_radio(title, artist, limit=12, shuffle=True):
     if shuffle:
         out = _in_order_of(raw, out)
     # Interleave artists + cap per-artist so the radio doesn't loop one artist.
-    return _diversify(out, limit)
+    picked = _diversify(out, limit)
+    # The cap is a preference, not a filter: a station that is all one artist
+    # (Talwiinder's is) with nothing to mix in fills up with that artist
+    # rather than handing back three songs and letting the music stop.
+    if len(picked) < limit:
+        taken = {id(t) for t in picked}
+        picked += [t for t in out if id(t) not in taken][: limit - len(picked)]
+    return picked
 
 
 def resolve_discover(seeds, limit=16):
@@ -414,3 +542,12 @@ if __name__ == "__main__":
                 for n, u in (("one", "u1"), ("two", "u2"), ("x", "zz"), ("three", "u3"))]
     assert [t["title"] for t in _in_order_of(raw_o, merged_o)] == ["two", "one", "three", "x"]
     print("order restore self-check OK")
+
+    # _yt_song: a YouTube Music radio item's song and artist, undressed.
+    assert _yt_song("Talwiinder - KHAYAAL (prod. by NDS) | Official Music Video", "Talwiinder") == ("KHAYAAL", "Talwiinder")
+    assert _yt_song("LYRICAL: Kaise Hua | Kabir Singh | Shahid K", "T-Series") == ("Kaise Hua", "T-Series")
+    assert _yt_song("Hasan Raheem - Wishes ft Talwiinder | Prod by Umair", "Hasan Raheem") == ("Wishes", "Hasan Raheem")
+    assert _yt_song("Pal", "Javed - Mohsin - Topic") == ("Pal", "Javed - Mohsin")
+    # _deal: one from each source in turn.
+    assert _deal([1, 2, 3], ["a"]) == [1, "a", 2, 3]
+    print("youtube radio helpers self-check OK")

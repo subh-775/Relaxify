@@ -161,16 +161,24 @@ const INACTIVE = '#B3B3B3';
 
 // The lowest 30% of the 59px bar: from the gradient's last stop down.
 const FOOT = 18;
+/** How far the foot reaches below the bar; see `foot`. */
+const FOOT_OVERHANG = 8;
 
 const styles = StyleSheet.create({
   bar: {flexDirection: 'row', paddingBottom: 2},
-  // The labels' strip down to the bottom edge, where the gradient is solid.
+  // The labels' strip down to the bottom edge, where the gradient is solid —
+  // and past it. The window's height in dp is often fractional (it changes
+  // with the keyboard on Search), and the floating bars and the page behind
+  // them round to whole pixels separately: some layouts left the page's last
+  // pixel row uncovered under the bar, a thin line of it along the very
+  // bottom that came and went. Reaching below the edge covers any rounding;
+  // the window clips what is past it.
   foot: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
-    height: FOOT,
+    bottom: -FOOT_OVERHANG,
+    height: FOOT + FOOT_OVERHANG,
     backgroundColor: C.bg,
   },
   // 8 + 24 + 4 + 13 + 8 + 2 = 59, the height the bar has always had, so the

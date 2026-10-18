@@ -14,7 +14,7 @@
  * the phone, and the sheet offers to replace the download instead.
  */
 import type {Track} from './backend';
-import {createStore, useStoreValue} from './storage';
+import {createStore} from './storage';
 import {getDownloadKey, getPlayableSources} from './tracks';
 
 /** Enough for every correction a person will ever make; the oldest go first. */
@@ -25,8 +25,6 @@ type Choices = Record<string, Track>;
 const choices = createStore<Choices>('mp.songChoice.v1', {}, raw =>
   raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Choices) : {},
 );
-
-export const useSongChoices = () => useStoreValue(choices);
 
 /** The copy to play for `t`: your pick if you made one, else `t` itself. */
 export function chosenCopy(t: Track): Track {

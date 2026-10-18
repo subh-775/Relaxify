@@ -18,7 +18,11 @@ import {JamScreen} from './src/screens/JamScreen';
 import {DOCS_URL, inviteMessage} from './src/links';
 import {startDeviceMemory} from './src/deviceMemory';
 import {startDevice} from './src/device';
-import {WelcomeScreen, settleWelcome, useWelcomed} from './src/screens/WelcomeScreen';
+import {
+  WelcomeScreen,
+  settleWelcome,
+  useWelcomed,
+} from './src/screens/WelcomeScreen';
 import {rememberCollection} from './src/lastCollection';
 import {SearchScreen} from './src/screens/SearchScreen';
 import {LibraryScreen} from './src/screens/LibraryScreen';
@@ -30,6 +34,7 @@ import {EqualizerScreen} from './src/screens/EqualizerScreen';
 import {CollectionScreen} from './src/screens/CollectionScreen';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 import {SpotifyImportScreen} from './src/screens/SpotifyImportScreen';
+import {ImportLinkScreen} from './src/screens/ImportLinkScreen';
 import {ArtistScreen} from './src/screens/ArtistScreen';
 import {PlayerScreen} from './src/screens/PlayerScreen';
 import {PlayerBar} from './src/components/PlayerBar';
@@ -40,7 +45,7 @@ import {
   AddToPlaylistSheet,
   useAddToPlaylistHost,
 } from './src/components/AddToPlaylistSheet';
-import {ArtistPickerSheet} from './src/components/ArtistPickerSheet';
+import {CreditsSheet, type CreditsFor} from './src/components/CreditsSheet';
 import {openShared, startSharing} from './src/sharedPlaylists';
 import {
   WrongSongSheet,
@@ -61,7 +66,7 @@ import {
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {Splash} from './src/components/Splash';
 import {Sidebar, type SidebarDest} from './src/components/Sidebar';
-import {LanguagesSheet} from './src/components/LanguageChips';
+import {LanguagesScreen} from './src/screens/LanguagesScreen';
 import {resetDrawer, settleDrawer} from './src/drawer';
 import {
   panelDrawn,
@@ -85,11 +90,12 @@ import {
   playTrack,
   restoreSession,
   setupPlayer,
+  sourceTrackFor,
   startCrossfadeWatcher,
 } from './src/player';
 import {hydrate, readSettings} from './src/store';
 import {flushAll} from './src/storage';
-import {normalizeTracks, splitArtists} from './src/tracks';
+import {cleanText, normalizeTracks, splitArtists} from './src/tracks';
 import {type Collection} from './src/collections';
 import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
@@ -115,6 +121,8 @@ function Shell() {
   const [collection, setCollection] = useState<Collection | null>(null);
   const [collectionLoading, setCollectionLoading] = useState(false);
   const [importUrl, setImportUrl] = useState<string | null>(null);
+  /** The page that asks for a playlist link (Home's import card). */
+  const [importAsk, setImportAsk] = useState(false);
   const [artist, setArtist] = useState<string | null>(null);
   // Whichever overlay was opened LAST renders on top. Fixed JSX order put the
   // album under the artist page — it opened invisibly, which read as "albums
@@ -131,7 +139,7 @@ function Shell() {
   // "Wrong song?", opened from the player's label or its ⋮ menu.
   const [wrongFor, setWrongFor] = useState<Track | null>(null);
   useWrongSongHost(setWrongFor);
-  const [artistChoices, setArtistChoices] = useState<string[]>([]);
+  const [creditsFor, setCreditsFor] = useState<CreditsFor | null>(null);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** Which part of Settings to land on. Set when the update dot is what sent
@@ -321,12 +329,21 @@ function Shell() {
   }, []);
 
   const openArtistCredit = useCallback(
-    (credit: string) => {
+    (t: {title?: string | null; artist?: string | null}) => {
+      const credit = String(t.artist ?? '');
       const names = splitArtists(credit);
       if (names.length > 1) {
-        // The picker is a sheet OVER whatever is open — the player stays put
-        // until an actual artist is chosen.
-        setArtistChoices(names);
+        // The credits are a sheet OVER whatever is open — the player stays
+        // put until an actual artist is chosen. The player hands over its
+        // engine track; the song behind it carries the JioSaavn link the
+        // composer and label are looked up by.
+        const song: Partial<Track> = sourceTrackFor(t) ?? (t as Partial<Track>);
+        setCreditsFor({
+          title: cleanText(String(t.title ?? '')),
+          credit: cleanText(credit),
+          names,
+          jiosaavnUrl: song.sources?.jiosaavn?.url,
+        });
       } else if (names.length === 1) {
         openArtist(names[0]);
       }
@@ -479,11 +496,13 @@ function Shell() {
     setCollection(null);
     setArtist(null);
     setImportUrl(null);
+    setImportAsk(false);
     setSettingsOpen(false);
     setActivity(null);
     // Every full-screen overlay closes on a tab change. The Equalizer and Jam
     // were missing here, so the Equalizer stayed on top of every tab.
     setEqOpen(false);
+    setLangOpen(false);
     setJamOpen(false);
   }, []);
 
@@ -505,8 +524,8 @@ function Shell() {
       setAddTo(null);
       return true;
     }
-    if (artistChoices.length) {
-      setArtistChoices([]);
+    if (creditsFor) {
+      setCreditsFor(null);
       return true;
     }
     if (sheetTrack) {
@@ -525,12 +544,20 @@ function Shell() {
       setEqOpen(false);
       return true;
     }
+    if (langOpen) {
+      setLangOpen(false);
+      return true;
+    }
     if (activity) {
       setActivity(null);
       return true;
     }
     if (jamOpen) {
       setJamOpen(false);
+      return true;
+    }
+    if (importAsk) {
+      setImportAsk(false);
       return true;
     }
     if (importUrl) {
@@ -603,6 +630,12 @@ function Shell() {
   const openJam = useCallback(() => setJamOpen(true), []);
   const openRecap = useCallback(() => setActivity('stats'), []);
   const closeLanguages = useCallback(() => setLangOpen(false), []);
+  const openImportAsk = useCallback(() => setImportAsk(true), []);
+  const closeImportAsk = useCallback(() => setImportAsk(false), []);
+  const importLink = useCallback((url: string) => {
+    setImportAsk(false);
+    setImportUrl(url);
+  }, []);
   // Sunday's Recap notification opens the app on relaxify://recap, and a
   // shared playlist link's page on relaxify://p/CODE, whether the app was
   // closed (the initial URL) or already running (a url event).
@@ -631,8 +664,8 @@ function Shell() {
   }, [openRecap, openCollection, switchTab]);
 
   /**
-   * Opening by TAP: mount the panel closed, then run it open. The drag path
-   * (below) skips the animation entirely because the finger IS the animation.
+   * Opening by TAP on the app icon, the only way in: mount the panel closed,
+   * then run it open.
    */
   const openDrawer = useCallback(() => {
     resetDrawer();
@@ -644,24 +677,6 @@ function Shell() {
     // which point the answers are usually already back and Settings opens
     // finished instead of filling in.
     prefetchSettingsRemote();
-  }, []);
-
-  /** A drawer pull has begun. Mount without animating — HomeScreen has already
-   *  parked the panel off-screen and is about to drive it directly. */
-  const beginDrawerDrag = useCallback(() => {
-    setDrawerOpen(true);
-    prefetchSettingsRemote();
-  }, []);
-
-  /** The finger lifted. Carry its speed into the settle, and unmount only once
-   *  a close has actually finished — unmounting early would snap it away
-   *  mid-animation. */
-  const endDrawerDrag = useCallback((open: boolean, velocity: number) => {
-    settleDrawer(open, velocity, finished => {
-      if (finished && !open) {
-        setDrawerOpen(false);
-      }
-    });
   }, []);
 
   const navigateFromDrawer = useCallback(
@@ -744,16 +759,12 @@ function Shell() {
   // are memoised, and each re-render of one re-publishes its whole tree into
   // SheetHost.
   const closeTrackSheet = useCallback(() => setSheetTrack(null), []);
-  const openTrackArtist = useCallback(
-    (t: Track) => openArtistCredit(t.artist),
-    [openArtistCredit],
-  );
   const closeAddTo = useCallback(() => setAddTo(null), []);
   const closeWrongSong = useCallback(() => setWrongFor(null), []);
-  const closeArtistChoices = useCallback(() => setArtistChoices([]), []);
-  const pickArtistChoice = useCallback(
+  const closeCredits = useCallback(() => setCreditsFor(null), []);
+  const pickCreditedArtist = useCallback(
     (name: string) => {
-      setArtistChoices([]);
+      setCreditsFor(null);
       openArtist(name); // closes the player too — the profile is behind it
     },
     [openArtist],
@@ -809,12 +820,11 @@ function Shell() {
             onPickTrack={pickHomeItem}
             onPlayTrack={play}
             onOpenMenu={openDrawer}
-            onBeginDrag={beginDrawerDrag}
-            onEndDrag={endDrawerDrag}
             onReady={onHomeReady}
             onOpenRecap={openRecap}
             onOpenJam={openJam}
             onImportSpotify={setImportUrl}
+            onAskImport={openImportAsk}
             onOpenCollection={openFromLibrary}
             onOpenAlbum={openAlbumById}
             visible={tab === 'home'}
@@ -881,6 +891,12 @@ function Shell() {
           </View>
         )}
 
+        {importAsk && (
+          <View style={StyleSheet.absoluteFill}>
+            <ImportLinkScreen onImport={importLink} onClose={closeImportAsk} />
+          </View>
+        )}
+
         {!!importUrl && (
           <View style={StyleSheet.absoluteFill}>
             <SpotifyImportScreen
@@ -927,6 +943,12 @@ function Shell() {
         {eqOpen && (
           <View style={StyleSheet.absoluteFill}>
             <EqualizerScreen onClose={() => setEqOpen(false)} />
+          </View>
+        )}
+
+        {langOpen && (
+          <View style={StyleSheet.absoluteFill}>
+            <LanguagesScreen onClose={closeLanguages} />
           </View>
         )}
 
@@ -1001,7 +1023,7 @@ function Shell() {
         from={sheetFrom}
         onClose={closeTrackSheet}
         onAddToPlaylist={setAddTo}
-        onOpenArtist={openTrackArtist}
+        onOpenArtist={openArtistCredit}
         onOpenAlbum={openAlbumOf}
       />
 
@@ -1009,10 +1031,10 @@ function Shell() {
 
       <WrongSongSheet track={wrongFor} onClose={closeWrongSong} />
 
-      <ArtistPickerSheet
-        names={artistChoices}
-        onClose={closeArtistChoices}
-        onPick={pickArtistChoice}
+      <CreditsSheet
+        song={creditsFor}
+        onClose={closeCredits}
+        onPick={pickCreditedArtist}
       />
 
       {engine && (
@@ -1044,7 +1066,6 @@ function Shell() {
         onClose={closeDrawer}
         onNavigate={navigateFromDrawer}
       />
-      <LanguagesSheet open={langOpen} onClose={closeLanguages} />
 
       {booted && hydrated && !welcomed && <WelcomeScreen />}
 

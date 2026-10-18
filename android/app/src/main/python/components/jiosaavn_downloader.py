@@ -12,6 +12,7 @@ Features:
 - Error handling with retries
 """
 
+import json
 import re
 import os
 import time
@@ -99,6 +100,8 @@ class JioSaavnClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.session = requests.Session()
+        # seed song id -> (station id, created at); see station()
+        self._stations: Dict[str, tuple] = {}
         self.session.headers.update(self.DEFAULT_HEADERS)
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
@@ -154,62 +157,112 @@ class JioSaavnClient:
 
         songs_data = data.get("results", []) if isinstance(data, dict) else []
         results = []
-
         for song in songs_data[:limit]:
-            try:
-                more_info = song.get("more_info", {}) or {}
-                # Artist: prefer artistMap primary names (clean), then the
-                # music-director string, then the subtitle.
-                artist_map = more_info.get("artistMap", {}) or {}
-                primary = ", ".join(
-                    a.get("name", "")
-                    for a in (artist_map.get("primary_artists") or [])
-                    if isinstance(a, dict) and a.get("name")
-                )
-                artist = (
-                    primary
-                    or more_info.get("music")
-                    or more_info.get("primary_artists")
-                    or song.get("subtitle", "")
-                    or ""
-                )
-                duration = more_info.get("duration")
-                try:
-                    duration = int(duration) if duration is not None else None
-                except (TypeError, ValueError):
-                    duration = None
-                results.append(
-                    JioSaavnSong(
-                        id=song.get("id", ""),
-                        title=song.get("title", ""),
-                        artist=artist,
-                        album=more_info.get("album", "") or song.get("album", ""),
-                        image_url=song.get("image", ""),
-                        # search.getResults uses `perma_url` (the streamable song
-                        # page); autocomplete used `url`.
-                        url=song.get("perma_url", "") or song.get("url", ""),
-                        duration=duration,
-                        year=song.get("year") or more_info.get("year"),
-                        language=more_info.get("language"),
-                    )
-                )
-            except (KeyError, IndexError):
-                continue  # Skip malformed entries
+            parsed = self.parse_song(song)
+            if parsed:
+                results.append(parsed)
 
         return results
 
+    @staticmethod
+    def parse_song(song: Dict[str, Any]) -> Optional["JioSaavnSong"]:
+        """One song object from the API (search, station) as a JioSaavnSong,
+        or None when it is malformed."""
+        if not isinstance(song, dict):
+            return None
+        try:
+            more_info = song.get("more_info", {}) or {}
+            # Artist: prefer artistMap primary names (clean), then the
+            # music-director string, then the subtitle.
+            artist_map = more_info.get("artistMap", {}) or {}
+            primary = ", ".join(
+                a.get("name", "")
+                for a in (artist_map.get("primary_artists") or [])
+                if isinstance(a, dict) and a.get("name")
+            )
+            artist = (
+                primary
+                or more_info.get("music")
+                or more_info.get("primary_artists")
+                or song.get("subtitle", "")
+                or ""
+            )
+            duration = more_info.get("duration")
+            try:
+                duration = int(duration) if duration is not None else None
+            except (TypeError, ValueError):
+                duration = None
+            return JioSaavnSong(
+                id=song.get("id", ""),
+                title=song.get("title", ""),
+                artist=artist,
+                album=more_info.get("album", "") or song.get("album", ""),
+                image_url=song.get("image", ""),
+                # search.getResults uses `perma_url` (the streamable song
+                # page); autocomplete used `url`.
+                url=song.get("perma_url", "") or song.get("url", ""),
+                duration=duration,
+                year=song.get("year") or more_info.get("year"),
+                language=more_info.get("language"),
+            )
+        except (KeyError, IndexError, AttributeError):
+            return None
+
+    # ==================== STATIONS (song radio) ====================
+
+    def station(self, song_id: str, n: int = 10) -> List["JioSaavnSong"]:
+        """The next `n` songs of JioSaavn's own radio for `song_id`: its
+        recommender, the "autoplay" of the JioSaavn app.
+
+        One station per seed, kept for an hour: each call asks for the NEXT
+        songs, so a seed that comes round again continues where it left off
+        instead of giving the same list. Only answers with ctx=android (the
+        web contexts return []).
+        """
+        if not song_id:
+            return []
+        common = {"api_version": "4", "_format": "json", "_marker": "0", "ctx": "android"}
+        now = time.time()
+        station = self._stations.get(song_id)
+        if not station or now - station[1] > 3600:
+            params = {**common, "__call": "webradio.createEntityStation",
+                      "entity_id": json.dumps([song_id]), "entity_type": "queue",
+                      "freemium": "0", "save": "0"}
+            data = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}").json()
+            sid = data.get("stationid") if isinstance(data, dict) else None
+            if not sid:
+                return []
+            station = (sid, now)
+            self._stations[song_id] = station
+        params = {**common, "__call": "webradio.getSong", "stationid": station[0],
+                  "k": str(n), "next": "1"}
+        data = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}").json()
+        if not isinstance(data, dict):
+            return []
+        picks = [data[k] for k in sorted((k for k in data if k.isdigit()), key=int)]
+        songs = (self.parse_song((p or {}).get("song")) for p in picks if isinstance(p, dict))
+        return [x for x in songs if x and x.url]
+
     # ==================== STREAMING URL GENERATION ====================
 
-    def _get_encrypted_media_url(self, song_token: str) -> Optional[str]:
-        """
-        Get encrypted media URL from webapi.get endpoint.
+    @staticmethod
+    def song_token(song_url: str) -> Optional[str]:
+        """The song's token: the last part of its page URL.
 
-        Args:
-            song_token: The token part from song URL (e.g., 'Mg0zcxdSYXg' from /song/title/Mg0zcxdSYXg)
-
-        Returns:
-            Encrypted media URL or None
+        Search answers with /song/<title>/<token>; the station (radio) answers
+        with /s/song/<language>/<album>/<title>/<token>. Reading the part after
+        "song/<title>/" took "<album>/<title>/<token>" as the token for every
+        station song, so not one radio pick from JioSaavn could play.
         """
+        path = urllib.parse.urlsplit(song_url or "").path.rstrip("/")
+        if "/song/" not in path:
+            return None
+        return path.rsplit("/", 1)[-1] or None
+
+    def _song_record(self, song_token: str) -> Optional[Dict[str, Any]]:
+        """JioSaavn's own record of one song (webapi.get), or None.
+
+        The stream, the cover and the credits all read it."""
         params = {
             "__call": "webapi.get",
             "api_version": "4",
@@ -219,40 +272,53 @@ class JioSaavnClient:
             "token": song_token,
             "type": "song",
         }
+        data = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}").json()
+        # An unknown token answers with a bare list.
+        songs = data.get("songs") if isinstance(data, dict) else None
+        return songs[0] if songs and isinstance(songs[0], dict) else None
 
-        url = f"{self.BASE_URL}?{urllib.parse.urlencode(params)}"
-        response = self._request("GET", url)
-        data = response.json()
-
-        songs = data.get("songs", [])
-        if songs and "more_info" in songs[0]:
-            return songs[0]["more_info"].get("encrypted_media_url")
-        return None
+    def _get_encrypted_media_url(self, song_token: str) -> Optional[str]:
+        """The encrypted media URL that song.generateAuthToken signs, or None."""
+        song = self._song_record(song_token)
+        return (song.get("more_info") or {}).get("encrypted_media_url") if song else None
 
     def get_song_image(self, song_url: str) -> Optional[str]:
         """The cover JioSaavn itself shows for this exact song, at 500x500.
 
         Used to repair saved songs that only kept an iTunes cover: iTunes is a
         separate fuzzy lookup and sometimes matched another song."""
-        match = re.search(r"song/(.*?)/([^/?#]+)", song_url or "")
-        if not match:
-            return None
-        params = {
-            "__call": "webapi.get",
-            "api_version": "4",
-            "_format": "json",
-            "_marker": "0",
-            "ctx": "wap6dot0",
-            "token": match.group(2),
-            "type": "song",
-        }
-        response = self._request("GET", f"{self.BASE_URL}?{urllib.parse.urlencode(params)}")
-        data = response.json()
-        songs = data.get("songs") if isinstance(data, dict) else None
-        image = songs[0].get("image") if songs and isinstance(songs[0], dict) else None
+        token = self.song_token(song_url)
+        song = self._song_record(token) if token else None
+        image = song.get("image") if song else None
         if not isinstance(image, str) or not image.startswith("http"):
             return None
         return re.sub(r"\d+x\d+", "500x500", image)
+
+    def credits(self, song_url: str) -> Dict[str, Any]:
+        """Who made this song, for the credits sheet: each credited artist's
+        role, the composer and lyricist, and the label. Empty when JioSaavn
+        has no record of it. Names come as JioSaavn writes them (entities and
+        all); the app cleans them for display."""
+        token = self.song_token(song_url)
+        song = self._song_record(token) if token else None
+        info = (song.get("more_info") or {}) if song else {}
+        cast = info.get("artistMap") or {}
+
+        def people(key):
+            return [a for a in (cast.get(key) or []) if isinstance(a, dict) and a.get("name")]
+
+        roles: Dict[str, str] = {}
+        for key, role in (("primary_artists", "Main artist"), ("featured_artists", "Featured artist")):
+            for a in people(key):
+                roles.setdefault(a["name"], role)
+        writers = []
+        for a in people("artists"):
+            role = {"music": "Composer", "lyricist": "Lyricist"}.get(a.get("role"))
+            if role:
+                writers.append({"name": a["name"], "role": role})
+            elif a.get("role") == "singer":
+                roles.setdefault(a["name"], "Singer")
+        return {"roles": roles, "writers": writers, "label": str(info.get("label") or "").strip()}
 
     def _generate_auth_token(
         self, encrypted_url: str, bitrate: int = 320
@@ -308,12 +374,9 @@ class JioSaavnClient:
         Returns:
             Direct streaming URL or None
         """
-        # Extract token from song URL
-        match = re.search(r"song/(.*?)/(.*)", song_url)
-        if not match:
+        song_token = self.song_token(song_url)
+        if not song_token:
             return None
-
-        song_token = match.group(2)
 
         # Step 1: Get encrypted media URL
         encrypted_url = self._get_encrypted_media_url(song_token)

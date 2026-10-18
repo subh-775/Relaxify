@@ -286,12 +286,6 @@ export function isPlayableTrack(track: Track | null | undefined): boolean {
   return Boolean(track?.file_path) || Boolean(getPlayableSource(track));
 }
 
-/** The unique stream URL of a track's chosen source, or ''. */
-export function trackStreamUrl(track: Track | null | undefined): string {
-  const src = getPlayableSource(track);
-  return (src && track?.sources?.[src]?.url) || '';
-}
-
 /**
  * Raise a cover URL to a usable resolution where the URL pattern allows it.
  *
@@ -433,6 +427,17 @@ export function splitArtists(artist?: string): string[] {
     out.push(p);
   }
   return out.length ? out : [cleaned];
+}
+
+/** mm:ss for a duration in milliseconds. */
+export function formatDuration(ms?: number): string {
+  if (!ms || ms <= 0) {
+    return '';
+  }
+  const total = Math.round(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
 }
 
 /** "about 53 min" / "3 hr 12 min". '' when nothing carries a duration. */

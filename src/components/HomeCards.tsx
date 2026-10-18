@@ -15,7 +15,6 @@ import {
   Image,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   useWindowDimensions,
@@ -36,7 +35,6 @@ import {
   dismissImport,
   importProblem,
   importSourceName,
-  isImportUrl,
   PRIVATE_LIST,
   keepWaiting,
   markImportOpened,
@@ -48,7 +46,6 @@ import {
 import {useLastCollection} from '../lastCollection';
 import {usePlaylists} from '../playlists';
 import {playlistToCollection, type Collection} from '../collections';
-import {toast} from '../toast';
 import type {HomeItem} from '../backend';
 import {cleanText} from '../tracks';
 
@@ -210,12 +207,13 @@ function WarmBar() {
 }
 
 export function ImportCard({
-  onImport,
+  onAskImport,
   onOpenImport,
   onOpenCollection,
   width,
 }: {
-  onImport: (url: string) => void;
+  /** Open the page that asks for a link (ImportLinkScreen). */
+  onAskImport: () => void;
   onOpenImport: (url: string) => void;
   onOpenCollection: (c: Collection) => void;
 } & W) {
@@ -223,28 +221,12 @@ export function ImportCard({
   const job = useSpotifyImport();
   const last = useLastImport();
   const playlists = usePlaylists();
-  const [open, setOpen] = useState(false);
-  const [link, setLink] = useState('');
-  const submit = () => {
-    const url = link.trim();
-    if (!isImportUrl(url)) {
-      toast("That isn't a Spotify or YouTube playlist link");
-      return;
-    }
-    setLink('');
-    setOpen(false);
-    onImport(url);
-  };
-  const close = () => {
-    setOpen(false);
-    setLink('');
-  };
   const cancel = () => {
     cancelImport().catch(() => {});
   };
   const another = () => {
     dismissImport();
-    setOpen(true);
+    onAskImport();
   };
 
   if (phase === 'running') {
@@ -383,9 +365,9 @@ export function ImportCard({
     );
   }
 
-  // Ask: a link box on demand, with a way out. The same words every time: the
-  // last import's name is in Library, and "Last import: ..." read as a
-  // leftover rather than an invitation.
+  // Ask: the page for a link, which says first that the playlist has to be
+  // public. The same words every time: the last import's name is in Library,
+  // and "Last import: ..." read as a leftover rather than an invitation.
   const p = IMPORT_PAL;
   return (
     <FeatureCard
@@ -394,28 +376,10 @@ export function ImportCard({
       kicker="Moving from Spotify or YouTube?"
       title="Bring your playlists"
       action="Paste a link"
-      onPress={() => setOpen(true)}
+      onPress={onAskImport}
       art={listArt(p)}
-      spin={false}>
-      {open ? (
-        <View style={styles.row}>
-          <TextInput
-            value={link}
-            onChangeText={setLink}
-            placeholder="Spotify or YouTube playlist link"
-            placeholderTextColor="rgba(17,16,20,0.45)"
-            autoFocus
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="go"
-            onSubmitEditing={submit}
-            style={[styles.paste, {borderColor: p.ink, color: p.ink}]}
-          />
-          <Pill p={p} label="Import" onPress={submit} />
-          <Close p={p} onPress={close} />
-        </View>
-      ) : undefined}
-    </FeatureCard>
+      spin={false}
+    />
   );
 }
 
@@ -503,7 +467,7 @@ export function ContinueCard({
 export function HomeCardCarousel({
   onOpenRecap,
   onOpenJam,
-  onImport,
+  onAskImport,
   onOpenImport,
   onOpenCollection,
   starter,
@@ -513,7 +477,7 @@ export function HomeCardCarousel({
   onOpenStarter: (item: HomeItem) => void;
   onOpenRecap: () => void;
   onOpenJam: () => void;
-  onImport: (url: string) => void;
+  onAskImport: () => void;
   onOpenImport: (url: string) => void;
   onOpenCollection: (c: Collection) => void;
 }) {
@@ -547,7 +511,7 @@ export function HomeCardCarousel({
       case 'import':
         return (
           <ImportCard
-            onImport={onImport}
+            onAskImport={onAskImport}
             onOpenImport={onOpenImport}
             onOpenCollection={onOpenCollection}
             width={cardW}
@@ -609,15 +573,6 @@ const styles = StyleSheet.create({
   dot: {width: 6, height: 6, borderRadius: 3, backgroundColor: '#3a3a40'},
   dotOn: {width: 18, backgroundColor: C.text},
   row: {flexDirection: 'row', alignItems: 'center', gap: 8},
-  paste: {
-    flex: 1,
-    minWidth: 0,
-    height: 36,
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    fontSize: 13,
-  },
   go: {borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8},
   goText: {fontSize: 13.5, fontWeight: '700'},
   x: {

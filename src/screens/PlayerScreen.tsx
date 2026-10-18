@@ -73,6 +73,7 @@ import {logEvent} from '../analytics';
 import {enqueueDownload, useIsDownloaded} from '../downloads';
 import {cleanText, fullText, getBestArtworkUrl, splitArtists} from '../tracks';
 import {Marquee} from '../components/Marquee';
+import {SwipeEdges} from '../components/SwipeEdges';
 import {
   RepeatMode,
   isShuffled,
@@ -220,7 +221,8 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   visible: boolean;
   onClose: () => void;
   onAddToPlaylist: (track: Track) => void;
-  onOpenArtist: (credit: string) => void;
+  /** The credit tapped: one artist opens their page, several the credits. */
+  onOpenArtist: (song: {title?: string | null; artist?: string | null}) => void;
   /** The song's ⋮ menu, opened for the song playing now. */
   onOpenMenu: (track: Track, from: SheetContext) => void;
 }) {
@@ -949,7 +951,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   // The whole title as the source has it, entities decoded: "(From ...)",
   // "(Live)" and all. The lists keep the tidied one.
   const title = fullText(active.title);
-  // The open player's surface, which the floating lines' edges fade into.
+  // The open player's surface, which a swipe's soft edges fade into.
   const fadeColor = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
   const artistList = splitArtists(String(active.artist ?? ''));
   const artists = artistList.join(', ');
@@ -1114,28 +1116,28 @@ export const PlayerScreen = React.memo(function PlayerScreen({
             <View style={styles.metaCarousel}>
               <Animated.View style={[styles.meta, metaStyle]}>
                 {/* One line, as Spotify sets it, always at the same size: a
-                    long title floats rather than shrinks. */}
+                    long title floats rather than shrinks. No edge fades here:
+                    painted in one colour over the cover's glow they showed
+                    as boxes, so the line just clips at the box. */}
                 <Marquee
                   text={title}
                   style={styles.title}
                   paused={!visible}
-                  fadeColor={fadeColor}
                 />
                 {/* Its OWN line, at full width. The artist is the second most
                     important thing on this screen and it was sharing a row with
                     two badges and the output device — which is how "Mitraz"
                     ended up rendered as "Mi...". The WHOLE credit is one
                     target: a single name opens that profile directly, several
-                    open the picker. */}
+                    open the credits. */}
                 <TouchableOpacity
-                  onPress={() => onOpenArtist(String(active.artist ?? ''))}
+                  onPress={() => onOpenArtist(active)}
                   activeOpacity={0.6}>
                   <Marquee
                     text={artists}
                     style={styles.artist}
                     ticker={artistCount > 1}
                     paused={!visible}
-                    fadeColor={fadeColor}
                   />
                 </TouchableOpacity>
                 {/* Third line. Both badges render nothing when their setting is
@@ -1165,6 +1167,9 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     />
                   ),
               )}
+              {/* Soft edges while the titles change places, so the next one
+                  slips in beside the buttons instead of crossing a hard cut. */}
+              <SwipeEdges slide={slide} span={swipeSpan} top={fadeColor} />
             </View>
 
             <View style={styles.actionCol}>

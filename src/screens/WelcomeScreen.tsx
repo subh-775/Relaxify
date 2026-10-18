@@ -1,6 +1,8 @@
 /**
- * First open only: three cards on what Relaxify does, then the languages Home
- * is drawn from. Swiped or stepped with Next; Skip or back ends it at once.
+ * First open only: three cards on what Relaxify does. Swiped or stepped with
+ * Next; Skip or back ends it at once. Languages start as Hindi and
+ * International and change in Languages for music, so the welcome asks
+ * nothing.
  *
  * People who were already using the app before this existed never see it
  * (settleWelcome marks them done on their first start with it).
@@ -9,7 +11,6 @@ import React, {useEffect, useRef, useState} from 'react';
 import {
   BackHandler,
   FlatList,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,14 +20,17 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import Svg, {Circle, Path} from 'react-native-svg';
-import {C, S} from '../theme';
+import {S} from '../theme';
 import {CARD_PALS, PALS, blob, burst, sparkle, type Pal} from '../brandArt';
 import {createStore, useStoreValue} from '../storage';
 import {readStats} from '../stats';
-import {LanguageChips} from '../components/LanguageChips';
 import {logEvent} from '../analytics';
 
-const welcomed = createStore<boolean>('mp.welcomed.v1', false, raw => raw === true);
+const welcomed = createStore<boolean>(
+  'mp.welcomed.v1',
+  false,
+  raw => raw === true,
+);
 
 export const useWelcomed = () => useStoreValue(welcomed);
 
@@ -37,14 +41,20 @@ export function settleWelcome(): void {
   }
 }
 
-type Page = {pal: Pal; kicker: string; title: string; body: string; art: 'burst' | 'blob' | 'rings'};
+type Page = {
+  pal: Pal;
+  kicker: string;
+  title: string;
+  body: string;
+  art: 'burst' | 'blob' | 'rings';
+};
 
 const PAGES: Page[] = [
   {
     pal: PALS[0],
     kicker: 'Search anything',
     title: 'Every song, one search',
-    body: 'JioSaavn and SoundCloud together, and YouTube too if you switch it on in Settings.',
+    body: 'JioSaavn, SoundCloud and YouTube, together in one search.',
     art: 'burst',
   },
   {
@@ -110,7 +120,7 @@ export function WelcomeScreen() {
   const {width} = useWindowDimensions();
   const list = useRef<FlatList<number>>(null);
   const [at, setAt] = useState(0);
-  const last = PAGES.length; // the languages page
+  const last = PAGES.length - 1;
 
   const finish = (how: 'done' | 'skip') => {
     logEvent('welcome_finished', {how, page: at});
@@ -134,48 +144,36 @@ export function WelcomeScreen() {
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) =>
     setAt(Math.round(e.nativeEvent.contentOffset.x / width));
 
-  const pal = at < last ? PAGES[at].pal : null;
-  const ink = pal ? pal.ink : C.text;
+  const pal = PAGES[at].pal;
+  const ink = pal.ink;
 
   return (
-    <View style={[styles.wrap, {backgroundColor: pal ? pal.bg : C.bg}]}>
+    <View style={[styles.wrap, {backgroundColor: pal.bg}]}>
       <FlatList
         ref={list}
-        data={[0, 1, 2, 3]}
+        data={PAGES.map((_, i) => i)}
         keyExtractor={String}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScroll}
         getItemLayout={(_, i) => ({length: width, offset: width * i, index: i})}
-        renderItem={({item: i}) =>
-          i < last ? (
-            <View style={[styles.page, {width}]}>
-              <View style={styles.art}>
-                <PageArt p={PAGES[i].pal} kind={PAGES[i].art} />
-              </View>
-              <Text style={[styles.kicker, {color: PAGES[i].pal.ink}]}>
-                {PAGES[i].kicker}
-              </Text>
-              <Text style={[styles.title, {color: PAGES[i].pal.ink}]}>{PAGES[i].title}</Text>
-              <Text style={[styles.body, {color: PAGES[i].pal.ink}]}>{PAGES[i].body}</Text>
+        renderItem={({item: i}) => (
+          <View style={[styles.page, {width}]}>
+            <View style={styles.art}>
+              <PageArt p={PAGES[i].pal} kind={PAGES[i].art} />
             </View>
-          ) : (
-            // Scrolls only on a phone too short for the sixteen tiles.
-            <ScrollView
-              style={{width}}
-              contentContainerStyle={styles.langPage}
-              showsVerticalScrollIndicator={false}>
-              <Text style={[styles.kicker, styles.onDark]}>One last thing</Text>
-              <Text style={[styles.title, styles.onDark]}>What do you listen to?</Text>
-              <Text style={[styles.body, styles.sub]}>
-                Pick up to two. Home and Browse are drawn from these; Search always
-                covers everything, and you can change them in Settings.
-              </Text>
-              <LanguageChips />
-            </ScrollView>
-          )
-        }
+            <Text style={[styles.kicker, {color: PAGES[i].pal.ink}]}>
+              {PAGES[i].kicker}
+            </Text>
+            <Text style={[styles.title, {color: PAGES[i].pal.ink}]}>
+              {PAGES[i].title}
+            </Text>
+            <Text style={[styles.body, {color: PAGES[i].pal.ink}]}>
+              {PAGES[i].body}
+            </Text>
+          </View>
+        )}
       />
 
       {at < last && (
@@ -190,7 +188,7 @@ export function WelcomeScreen() {
 
       <View style={styles.foot}>
         <View style={styles.dots}>
-          {[0, 1, 2, 3].map(i => (
+          {PAGES.map((_, i) => (
             <View
               key={i}
               style={[
@@ -202,11 +200,11 @@ export function WelcomeScreen() {
           ))}
         </View>
         <TouchableOpacity
-          style={[styles.next, {backgroundColor: pal ? pal.ink : C.accent}]}
+          style={[styles.next, {backgroundColor: pal.ink}]}
           onPress={() => (at < last ? go(at + 1) : finish('done'))}
           activeOpacity={0.85}
           accessibilityRole="button">
-          <Text style={[styles.nextText, {color: pal ? pal.bg : C.bg}]}>
+          <Text style={[styles.nextText, {color: pal.bg}]}>
             {at < last ? 'Next' : 'Start listening'}
           </Text>
         </TouchableOpacity>
@@ -218,19 +216,16 @@ export function WelcomeScreen() {
 const styles = StyleSheet.create({
   wrap: {...StyleSheet.absoluteFillObject, zIndex: 10000},
   page: {flex: 1, paddingHorizontal: S.gutter + 6, justifyContent: 'center'},
-  langPage: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: S.gutter + 6,
-    paddingVertical: 56,
-  },
   art: {alignSelf: 'center', marginBottom: 36},
   kicker: {fontSize: 15, fontWeight: '800', marginBottom: 6},
   title: {fontSize: 40, lineHeight: 43, fontWeight: '800', letterSpacing: -1.6},
-  body: {fontSize: 16, lineHeight: 23, marginTop: 14, marginBottom: 18, fontWeight: '600'},
-  onDark: {color: C.text},
-  sub: {color: C.sub},
+  body: {
+    fontSize: 16,
+    lineHeight: 23,
+    marginTop: 14,
+    marginBottom: 18,
+    fontWeight: '600',
+  },
   skip: {position: 'absolute', top: 18, right: S.gutter + 4},
   skipText: {fontSize: 15, fontWeight: '800'},
   foot: {

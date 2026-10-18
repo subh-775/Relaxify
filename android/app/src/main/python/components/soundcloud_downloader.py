@@ -11,6 +11,7 @@ Features:
 """
 
 import os
+import struct
 import re
 import logging
 import subprocess
@@ -88,7 +89,17 @@ class DownloadResult:
 #
 # If neither trap leaves anything behind, we do NOT have the track: return None
 # and let the caller fall back to another source, rather than half-play it.
+#
+# Trap 1 only held for the WebView. The player is ExoPlayer now, which plays
+# HLS when the queue item says so (player.ts toQueueItem: SoundCloud items are
+# type 'hls'). And by October 2026 SoundCloud had dropped progressive MP3
+# altogether: every track offered only hls_aac_96k / hls_aac_160k, so this
+# picker returned None for all of them and every SoundCloud song failed.
+# Streaming therefore takes HLS only — never progressive, because the queue
+# item is already marked HLS and ExoPlayer cannot read an MP3 as a playlist.
+# Downloads still need a progressive file (no ffmpeg on Android to join HLS).
 _PROGRESSIVE_PROTOCOLS = ("http", "https")
+_HLS_PROTOCOLS = ("m3u8_native", "m3u8")
 
 
 def _is_preview(fmt: Dict[str, Any]) -> bool:
@@ -99,18 +110,22 @@ def _is_preview(fmt: Dict[str, Any]) -> bool:
 
 
 def pick_audio_format(
-    formats: List[Dict[str, Any]], max_bitrate: int
+    formats: List[Dict[str, Any]], max_bitrate: int, hls: bool = False
 ) -> Optional[Dict[str, Any]]:
-    """The best full, progressive, audio-only format at or under max_bitrate.
+    """The best full, audio-only format at or under max_bitrate: progressive,
+    or with `hls`, an HLS playlist ExoPlayer can play (AAC or MP3 segments;
+    its HLS reader has no Ogg, so Opus is left out).
 
     None means SoundCloud has nothing we can actually play end to end.
     """
+    protocols = _HLS_PROTOCOLS if hls else _PROGRESSIVE_PROTOCOLS
     usable = [
         f
         for f in (formats or [])
         if f.get("acodec") != "none"
         and f.get("vcodec") == "none"
-        and f.get("protocol") in _PROGRESSIVE_PROTOCOLS
+        and f.get("protocol") in protocols
+        and not (hls and "opus" in (f.get("acodec") or f.get("format_id") or "").lower())
         and not _is_preview(f)
     ]
     if not usable:
@@ -122,6 +137,164 @@ def pick_audio_format(
     # Everything is over the ceiling — the quietest is the closest to honouring
     # it, and is still a real stream.
     return min(usable, key=lambda f: f.get("abr") or 0)
+
+
+# ─── Fragmented MP4 → plain MP4 ───────────────────────────────────────────────
+# A SoundCloud download is its HLS stream saved whole: init.mp4 then one
+# moof+mdat per segment. Played straight, that file reports a length of 0
+# (mutagen, the library scan, Android's own reader) and seeks only within its
+# first ten seconds. With no ffmpeg on Android, this rewrites it in plain
+# Python: every sample in one mdat, and a real sample table in moov.
+# ponytail: one track, no composition offsets (true of SoundCloud's AAC);
+# a video or B-frame file would need ctts and per-track tables.
+def _boxes(d: bytes, start: int, end: int):
+    """(type, box start, payload start, box end) for each box in d[start:end]."""
+    while start + 8 <= end:
+        size, typ = struct.unpack_from(">I4s", d, start)
+        head = 8
+        if size == 1:
+            size = struct.unpack_from(">Q", d, start + 8)[0]
+            head = 16
+        elif size == 0:
+            size = end - start
+        yield typ, start, start + head, start + size
+        start += size
+
+
+def _box(typ: bytes, payload: bytes) -> bytes:
+    return struct.pack(">I4s", 8 + len(payload), typ) + payload
+
+
+def defragment_mp4(path: str) -> None:
+    """Rewrite the fragmented MP4 at `path` as a plain one, in place.
+    A file that has no fragments is left as it is."""
+    d = open(path, "rb").read()
+    top = list(_boxes(d, 0, len(d)))
+    moov = next((b for b in top if b[0] == b"moov"), None)
+    if moov is None or not any(b[0] == b"moof" for b in top):
+        return
+
+    trex = next((b for b in _boxes(d, moov[2], moov[3]) if b[0] == b"mvex"), None)
+    trex_dur = trex_size = 0
+    if trex:
+        t = next((b for b in _boxes(d, trex[2], trex[3]) if b[0] == b"trex"), None)
+        if t:
+            trex_dur, trex_size = struct.unpack_from(">II", d, t[2] + 12)
+
+    durations, sizes, data = [], [], []
+    for typ, moof_at, body, moof_end in top:
+        if typ != b"moof":
+            continue
+        for ttyp, _, tbody, tend in _boxes(d, body, moof_end):
+            if ttyp != b"traf":
+                continue
+            base, def_dur, def_size = moof_at, trex_dur, trex_size
+            for btyp, _, p, _end in _boxes(d, tbody, tend):
+                flags = struct.unpack_from(">I", d, p)[0] & 0xFFFFFF
+                if btyp == b"tfhd":
+                    q = p + 8                          # version/flags, track_ID
+                    if flags & 0x01:
+                        base = struct.unpack_from(">Q", d, q)[0]
+                        q += 8
+                    q += 4 if flags & 0x02 else 0
+                    if flags & 0x08:
+                        def_dur = struct.unpack_from(">I", d, q)[0]
+                        q += 4
+                    if flags & 0x10:
+                        def_size = struct.unpack_from(">I", d, q)[0]
+                elif btyp == b"trun":
+                    count = struct.unpack_from(">I", d, p + 4)[0]
+                    q = p + 8
+                    offset = base
+                    if flags & 0x01:
+                        offset += struct.unpack_from(">i", d, q)[0]
+                        q += 4
+                    q += 4 if flags & 0x04 else 0
+                    for _ in range(count):
+                        dur, size = def_dur, def_size
+                        if flags & 0x100:
+                            dur = struct.unpack_from(">I", d, q)[0]
+                            q += 4
+                        if flags & 0x200:
+                            size = struct.unpack_from(">I", d, q)[0]
+                            q += 4
+                        q += 4 if flags & 0x400 else 0
+                        q += 4 if flags & 0x800 else 0
+                        durations.append(dur)
+                        sizes.append(size)
+                        data.append(d[offset:offset + size])
+                        offset += size
+    if not sizes:
+        return
+    media_total = sum(durations)
+
+    # The sample table: durations run-length coded, every sample in ONE chunk.
+    runs = []
+    for dur in durations:
+        if runs and runs[-1][1] == dur:
+            runs[-1][0] += 1
+        else:
+            runs.append([1, dur])
+    stts = _box(b"stts", struct.pack(">II", 0, len(runs)) + b"".join(struct.pack(">II", *r) for r in runs))
+    stsc = _box(b"stsc", struct.pack(">IIIII", 0, 1, 1, len(sizes), 1))
+    stsz = _box(b"stsz", struct.pack(">III", 0, 0, len(sizes)) + struct.pack(f">{len(sizes)}I", *sizes))
+
+    def find(start, end, *path):
+        for typ, s, p, e in _boxes(d, start, end):
+            if typ == path[0]:
+                return (p, e) if len(path) == 1 else find(p, e, *path[1:])
+        return None
+
+    def scale(box):
+        p = box[0]
+        return struct.unpack_from(">I", d, p + 4 + (16 if d[p] == 1 else 8))[0]
+
+    mdhd = find(moov[2], moov[3], b"trak", b"mdia", b"mdhd")
+    mvhd = find(moov[2], moov[3], b"mvhd")
+    movie_total = round(media_total * scale(mvhd) / scale(mdhd))
+
+    def with_duration(typ, p, e, total):
+        """The box's payload with its duration replaced; version 0 or 1.
+        mvhd/mdhd: version+flags, two times, timescale, duration. tkhd:
+        version+flags, two times, track_ID, reserved, duration."""
+        b = bytearray(d[p:e])
+        v1 = b[0] == 1
+        at = 4 + (16 if v1 else 8) + (8 if typ == b"tkhd" else 4)
+        struct.pack_into(">Q" if v1 else ">I", b, at, total)
+        return bytes(b)
+
+    def rebuild(start, end, stco):
+        out = b""
+        for typ, s, p, e in _boxes(d, start, end):
+            if typ == b"mvex":
+                continue
+            if typ in (b"mvhd", b"mdhd", b"tkhd"):
+                total = media_total if typ == b"mdhd" else movie_total
+                out += _box(typ, with_duration(typ, p, e, total))
+            elif typ == b"elst" and struct.unpack_from(">I", d, p + 4)[0] == 1:
+                # One plain edit, "the whole track": it gets the track's length.
+                b = bytearray(d[p:e])
+                struct.pack_into(">Q" if b[0] == 1 else ">I", b, 8, movie_total)
+                out += _box(typ, bytes(b))
+            elif typ == b"stbl":
+                kept = b"".join(d[s2:e2] for t2, s2, _, e2 in _boxes(d, p, e)
+                                if t2 not in (b"stts", b"stsc", b"stsz", b"stco", b"co64", b"ctts"))
+                out += _box(typ, kept + stts + stsc + stsz + _box(b"stco", struct.pack(">III", 0, 1, stco)))
+            elif typ in (b"trak", b"mdia", b"minf", b"edts"):
+                out += _box(typ, rebuild(p, e, stco))
+            else:
+                out += d[s:e]
+        return out
+
+    ftyp = _box(b"ftyp", b"M4A " + struct.pack(">I", 0) + b"M4A mp42isom")
+    # moov's size doesn't depend on the offset in it, so build it once to
+    # learn where mdat's payload will start, then again with that offset.
+    moov_len = 8 + len(rebuild(moov[2], moov[3], 0))
+    new_moov = _box(b"moov", rebuild(moov[2], moov[3], len(ftyp) + moov_len + 8))
+    tmp = path + ".defrag"
+    with open(tmp, "wb") as f:
+        f.write(ftyp + new_moov + _box(b"mdat", b"".join(data)))
+    os.replace(tmp, path)
 
 
 class SoundCloudClient:
@@ -307,7 +480,8 @@ class SoundCloudClient:
         self, url: str, max_bitrate: int = 256
     ) -> Optional[Dict[str, Any]]:
         """The yt-dlp format dict get_streaming_url picks — its `abr` is the
-        bitrate actually being streamed, which the quality badge reports."""
+        bitrate actually being streamed, which the quality badge reports.
+        Always an HLS playlist (see pick_audio_format)."""
         import yt_dlp
 
         ydl_opts = self._get_ydl_opts(quiet=True, extract_flat=False)
@@ -316,11 +490,11 @@ class SoundCloudClient:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
 
-            best_format = pick_audio_format(info.get("formats", []), max_bitrate)
+            best_format = pick_audio_format(info.get("formats", []), max_bitrate, hls=True)
             if not best_format:
                 logger.info(
-                    f"No full progressive audio stream for {url} "
-                    "(HLS-only or preview-only) — caller should try another source"
+                    f"No full HLS audio stream for {url} "
+                    "(preview-only or Opus-only) — caller should try another source"
                 )
                 return None
             return best_format if best_format.get("url") else None
@@ -389,15 +563,20 @@ class SoundCloudClient:
             )
 
         best_format = pick_audio_format(info.get("formats", []), max_bitrate)
+        # Since October 2026 SoundCloud offers HLS only. yt-dlp saves it
+        # without ffmpeg (fragments in a row) and defragment_mp4 makes that a
+        # plain .m4a afterwards.
+        hls = best_format is None
+        if hls:
+            best_format = pick_audio_format(info.get("formats", []), max_bitrate, hls=True)
 
         if not best_format:
-            # Same rule as streaming: a 30-second preview is not the track, and
-            # HLS needs an ffmpeg that Android doesn't have. Failing here lets
-            # the download manager try another source instead of writing a
-            # snippet to disk under the full song's name.
+            # Same rule as streaming: a 30-second preview is not the track.
+            # Failing here lets the download manager try another source
+            # instead of writing a snippet to disk under the full song's name.
             return DownloadResult(
                 success=False,
-                error="No full progressive audio stream (HLS-only or preview-only)",
+                error="No full audio stream (preview-only or DRM)",
             )
 
         native_abr = best_format.get("abr", 0) or 0
@@ -414,7 +593,13 @@ class SoundCloudClient:
             native_acodec not in ["mp3", "mp2"] or native_abr > max_bitrate * 1.1
         )
 
-        if needs_transcode:
+        if hls:
+            # Saved as served: re-encoding needs ffmpeg, and the stream is
+            # already at or under the ceiling pick_audio_format chose for.
+            format_spec = format_id
+            postprocessors = []
+            ext_out = native_ext
+        elif needs_transcode:
             target_abr = min(native_abr, max_bitrate)
             format_spec = format_id
             postprocessors = [
@@ -437,13 +622,21 @@ class SoundCloudClient:
             postprocessors=postprocessors,
         )
 
-        return self._execute_download(
-            track.url if isinstance(track, SoundCloudTrack) else track,
+        result = self._execute_download(
+            url,
             ydl_opts,
             output_base,
             max_bitrate,
             expected_ext=ext_out,
         )
+        if hls and result.success and result.file_path.endswith((".m4a", ".mp4")):
+            try:
+                defragment_mp4(result.file_path)
+                result.file_size = os.path.getsize(result.file_path)
+            except Exception as e:
+                # Still a playable file, only without a length or seeking.
+                logger.warning(f"Could not defragment {result.file_path}: {e}")
+        return result
 
     def _execute_download(
         self,

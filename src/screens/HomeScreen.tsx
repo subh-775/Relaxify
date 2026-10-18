@@ -9,8 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {Gesture, GestureDetector} from 'react-native-gesture-handler';
-import {runOnJS} from 'react-native-reanimated';
 import {C, S, T} from '../theme';
 import {
   getHome,
@@ -34,14 +32,6 @@ import {
 import {HomeCardCarousel} from '../components/HomeCards';
 import {shapedRow} from '../components/HomeRows';
 import type {Collection} from '../collections';
-import {
-  DRAWER_EDGE,
-  DRAWER_GRAB,
-  DRAWER_W,
-  drawerX,
-  reserveDrawerEdge,
-  shouldOpen,
-} from '../drawer';
 import {BOTTOM_INSET, HOME_CARD, HOME_CARD_RADIUS} from '../layout';
 import {TOP_FADE, TopFade} from '../components/TopFade';
 import {useListEnd} from '../components/UpdateModal';
@@ -105,18 +95,16 @@ type Props = {
   onPickTrack: (item: HomeItem) => void;
   onPlayTrack: (track: Track, context?: Track[]) => void;
   onOpenMenu: () => void;
-  /** A drawer pull has started — mount the panel NOW so it can be dragged. */
-  onBeginDrag: () => void;
-  /** The finger lifted: settle open or closed, carrying its speed. */
-  onEndDrag: (open: boolean, velocity: number) => void;
   /** Home has something to show — the app lifts its splash on this. */
   onReady?: () => void;
   /** Open the Recap, from the teaser card. */
   onOpenRecap?: () => void;
   /** Open the Jam screen, from the Jam card. */
   onOpenJam?: () => void;
-  /** Start importing a Spotify link, from the import card. */
+  /** Open an import's progress, from the import card. */
   onImportSpotify?: (url: string) => void;
+  /** Ask for a playlist link, from the import card. */
+  onAskImport?: () => void;
   /** Open a playlist or album, from the Continue and import cards. */
   onOpenCollection?: (c: Collection) => void;
   /** Open an album by name, artist and JioSaavn id (From artists you love). */
@@ -161,12 +149,11 @@ export const HomeScreen = React.memo(function HomeScreen({
   onPickTrack,
   onPlayTrack,
   onOpenMenu,
-  onBeginDrag,
-  onEndDrag,
   onReady,
   onOpenRecap,
   onOpenJam,
   onImportSpotify,
+  onAskImport,
   onOpenCollection,
   onOpenAlbum,
   visible,
@@ -197,87 +184,6 @@ export const HomeScreen = React.memo(function HomeScreen({
     : error
     ? 'error'
     : 'boot';
-
-  /**
-   * Drag right near the left edge to pull the drawer in, with the panel
-   * following the finger the whole way — Gmail / Twitter / ChatGPT behaviour.
-   *
-   * Recognised NATIVELY. As a PanResponder this lost the same race TrackRow's
-   * swipe did: the JS predicate ran after the native scroller had already
-   * claimed a fast flick, and its `dx > |dy| * 2` ratio failed on the large
-   * first delta a fast flick delivers. activeOffsetX/failOffsetY are evaluated
-   * on the raw touch stream, so speed stops mattering.
-   *
-   * ## Why this is attached to the whole screen and not to a strip
-   *
-   * The previous design put the pan on a transparent 28dp `View` pinned to the
-   * left edge, with `pointerEvents="box-only"`. That view took every touch in
-   * the band and passed none of them on, so a vertical scroll starting there
-   * failed `failOffsetY` and then went nowhere — the list underneath never saw
-   * it. That is the "the page won't scroll near the left edge" report.
-   *
-   * The pan now lives on the screen itself and is armed at the edge by
-   * `hitSlop`, which does the same job in the one place where it costs nothing:
-   * `{left: 0, width: DRAWER_EDGE}` makes RNGH's `isWithinBounds` treat the
-   * handler's activation area as the left DRAWER_EDGE pixels of the view and
-   * nothing else (GestureHandler.kt: `right = left + width`). Touches outside
-   * the band never reach this handler; touches INSIDE it reach the list too,
-   * because there is no longer a view in the way.
-   *
-   * `failOffsetY` is 6, not 14. While the pan is BEGAN the scroller cannot
-   * start, so that number is literally how many pixels of every vertical drag
-   * in the band get swallowed before the list gets its touch.
-   *
-   * One gesture at a time. The list is wrapped as `Gesture.Native()` so RNGH
-   * can arbitrate between the two: whichever activates first wins and the
-   * other is cancelled. A sideways pull owns the finger until it lets go (the
-   * page no longer scrolls under the opening drawer), and a scroll that has
-   * started never turns into a drawer. The two used to be declared
-   * simultaneous, which is what let one drag do both.
-   *
-   * The drawer is told it is opening on ACTIVATION (`onStart`), not on
-   * touch-down. A touch in the band that becomes a scroll fails this pan and
-   * never reaches `onEnd`, so a touch-down `begin` left the (closed) drawer
-   * marked open, taking the back button and touches meant for the page.
-   */
-  const beginRef = useRef(onBeginDrag);
-  beginRef.current = onBeginDrag;
-  const endRef = useRef(onEndDrag);
-  endRef.current = onEndDrag;
-
-  const begin = useCallback(() => beginRef.current(), []);
-  const end = useCallback(
-    (open: boolean, velocity: number) => endRef.current(open, velocity),
-    [],
-  );
-
-  /** The list's own scrolling, as a gesture this one can be composed with. */
-  const listScroll = useMemo(() => Gesture.Native(), []);
-
-  const pan = useMemo(
-    () =>
-      Gesture.Pan()
-        .hitSlop({left: 0, width: DRAWER_EDGE})
-        .activeOffsetX([-1000, DRAWER_GRAB])
-        .failOffsetY([-6, 6])
-        .onStart(() => {
-          drawerX.value = -DRAWER_W; // start from closed, whatever came before
-          runOnJS(begin)();
-        })
-        .onUpdate(e => {
-          drawerX.value = Math.max(
-            -DRAWER_W,
-            Math.min(0, -DRAWER_W + e.translationX),
-          );
-        })
-        .onEnd(e => {
-          runOnJS(end)(
-            shouldOpen(e.translationX, e.velocityX),
-            Math.abs(e.velocityX) / 1000,
-          );
-        }),
-    [begin, end],
-  );
 
   /** The first load has finished, fresh rows or not. */
   const [settled, setSettled] = useState(false);
@@ -420,11 +326,11 @@ export const HomeScreen = React.memo(function HomeScreen({
   const header = (
     <>
       {/* The cards, one shape, one swiped row with dots (HomeCards). */}
-      {onOpenRecap && onOpenJam && onImportSpotify && onOpenCollection && (
+      {onOpenRecap && onOpenJam && onImportSpotify && onAskImport && onOpenCollection && (
         <HomeCardCarousel
           onOpenRecap={onOpenRecap}
           onOpenJam={onOpenJam}
-          onImport={onImportSpotify}
+          onAskImport={onAskImport}
           onOpenImport={onImportSpotify}
           onOpenCollection={onOpenCollection}
           starter={starter}
@@ -441,68 +347,60 @@ export const HomeScreen = React.memo(function HomeScreen({
   );
 
   return (
-    <GestureDetector gesture={pan}>
-      <View style={styles.fill} onLayout={() => reserveDrawerEdge()}>
-        {/*
-        A FlatList, not a ScrollView.
+    <View style={styles.fill}>
+      {/*
+      A FlatList, not a ScrollView.
 
-        A ScrollView renders every child immediately and keeps them all
-        mounted — and every child here is a horizontal FlatList of cards with
-        remote images. The whole of Home, however far down it went, was being
-        built and held on the first frame. Virtualised, the rows below the fold
-        do not mount their cards until you scroll to them.
-
-        It is wrapped in its own Gesture.Native so the drawer pull can be
-        declared simultaneous with it: a scroll that has already begun is not
-        cancelled if the pan activates a moment later.
-      */}
-        {/* Pinned: the mark and the greeting stay put while the page scrolls
-            under them, as on Search and Your Library. Mark FIRST: the drawer
-            slides in from the left, so its handle belongs on the left. */}
-        <View style={styles.header}>
-          {/* The mark IS the menu button — see MenuMark. */}
-          <MenuMark onPress={onOpenMenu} />
-          <View style={styles.headerText}>
-            <Greeting visible={visible} />
-          </View>
-          {/* Balances the mark, so the greeting is centred on the SCREEN
-              rather than in the space the mark leaves. */}
-          <View style={styles.markSpacer} />
+      A ScrollView renders every child immediately and keeps them all
+      mounted — and every child here is a horizontal FlatList of cards with
+      remote images. The whole of Home, however far down it went, was being
+      built and held on the first frame. Virtualised, the rows below the fold
+      do not mount their cards until you scroll to them.
+    */}
+      {/* Pinned: the mark and the greeting stay put while the page scrolls
+          under them, as on Search and Your Library. Mark FIRST: the drawer
+          slides in from the left, so its handle belongs on the left. */}
+      <View style={styles.header}>
+        {/* The mark IS the menu button — see MenuMark. */}
+        <MenuMark onPress={onOpenMenu} />
+        <View style={styles.headerText}>
+          <Greeting visible={visible} />
         </View>
-        <TopFade />
-        <GestureDetector gesture={listScroll}>
-          <FlatList
-            data={rows}
-            keyExtractor={row => row.title}
-            extraData={tuning}
-            renderItem={({item, index}) => (
-              <>
-                {/* The language dial above the rows it changes. */}
-                {index === chartsAt && <LanguageDial busy={tuning} />}
-                <Animated.View
-                  style={chartsAt >= 0 && index >= chartsAt && {opacity: dim}}>
-                  <Row row={item} onPick={onPickTrack} />
-                </Animated.View>
-                {/* Your artists' newest, between New releases and Charts. */}
-                {item.title.trim().toLowerCase() === 'new releases' && (
-                  <FollowedShelf
-                    onPlay={onPlayTrack}
-                    onOpenAlbum={onOpenAlbum}
-                  />
-                )}
-              </>
-            )}
-            contentContainerStyle={[styles.scroll, listEnd]}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="never"
-            bounces={false}
-            ListHeaderComponent={header}
-            ListFooterComponent={<View style={styles.tail} />}
-            {...HOME_WINDOWING}
-          />
-        </GestureDetector>
+        {/* Balances the mark, so the greeting is centred on the SCREEN
+            rather than in the space the mark leaves. */}
+        <View style={styles.markSpacer} />
       </View>
-    </GestureDetector>
+      <TopFade />
+      <FlatList
+        data={rows}
+        keyExtractor={row => row.title}
+        extraData={tuning}
+        renderItem={({item, index}) => (
+          <>
+            {/* The language dial above the rows it changes. */}
+            {index === chartsAt && <LanguageDial busy={tuning} />}
+            <Animated.View
+              style={chartsAt >= 0 && index >= chartsAt && {opacity: dim}}>
+              <Row row={item} onPick={onPickTrack} />
+            </Animated.View>
+            {/* Your artists' newest, between New releases and Charts. */}
+            {item.title.trim().toLowerCase() === 'new releases' && (
+              <FollowedShelf
+                onPlay={onPlayTrack}
+                onOpenAlbum={onOpenAlbum}
+              />
+            )}
+          </>
+        )}
+        contentContainerStyle={[styles.scroll, listEnd]}
+        showsVerticalScrollIndicator={false}
+        overScrollMode="never"
+        bounces={false}
+        ListHeaderComponent={header}
+        ListFooterComponent={<View style={styles.tail} />}
+        {...HOME_WINDOWING}
+      />
+    </View>
   );
 });
 

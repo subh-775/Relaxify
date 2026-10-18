@@ -1,6 +1,6 @@
 /**
  * A grab-and-drag scroll thumb for long lists: a slim dark pill with three
- * grip lines, a little in from the right edge, that turns coral while held.
+ * grip lines, a little in from the right edge. It keeps its colour while held.
  *
  * It used to be a white half-disc with grey chevrons, which read as a tab
  * stuck to the edge rather than as a handle. Grip lines say "hold and drag",
@@ -131,7 +131,7 @@ export function FastScroll({
     const worth = max > vh * WORTH_SCREENS;
     return {
       opacity: worth ? shown.value : 0,
-      backgroundColor: dragging.value ? C.accent : REST,
+      backgroundColor: REST,
       transform: [{translateY: EDGE + Math.min(len, Math.max(0, top))}],
     };
   });
