@@ -6,7 +6,7 @@
  * so there is exactly one kind of playlist in the app and it is editable
  * wherever it came from.
  */
-import {createStore, asArray, useStoreValue} from './storage';
+import {createStore, asArray, useStoreSelector, useStoreValue} from './storage';
 import {getTrackId, normalizeTrack} from './tracks';
 import type {Track} from './backend';
 import {logEvent, songParams} from './analytics';
@@ -224,6 +224,28 @@ export function mapPlaylistTracks(fn: (t: Track) => Track): void {
 
 export function usePlaylists(): Playlist[] {
   return useStoreValue(store);
+}
+
+/** Every song in any playlist, by id: built once per change to the playlists,
+ *  not once per row that asks. */
+let idsFor: Playlist[] | null = null;
+let ids = new Set<string>();
+function playlistTrackIds(list: Playlist[]): Set<string> {
+  if (list !== idsFor) {
+    idsFor = list;
+    ids = new Set(list.flatMap(p => (p.tracks || []).map(getTrackId)));
+  }
+  return ids;
+}
+
+/** Is this song in any of your playlists? A boolean subscription, like
+ *  useLike's, so a row re-renders only when its own answer changes. */
+export function useInAnyPlaylist(track: Track | null): boolean {
+  const id = track ? getTrackId(track) : '';
+  return useStoreSelector(
+    store,
+    list => !!id && playlistTrackIds(list).has(id),
+  );
 }
 
 /**

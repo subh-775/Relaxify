@@ -1,10 +1,11 @@
 /**
  * The two-level "+" that replaced the ⊕ and the ♥ in both players.
  *
- * Not liked  → tap → liked, and the glyph fills. The common action, one press,
+ * Not saved  → tap → liked, and the glyph fills. The common action, one press,
  *              no sheet in the way.
- * Liked      → tap → the "Saved in" sheet, for everything that is not Liked
- *              Songs.
+ * Saved      → tap → the "Saved in" sheet, for everything that is not Liked
+ *              Songs. Saved is liked OR in any playlist: a song added to a
+ *              playlist from the sheet wears the tick too, liked or not.
  * Either     → long press → straight to the sheet, so wanting a playlist does
  *              not mean liking the song first and then unliking it.
  *
@@ -22,6 +23,7 @@ import {AddCircle, SavedCircle} from '../glyphs';
 import {C} from '../theme';
 import type {Track} from '../backend';
 import {useLike} from '../store';
+import {useInAnyPlaylist} from '../playlists';
 import {getBestArtworkUrl} from '../tracks';
 import {toast} from '../toast';
 
@@ -39,18 +41,19 @@ export function AddButton({
   hitSlop?: number;
 }) {
   const {liked, toggle} = useLike(track);
+  const saved = useInAnyPlaylist(track) || liked;
 
   const onPress = useCallback(() => {
     if (!track) {
       return;
     }
-    if (!liked) {
+    if (!saved) {
       toggle();
       toast('Added to Liked Songs', 'info', {art: getBestArtworkUrl(track)});
       return;
     }
     onOpenSheet(track);
-  }, [track, liked, toggle, onOpenSheet]);
+  }, [track, saved, toggle, onOpenSheet]);
 
   const onLongPress = useCallback(() => {
     if (track) {
@@ -65,10 +68,10 @@ export function AddButton({
       hitSlop={hitSlop}
       accessibilityRole="button"
       accessibilityLabel={
-        liked ? 'Saved. Open the list of playlists' : 'Add to Liked Songs'
+        saved ? 'Saved. Open the list of playlists' : 'Add to Liked Songs'
       }
       style={style}>
-      <SavedGlyph on={liked} size={size} />
+      <SavedGlyph on={saved} size={size} />
     </TouchableOpacity>
   );
 }
