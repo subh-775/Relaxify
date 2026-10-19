@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     fontWeight: '600',
   },
-  // The song playing now: a grey ring, the same on every greeting colour.
+  // The song playing now: a grey ring, the same on every accent colour.
   playing: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 8,

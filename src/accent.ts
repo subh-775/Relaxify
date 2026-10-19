@@ -1,10 +1,10 @@
 /**
- * The greeting's current colour pair, for everything that should match it.
+ * The current colour pair, for everything that should match it.
  *
- * The Home header picks a new pair on each arrival; the playing tile's ring,
- * the Library's active chip and the search hints wear the same one, so the
- * app changes colour together rather than in unrelated places. Memory only:
- * a new launch picks a new pair anyway.
+ * Today's doodle (the Home header, src/doodle.ts) sets it; the playing tile's
+ * ring, the Library's active chip and the search hints wear the same one, so
+ * the app changes colour together with the header rather than in unrelated
+ * places. Memory only: the doodle sets it again at launch.
  */
 import {useSyncExternalStore} from 'react';
 
