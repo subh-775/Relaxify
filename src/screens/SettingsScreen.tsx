@@ -1282,7 +1282,9 @@ const styles = StyleSheet.create({
   // the reset button was getting clipped by a small amount.
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
-  scroll: {paddingBottom: BOTTOM_INSET},
+  // flexGrow: the page is at least the screen's height, so the main page's
+  // Reset (marginTop 'auto') sits at its foot rather than under the list.
+  scroll: {flexGrow: 1, paddingBottom: BOTTOM_INSET},
   section: {paddingTop: 22},
   licences: {maxHeight: 420},
   credit: {
@@ -1385,8 +1387,11 @@ const styles = StyleSheet.create({
   pillText: {color: C.text, fontSize: 14, fontWeight: '700'},
   accentHint: {color: C.accent},
   divider: {height: 1, backgroundColor: C.border, marginVertical: 6},
+  // Pinned to the foot of the page, just above the mini player; on a screen
+  // too short for that it keeps 56 of air under the last category.
   resetWrap: {
     alignItems: 'center',
+    marginTop: 'auto',
     paddingTop: 56,
     paddingHorizontal: S.gutter,
   },
