@@ -171,7 +171,19 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
                 setRequestProperty("User-Agent", "Relaxify")
             }
             if (conn.responseCode != 200) {
-                lastCheckError = "GitHub returned HTTP ${conn.responseCode}"
+                val code = conn.responseCode
+                conn.disconnect()
+                // The API's 60 calls an hour are per IP, and a mobile network
+                // puts thousands of phones behind one IP: a 403/429 here says
+                // nothing about the release. The real app asks github.com's
+                // own pages instead, which that limit does not count.
+                if (!BuildConfig.IS_RC && (code == 403 || code == 429)) {
+                    return latestFromWeb() ?: run {
+                        if (lastCheckError.isBlank()) lastCheckError = "GitHub returned HTTP $code"
+                        null
+                    }
+                }
+                lastCheckError = "GitHub returned HTTP $code"
                 return null
             }
             val body = conn.inputStream.bufferedReader().use { it.readText() }
@@ -224,6 +236,50 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
             Log.w(TAG, "update check failed: ${e.message}")
             null
         }
+    }
+
+    /**
+     * The newest release without the API: /releases/latest redirects to the
+     * release's tag, and CI always attaches the APK as APK_ASSET, so its
+     * download URL follows from the tag. A HEAD on that URL gives its size and
+     * proves it is there (a release whose build is still running has none).
+     */
+    private fun latestFromWeb(): Release? = try {
+        val page = (URL(LATEST_PAGE).openConnection() as HttpURLConnection).apply {
+            instanceFollowRedirects = false
+            connectTimeout = 8000
+            readTimeout = 8000
+            setRequestProperty("User-Agent", "Relaxify")
+        }
+        val location = page.getHeaderField("Location").orEmpty()
+        page.disconnect()
+        val tag = location.substringAfter("/releases/tag/", "").removePrefix("v")
+        val installed = installedVersion().ifBlank { "0" }
+        if (tag.isBlank()) {
+            lastCheckError = "github.com gave no latest release"
+            null
+        } else if (!isNewer(tag, installed)) {
+            null // up to date
+        } else {
+            val apkUrl = "$DOWNLOAD_BASE/v$tag/$APK_ASSET"
+            val head = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "HEAD"
+                connectTimeout = 8000
+                readTimeout = 8000
+                setRequestProperty("User-Agent", "Relaxify")
+            }
+            val size = if (head.responseCode == 200) head.contentLengthLong else -1L
+            head.disconnect()
+            if (size > 0) {
+                Release(tag, apkUrl, size)
+            } else {
+                lastCheckError = "Release $tag has no .apk attached"
+                null
+            }
+        }
+    } catch (e: Exception) {
+        lastCheckError = e.message ?: e.javaClass.simpleName
+        null
     }
 
     /** The asset this build installs: the test APK for a test build, and
@@ -396,5 +452,11 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
             "https://api.github.com/repos/subh-775/Relaxify/releases?per_page=20"
         /** The test build's asset name: CI's Stage APK step for the rc variant. */
         private const val RC_ASSET = "Relaxify-RC.apk"
+        /** The real app's asset name, from the same step; see latestFromWeb. */
+        private const val APK_ASSET = "Relaxify.apk"
+        private const val LATEST_PAGE =
+            "https://github.com/subh-775/Relaxify/releases/latest"
+        private const val DOWNLOAD_BASE =
+            "https://github.com/subh-775/Relaxify/releases/download"
     }
 }
