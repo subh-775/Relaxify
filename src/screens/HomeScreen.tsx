@@ -485,10 +485,12 @@ const styles = StyleSheet.create({
   // end above them or its last row is permanently behind one. See src/layout.ts.
   scroll: {paddingBottom: BOTTOM_INSET},
   // Over the doodle's left end, centred on its height, at the gutter the
-  // marks on Search and Your Library use.
+  // marks on Search and Your Library use. flex-start keeps the button the
+  // logo's size: stretched, it covered the doodle and swallowed its taps.
   mark: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
+    alignItems: 'flex-start',
     paddingLeft: S.gutter,
   },
   title: {
