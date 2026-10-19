@@ -244,6 +244,9 @@ dependencies {
     // decodes only still images on Android without it. Same version as the
     // Fresco React Native ships (node_modules/react-native/gradle/libs.versions.toml).
     implementation 'com.facebook.fresco:animated-gif:3.2.0'
+    // Plays the Home header's doodles (src/components/Doodle.tsx), which are
+    // animated WebP fetched from Firebase Hosting. Same Fresco version.
+    implementation 'com.facebook.fresco:animated-webp:3.2.0'
 
     // Usage statistics and crash reports (AnalyticsModule.kt). Inert without
     // google-services.json: no config means no FirebaseApp, and neither SDK

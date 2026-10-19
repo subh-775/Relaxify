@@ -17,7 +17,7 @@ import {
   type HomeRow,
   type Track,
 } from '../backend';
-import {Greeting} from '../components/Greeting';
+import {Doodle} from '../components/Doodle';
 import {useRecentlyPlayed} from '../recentlyPlayed';
 import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
@@ -33,7 +33,6 @@ import {HomeCardCarousel} from '../components/HomeCards';
 import {shapedRow} from '../components/HomeRows';
 import type {Collection} from '../collections';
 import {BOTTOM_INSET, HOME_CARD, HOME_CARD_RADIUS} from '../layout';
-import {TOP_FADE, TopFade} from '../components/TopFade';
 import {useListEnd} from '../components/UpdateModal';
 import {homeLanguageParam, useSettings} from '../store';
 import {checkOnline, useOffline} from '../offline';
@@ -111,7 +110,7 @@ type Props = {
   onOpenAlbum?: (name: string, artist: string, albumId: string) => void;
   /** Whether the Home tab is the one on screen. The tab stays mounted when
    *  you leave it, so this is the only signal that you came back — the
-   *  greeting takes new colours then. */
+   *  doodle only animates while you are here. */
   visible: boolean;
 };
 
@@ -320,7 +319,7 @@ export const HomeScreen = React.memo(function HomeScreen({
    * ListHeaderComponent is what tears the Recents grid down and rebuilds it
    * on every parent render.
    *
-   * The mark and the greeting are not in here: they are pinned above the list
+   * The mark and the doodle are not in here: they are pinned above the list
    * (see the render below), as the title rows of Search and Your Library are.
    */
   const header = (
@@ -357,20 +356,17 @@ export const HomeScreen = React.memo(function HomeScreen({
       built and held on the first frame. Virtualised, the rows below the fold
       do not mount their cards until you scroll to them.
     */}
-      {/* Pinned: the mark and the greeting stay put while the page scrolls
-          under them, as on Search and Your Library. Mark FIRST: the drawer
-          slides in from the left, so its handle belongs on the left. */}
-      <View style={styles.header}>
-        {/* The mark IS the menu button — see MenuMark. */}
-        <MenuMark onPress={onOpenMenu} />
-        <View style={styles.headerText}>
-          <Greeting visible={visible} />
+      {/* Pinned: the doodle stays put while the page scrolls under it, cut
+          off in a straight line. The mark sits over the doodle's left end,
+          where each one leaves room: the drawer slides in from the left, so
+          its handle belongs there. */}
+      <View>
+        <Doodle visible={visible} />
+        <View style={styles.mark} pointerEvents="box-none">
+          {/* The mark IS the menu button — see MenuMark. */}
+          <MenuMark onPress={onOpenMenu} />
         </View>
-        {/* Balances the mark, so the greeting is centred on the SCREEN
-            rather than in the space the mark leaves. */}
-        <View style={styles.markSpacer} />
       </View>
-      <TopFade />
       <FlatList
         data={rows}
         keyExtractor={row => row.title}
@@ -487,20 +483,16 @@ const styles = StyleSheet.create({
   fill: {flex: 1},
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
-  scroll: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
-  // The pinned row, spaced like the title bars of Search and Your Library.
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: S.gutter,
-    paddingTop: 14,
-    // The list's TOP_FADE padding is the gap under the greeting now.
-    paddingBottom: 0,
-    gap: 12,
+  scroll: {paddingBottom: BOTTOM_INSET},
+  // Over the doodle's left end, centred on its height, at the gutter the
+  // marks on Search and Your Library use. flex-start keeps the button the
+  // logo's size: stretched, it covered the doodle and swallowed its taps.
+  mark: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingLeft: S.gutter,
   },
-  headerText: {flex: 1, minWidth: 0},
-  // The mark's width (MenuMark: 38).
-  markSpacer: {width: 38},
   title: {
     ...T.screenTitle,
     color: C.text,

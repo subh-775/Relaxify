@@ -725,7 +725,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: CHIP,
   },
-  // One colour, the logo's, not the greeting's of the moment: the filter is
+  // One colour, the logo's, not the doodle's of the day: the filter is
   // part of the Library, and the Library should not change colour with Home.
   chipOn: {backgroundColor: C.brand},
   chipText: {color: C.text, fontSize: fs(14), fontWeight: '500'},

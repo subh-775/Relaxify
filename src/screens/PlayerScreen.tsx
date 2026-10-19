@@ -1116,13 +1116,14 @@ export const PlayerScreen = React.memo(function PlayerScreen({
             <View style={styles.metaCarousel}>
               <Animated.View style={[styles.meta, metaStyle]}>
                 {/* One line, as Spotify sets it, always at the same size: a
-                    long title floats rather than shrinks. No edge fades here:
-                    painted in one colour over the cover's glow they showed
-                    as boxes, so the line just clips at the box. */}
+                    long title floats rather than shrinks. Its edges fade by
+                    mask, not by colour: painted in one colour over the
+                    cover's glow, colour fades showed as boxes. */}
                 <Marquee
                   text={title}
                   style={styles.title}
                   paused={!visible}
+                  fade
                 />
                 {/* Its OWN line, at full width. The artist is the second most
                     important thing on this screen and it was sharing a row with
@@ -1138,6 +1139,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                     style={styles.artist}
                     ticker={artistCount > 1}
                     paused={!visible}
+                    fade
                   />
                 </TouchableOpacity>
                 {/* Third line. Both badges render nothing when their setting is
@@ -1212,13 +1214,20 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               {/* Under the actions, right-aligned, and absent entirely when
                   nothing is connected. Headphones rather than the Bluetooth
                   rune: what the line answers is "where is the sound going",
-                  not "by which radio". */}
+                  not "by which radio".
+
+                  It takes this column's height but not its width: the name
+                  hangs out to the left, onto the badges' line, so the title
+                  and artist above it run all the way to the buttons instead
+                  of stopping where a long device name began. */}
               {!!output && (
-                <View style={styles.output}>
-                  <Headphones size={13.5} color={C.accent} />
-                  <Text style={styles.outputText} numberOfLines={1}>
-                    {output}
-                  </Text>
+                <View style={styles.outputLine}>
+                  <View style={styles.output} pointerEvents="none">
+                    <Headphones size={13.5} color={C.accent} />
+                    <Text style={styles.outputText} numberOfLines={1}>
+                      {output}
+                    </Text>
+                  </View>
                 </View>
               )}
             </View>
@@ -2003,13 +2012,21 @@ const styles = StyleSheet.create({
   actionBtn: {padding: 9},
   actionWaiting: {opacity: 0.45},
 
-  // Capped, because this column shares the row with the title: an unbounded
-  // device name would take the width the song name needs.
+  // The output's line: as tall as the name, as wide as the buttons above it.
+  outputLine: {alignSelf: 'stretch', height: 17},
+  // Capped, because it shares its line with the badges: an unbounded device
+  // name would run into them. A fixed box, right-aligned, because an absolute
+  // view would otherwise be measured against the narrow column it hangs from.
   output: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    width: 160,
+    height: 17,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 4,
-    maxWidth: 160,
   },
   outputText: {
     color: C.accent,
