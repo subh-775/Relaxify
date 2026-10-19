@@ -42,7 +42,7 @@ import {logEvent} from '../analytics';
 import {useArtistPhotos} from '../artistPhotos';
 import {PALS} from '../brandArt';
 import {LogoMark} from '../components/Logo';
-import {Share2} from '../icons';
+import {Share as ShareGlyph} from '../glyphs';
 import {inviteMessage} from '../links';
 import {buildRecap, type RecapMode} from '../recap';
 import {buildCards} from './recap/cards';
@@ -344,7 +344,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
                 onPress={share}
                 style={[styles.share, {backgroundColor: pal.ink}]}
                 hitSlop={8}>
-                <Share2 size={16} color={pal.bg} strokeWidth={2.4} />
+                <ShareGlyph size={16} color={pal.bg} />
               </TouchableOpacity>
             )}
             {(['week', 'all'] as const).map(m => {

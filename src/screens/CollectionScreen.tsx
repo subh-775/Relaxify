@@ -33,13 +33,20 @@ import {
   Plus,
   RefreshCw,
   Search as SearchIcon,
-  Share2,
   Square,
   SquareX,
   X,
   ArrowUpDown,
 } from '../icons';
-import {MoreVertical, Pause, Pen, Play, Shuffle, Trash} from '../glyphs';
+import {
+  MoreVertical,
+  Pause,
+  Pen,
+  Play,
+  Share as ShareGlyph,
+  Shuffle,
+  Trash,
+} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
@@ -636,7 +643,7 @@ export function CollectionScreen({
                 {sharing ? (
                   <ActivityIndicator size="small" color={C.text} />
                 ) : (
-                  <Share2 size={21} color={C.text} />
+                  <ShareGlyph size={21} color={C.text} />
                 )}
               </TouchableOpacity>
             )}
