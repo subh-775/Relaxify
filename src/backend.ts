@@ -468,11 +468,11 @@ export async function getRadio(
 }
 
 /** Home's Discover: songs similar to these [title, artist] seeds, in a new
- *  order each call. More than the grid shows: the caller drops what the
- *  listener has already heard. */
+ *  order each call. Well over the grid's nine: the caller drops what the
+ *  listener has already heard, and radio picks are often songs they know. */
 export async function getDiscover(
   seeds: [string, string][],
-  limit = 16,
+  limit = 24,
 ): Promise<Track[]> {
   const data = await apiGet<{tracks?: Track[]}>(
     `/discover?seeds=${encodeURIComponent(JSON.stringify(seeds))}&limit=${limit}`,

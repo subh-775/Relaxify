@@ -3,14 +3,14 @@
  * listener, new every time the app is opened.
  *
  * Six or seven are songs they have not played, similar to a few of their own
- * (Last.fm, through /api/discover, the same source as Autoplay), and two or
- * three are their own most-played, so the new ones arrive in good company.
- * All shuffled together.
+ * (through /api/discover: JioSaavn's station and YouTube Music's mix for each,
+ * the recommenders Autoplay's radio uses), and two or three are their own
+ * most-played, so the new ones arrive in good company. All shuffled together.
  *
  * ## New on every open, without changing under the finger
  *
- * A set takes a few seconds to build (Last.fm, then a JioSaavn search per
- * song). Built at open and swapped in when ready, the grid would change under
+ * A set takes a few seconds to build (a station and a mix per seed, the mix
+ * matched back to JioSaavn song by song). Built at open and swapped in when ready, the grid would change under
  * a thumb already on its way to a tile. So each open SHOWS the set the last
  * one built, and builds the next in the background. The first open of all has
  * nothing put by: it builds into the grid directly, and once more for the

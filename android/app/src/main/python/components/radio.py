@@ -445,24 +445,9 @@ def resolve_radio(title, artist, limit=12, shuffle=True):
     return picked
 
 
-def resolve_discover(seeds, limit=16):
-    """Home's Discover: songs similar to a few of the listener's own, in a new
-    order every time.
-
-    `seeds` is a short list of (title, artist), chosen on the phone from what
-    they play most, played last and liked. Each seed's similar songs are
-    gathered in parallel and dealt out in turn (seed 1's best, seed 2's best,
-    ...) so no one seed fills the grid, then shuffled front-weighted and
-    resolved on JioSaavn alone: Discover is shown at once on Home, and the
-    slower sources would hold every tile up for the few names it misses.
-
-    The phone filters out what the listener has already heard, so this
-    over-fetches; `limit` is what it asks for, not what it shows.
-    """
-    seeds = [(t, a) for t, a in (seeds or []) if t][:3]
-    if not seeds:
-        return []
-
+def _lastfm_discover(seeds, limit):
+    """Discover's old source: Last.fm's similar songs per seed, resolved on
+    JioSaavn. Now only the fallback, for when both radios come back short."""
     with ThreadPoolExecutor(max_workers=3) as ex:
         pools = list(ex.map(lambda sa: lastfm_similar(sa[0], sa[1], 12), seeds))
 
@@ -481,7 +466,47 @@ def resolve_discover(seeds, limit=16):
 
     pairs = _weighted_shuffle(pairs, falloff=0.06)[: limit + 6]
     with ThreadPoolExecutor(max_workers=8) as ex:
-        raw = [r for r in ex.map(_resolve, pairs) if r]
+        return [r for r in ex.map(_resolve, pairs) if r]
+
+
+def resolve_discover(seeds, limit=16):
+    """Home's Discover: songs similar to a few of the listener's own, in a new
+    order every time.
+
+    `seeds` is a short list of (title, artist), chosen on the phone from what
+    they play most, played last and liked. Each seed gets the radio's own two
+    recommenders, JioSaavn's station and YouTube Music's mix, all asked at
+    once and dealt out in turn (seed 1's station, seed 2's, ..., then the
+    mixes) so no one seed or source fills the grid.
+
+    It used to be Last.fm's similar songs alone, which by October 2026 answer
+    nothing for most seeds (see the top of this file): Discover came back
+    nearly empty, and the phone filled the grid with the listener's own
+    most-played, so it showed mostly songs they already knew. Last.fm stays as
+    the fallback when both radios are short.
+
+    The phone filters out what the listener has already heard, so this
+    over-fetches; `limit` is what it asks for, not what it shows.
+    """
+    seeds = [(t, a) for t, a in (seeds or []) if t][:3]
+    if not seeds:
+        return []
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        stations = [ex.submit(jiosaavn_station, t, a, 10) for t, a in seeds]
+        mixes = [ex.submit(youtube_radio, t, a, 8) for t, a in seeds]
+        raw = _deal(*[f.result() for f in stations + mixes])
+
+    seen = {(t.lower().strip(), _primary_artist(a).lower()) for t, a in seeds}
+    picks = []
+    for r in raw:
+        key = ((r.get("title") or "").lower().strip(), _primary_artist(r.get("artist", "")).lower())
+        if key not in seen:
+            seen.add(key)
+            picks.append(r)
+    raw = _weighted_shuffle(picks, falloff=0.06)
+    if len(raw) < limit // 2:
+        raw += _lastfm_discover(seeds, limit)
     if not raw:
         return []
 
