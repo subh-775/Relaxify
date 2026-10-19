@@ -1,3 +1,102 @@
+diff --git a/node_modules/react-native-draggable-flatlist/src/components/CellRendererComponent.tsx b/node_modules/react-native-draggable-flatlist/src/components/CellRendererComponent.tsx
+index e4e861a..2781106 100644
+--- a/node_modules/react-native-draggable-flatlist/src/components/CellRendererComponent.tsx
++++ b/node_modules/react-native-draggable-flatlist/src/components/CellRendererComponent.tsx
+@@ -1,4 +1,4 @@
+-import React, { useEffect, useMemo, useRef } from "react";
++import React, { useCallback, useEffect, useMemo } from "react";
+ import {
+   findNodeHandle,
+   LayoutChangeEvent,
+@@ -7,8 +7,12 @@ import {
+   ViewStyle,
+ } from "react-native";
+ import Animated, {
++  measure,
++  runOnJS,
+   runOnUI,
++  useAnimatedRef,
+   useAnimatedStyle,
++  useFrameCallback,
+   useSharedValue,
+ } from "react-native-reanimated";
+ import { useDraggableFlatListContext } from "../context/draggableFlatListContext";
+@@ -31,10 +35,14 @@ type Props<T> = {
+ function CellRendererComponent<T>(props: Props<T>) {
+   const { item, index, onLayout, children, ...rest } = props;
+ 
+-  const viewRef = useRef<Animated.View>(null);
++  const viewRef = useAnimatedRef<Animated.View>();
+   const { cellDataRef, propsRef, containerRef } = useRefs<T>();
+ 
+-  const { horizontalAnim, scrollOffset } = useAnimatedValues();
++  const {
++    horizontalAnim,
++    scrollOffset,
++    isTouchActiveNative,
++  } = useAnimatedValues();
+   const {
+     activeKey,
+     keyExtractor,
+@@ -98,6 +106,58 @@ function CellRendererComponent<T>(props: Props<T>) {
+     }
+   });
+ 
++  // The hold above, released on the UI thread in the frame the new order is
++  // laid out.
++  //
++  // Upstream released it only from onLayout, which reaches JS and comes back:
++  // the native layout lands first, and every frame until that round trip
++  // completes, a moved row shows its new position PLUS the held offset, one
++  // row too far. A drop also starts the engine reorder, so JS is busy and that
++  // gap ran to hundreds of ms: the rows that had moved shuffled about like
++  // noise, then snapped into place.
++  //
++  // Here the row's own layout top is read on the UI thread (measure's y is
++  // the view's top, transforms excluded): once at the lift, then every frame
++  // after the finger is up. It does not change while a drag is on; when it
++  // does, the reordered list has just been laid out, and the offset drops in
++  // that same frame: React's layout batch runs ahead of Reanimated's frame in
++  // every vsync, before anything is drawn.
++  const restTop = useSharedValue(-1);
++  const stopSettle = useStableCallback(() => settle.setActive(false));
++  const settleFrame = useCallback(() => {
++    "worklet";
++    if (restTop.value >= 0 && isTouchActiveNative.value) return;
++    const m = measure(viewRef);
++    if (!m) return;
++    if (restTop.value < 0) {
++      restTop.value = m.y;
++    } else if (m.y !== restTop.value) {
++      restTop.value = -1;
++      heldTanslate.value = 0;
++      runOnJS(stopSettle)();
++    }
++  }, []);
++  const settle = useFrameCallback(settleFrame, false);
++
++  useEffect(() => {
++    if (isWeb) return;
++    if (activeKey) {
++      restTop.value = -1;
++      settle.setActive(true);
++    } else if (Math.abs(heldTanslate.value) < 1) {
++      // Nothing to land: this row keeps its place (or only carries the last
++      // sub-pixel step of a spring that settled back to 0).
++      heldTanslate.value = 0;
++      settle.setActive(false);
++    } else {
++      // A drop whose order never reaches the list (the app declined it) has
++      // no layout to wait for. Stop watching rather than measure every frame
++      // until the next drag; onLayout stays the backstop, as upstream.
++      const t = setTimeout(stopSettle, 2000);
++      return () => clearTimeout(t);
++    }
++  }, [activeKey]);
++
+   const onCellLayout = useStableCallback((e?: LayoutChangeEvent) => {
+     heldTanslate.value = 0;
+     updateCellMeasurements();
 diff --git a/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx b/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx
 index 7c88afc..2cca29c 100644
 --- a/node_modules/react-native-draggable-flatlist/src/components/DraggableFlatList.tsx
