@@ -16,6 +16,10 @@
  * is there only while the text is away from its start, so a line at rest
  * begins crisp.
  *
+ * `fade` does the same with a mask instead of a colour: the text itself turns
+ * transparent at the edges, so it works over a background that isn't one
+ * colour (the big player's cover glow, where colour fades showed as boxes).
+ *
  * A line is always set at its own size: a long one floats, it never shrinks.
  *
  * `tail` continues the same line in `tailStyle` (the mini player's
@@ -37,6 +41,7 @@ import {
   type StyleProp,
   type TextStyle,
 } from 'react-native';
+import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, {Defs, LinearGradient, Rect, Stop} from 'react-native-svg';
 
 const SPEED = 33; // px per second — slow enough to read while it moves
@@ -54,6 +59,7 @@ export function Marquee({
   tail,
   tailStyle,
   fadeColor,
+  fade = false,
 }: {
   text: string;
   style?: StyleProp<TextStyle>;
@@ -67,6 +73,8 @@ export function Marquee({
   /** The colour behind the line, which its edges fade into. No fade without
    *  it. */
   fadeColor?: string;
+  /** Fade the edges to transparent with a mask, over any background. */
+  fade?: boolean;
 }) {
   const [boxWidth, setBoxWidth] = useState(0);
   const [textWidth, setTextWidth] = useState(0);
@@ -116,14 +124,55 @@ export function Marquee({
     // text is in the deps so a track change restarts from the beginning.
   }, [scrolls, shift, text, tail, textWidth, boxWidth]);
 
+  const lane = (
+    <Animated.View style={[styles.lane, {transform: [{translateX: shift}]}]}>
+      <Text style={[style, styles.text]} numberOfLines={1} onLayout={onText}>
+        {text}
+        {!!tail && <Text style={tailStyle}>{tail}</Text>}
+      </Text>
+    </Animated.View>
+  );
+
+  if (fade) {
+    // The right edge always fades (a line too long for the box runs into it,
+    // moving or not); the left one only while the text is away from its
+    // start, by covering that fade with solid mask at rest.
+    return (
+      <MaskedView
+        style={styles.clip}
+        onLayout={onBox}
+        maskElement={
+          <View style={styles.mask}>
+            <View style={styles.maskEdge}>
+              <Ramp from="left" />
+              <Animated.View
+                style={[
+                  styles.maskSolid,
+                  StyleSheet.absoluteFill,
+                  {
+                    opacity: shift.interpolate({
+                      inputRange: [-FADE, 0],
+                      outputRange: [0, 1],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ]}
+              />
+            </View>
+            <View style={[styles.maskSolid, styles.maskMiddle]} />
+            <View style={styles.maskEdge}>
+              <Ramp from="right" />
+            </View>
+          </View>
+        }>
+        {lane}
+      </MaskedView>
+    );
+  }
+
   return (
     <View style={styles.clip} onLayout={onBox}>
-      <Animated.View style={[styles.lane, {transform: [{translateX: shift}]}]}>
-        <Text style={[style, styles.text]} numberOfLines={1} onLayout={onText}>
-          {text}
-          {!!tail && <Text style={tailStyle}>{tail}</Text>}
-        </Text>
-      </Animated.View>
+      {lane}
       {scrolls && !!fadeColor && (
         <>
           <Animated.View
@@ -171,8 +220,34 @@ function Edge({color, from}: {color: string; from: 'left' | 'right'}) {
   );
 }
 
+/** A mask edge: see-through at the box's edge, solid FADE pixels in. Only the
+ *  alpha counts in a mask, so the colour is arbitrary. */
+function Ramp({from}: {from: 'left' | 'right'}) {
+  const id = `marqueeRamp-${from}`;
+  return (
+    <Svg width="100%" height="100%">
+      <Defs>
+        <LinearGradient
+          id={id}
+          x1={from === 'left' ? '0' : '1'}
+          y1="0"
+          x2={from === 'left' ? '1' : '0'}
+          y2="0">
+          <Stop offset="0" stopColor="#000" stopOpacity="0" />
+          <Stop offset="1" stopColor="#000" stopOpacity="1" />
+        </LinearGradient>
+      </Defs>
+      <Rect width="100%" height="100%" fill={`url(#${id})`} />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
   clip: {overflow: 'hidden'},
+  mask: {flex: 1, flexDirection: 'row'},
+  maskEdge: {width: FADE},
+  maskMiddle: {flex: 1},
+  maskSolid: {backgroundColor: '#000'},
   lane: {flexDirection: 'row', width: LANE},
   // Width must be intrinsic for onLayout to report the real text width; a
   // flexed Text would just report the box and never scroll.
