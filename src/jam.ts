@@ -66,8 +66,17 @@ export const JAM_DB =
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_LEN = 6;
-/** A slow backup: changes arrive through the live stream (listen). */
+/** The tick that sends this phone's heartbeat, and fetches the Jam itself
+ *  only when the live stream (listen) has gone quiet or REFRESH_MS passed. */
 const POLL_MS = 5000;
+/** Silence on the stream for this long means it died without saying so: the
+ *  database sends a keep-alive every 30 s. */
+const STREAM_QUIET_MS = 40_000;
+/** Even with the stream alive, refetch this often, so a phone that left
+ *  (its heartbeat, below, stopped) drops off everyone's list. */
+const REFRESH_MS = 30_000;
+/** A member's heartbeat: the only write each phone makes every 10 s. */
+const HEARTBEAT_PATH = /^\/members\/[^/]+\/seen$/;
 /** How often each phone checks itself against the Jam's timeline. */
 const ALIGN_MS = 2000;
 /** Closer than this counts as together: about a video frame. */
@@ -141,6 +150,8 @@ let appliedSeq = -1;
 let echoUntil = 0;
 let poll: ReturnType<typeof setInterval> | null = null;
 let lastBeat = 0;
+let lastStream = 0;
+let lastSync = 0;
 let unsubs: (() => void)[] = [];
 let stream: XMLHttpRequest | null = null;
 
@@ -155,11 +166,19 @@ function listen(code: string): void {
   stream = xhr;
   let seen = 0;
   xhr.onprogress = () => {
+    lastStream = Date.now();
     const text = xhr.responseText || '';
     const chunk = text.slice(seen);
     seen = text.length;
+    // Every phone's heartbeat is an event to every other phone; refetching
+    // the whole Jam for each one was most of a Jam's traffic, for a change
+    // nobody needs at once (who is here refreshes every REFRESH_MS). Any
+    // other change, or an event whose path can't be read, fetches it.
     if (/event: (put|patch)/.test(chunk)) {
-      sync().catch(() => {});
+      const paths = [...chunk.matchAll(/"path":"([^"]*)"/g)].map(m => m[1]);
+      if (!paths.length || paths.some(p => !HEARTBEAT_PATH.test(p))) {
+        sync().catch(() => {});
+      }
     }
     if (text.length > 512 * 1024) {
       xhr.abort();
@@ -521,6 +540,7 @@ async function sync(): Promise<void> {
   if (!v) {
     return;
   }
+  lastSync = Date.now();
   let rec: Record_ | null;
   try {
     rec = await call<Record_ | null>(`jams/${v.code}`);
@@ -551,9 +571,24 @@ async function sync(): Promise<void> {
     appliedSeq = rec.now.seq;
     follow(rec.now).catch(() => {});
   }
-  if (t - lastBeat > 10_000) {
+  beat();
+}
+
+/** The heartbeat, and a clock sample, every 10 s. */
+function beat(): void {
+  const t = serverNow();
+  if (view && t - lastBeat > 10_000) {
     lastBeat = t;
-    sampleClock(v.code).catch(() => {}); // the heartbeat, and a clock sample
+    sampleClock(view.code).catch(() => {});
+  }
+}
+
+function tick(): void {
+  const now = Date.now();
+  if (now - lastStream > STREAM_QUIET_MS || now - lastSync > REFRESH_MS) {
+    sync().catch(() => {});
+  } else {
+    beat();
   }
 }
 
@@ -687,7 +722,8 @@ function begin(code: string, host: boolean): void {
   appliedSeq = -1;
   emit();
   watchLocal(code);
-  poll = setInterval(() => sync().catch(() => {}), POLL_MS);
+  lastStream = 0;
+  poll = setInterval(tick, POLL_MS);
   listen(code);
   sync().catch(() => {});
 }
