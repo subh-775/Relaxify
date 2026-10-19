@@ -1,8 +1,8 @@
 /**
  * Today's doodle: the Home header's "Relaxify", drawn a different way each day.
  *
- * The doodles are not in this repo. They are animated images on Firebase
- * Hosting, listed in MANIFEST with their colours and the festival dates, so a
+ * The doodles are not in this repo. They are animated images on Cloudflare Pages,
+ * listed in MANIFEST with their colours and the festival dates, so a
  * new doodle or a new festival reaches every phone without a release.
  *
  * Which one a day gets:
@@ -20,7 +20,7 @@ import {useSyncExternalStore} from 'react';
 import {AppState, Image} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const MANIFEST = 'https://relaxify-observability.web.app/doodles/manifest.json';
+const MANIFEST = 'https://relaxify.pages.dev/doodles/manifest.json';
 const KEY = 'mp.doodles.v1';
 const STALE_MS = 6 * 3600 * 1000;
 
