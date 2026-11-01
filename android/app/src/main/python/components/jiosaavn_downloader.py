@@ -562,12 +562,6 @@ class JioSaavnClient:
 # ==================== CONVENIENCE FUNCTIONS ====================
 
 
-def search_songs(query: str, limit: int = 10) -> List[JioSaavnSong]:
-    """Quick search function using default client."""
-    client = JioSaavnClient()
-    return client.search(query, limit)
-
-
 def download_song(
     song_url: str,
     output_dir: str = ".",
@@ -588,71 +582,3 @@ def download_song(
 
 
 # ==================== CLI ENTRY POINT ====================
-
-if __name__ == "__main__":
-    import sys
-
-    def print_progress(downloaded: int, total: int):
-        pct = (downloaded / total) * 100
-        bar_len = 40
-        filled = int(bar_len * downloaded / total)
-        bar = "█" * filled + "░" * (bar_len - filled)
-        sys.stdout.write(f"\r  [{bar}] {pct:.1f}% ({downloaded:,}/{total:,} bytes)")
-        sys.stdout.flush()
-
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print('  python jiosaavn_downloader.py search "query"')
-        print(
-            '  python jiosaavn_downloader.py download "https://www.jiosaavn.com/song/..." [output_dir]'
-        )
-        sys.exit(1)
-
-    command = sys.argv[1]
-
-    if command == "search":
-        query = sys.argv[2] if len(sys.argv) > 2 else "believer imagine dragons"
-        print(f"\nSearching for: {query}")
-        songs = search_songs(query)
-
-        if not songs:
-            print("No results found.")
-        else:
-            print(f"\nFound {len(songs)} results:\n")
-            for i, song in enumerate(songs, 1):
-                print(f"  {i}. {song.title} - {song.artist}")
-                print(f"     Album: {song.album} | ID: {song.id}")
-                print(f"     URL: {song.url}")
-                print()
-
-    elif command == "download":
-        if len(sys.argv) < 3:
-            print("Error: Song URL required")
-            sys.exit(1)
-
-        song_url = sys.argv[2]
-        output_dir = sys.argv[3] if len(sys.argv) > 3 else "."
-
-        print(f"\nDownloading: {song_url}")
-        print(f"Output directory: {output_dir}")
-
-        result = download_song(song_url, output_dir, progress_callback=print_progress)
-
-        print()  # Newline after progress bar
-
-        if result.success:
-            print("✓ Success!")
-            print(f"  File: {result.file_path}")
-            print(
-                f"  Size: {result.file_size:,} bytes ({result.file_size / 1024 / 1024:.2f} MB)"
-            )
-            if result.bitrate:
-                print(f"  Bitrate: {result.bitrate // 1000} kbps")
-            if result.codec:
-                print(f"  Codec: {result.codec}")
-        else:
-            print(f"✗ Failed: {result.error}")
-
-    else:
-        print(f"Unknown command: {command}")
-        sys.exit(1)

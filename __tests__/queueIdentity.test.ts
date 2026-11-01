@@ -14,7 +14,8 @@
  */
 import {expect, jest, test} from '@jest/globals';
 import TrackPlayer from 'react-native-track-player';
-import {addToQueue, playTrack, rowIndex, topUpFromRadio} from '../src/player';
+import {addToQueue, playTrack, topUpFromRadio} from '../src/player';
+import {rowIndex} from '../src/queueOrder';
 
 jest.mock('react-native-track-player', () => {
   const queue: any[] = [];
@@ -118,7 +119,6 @@ jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
 jest.mock('../src/toast', () => ({toast: () => undefined}));
 jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));
 jest.mock('../src/resume', () => ({
-  clearResume: () => undefined,
   readResume: async () => null,
   saveResume: () => undefined,
 }));
@@ -194,4 +194,15 @@ test('a SoundCloud song is queued as HLS, any other as a plain stream', async ()
   const saavn = engine.__queue.find(t => t.title === 'Saavn');
   expect(cloud.type).toBe('hls');
   expect(saavn.type).toBeUndefined();
+});
+
+test('a song with no cover still queues: the engine refuses an empty artwork', async () => {
+  await playTrack({
+    title: 'No Cover',
+    artist: 'Nobody',
+    primary_source: 'jiosaavn',
+    sources: {jiosaavn: {url: 'https://cdn/nocover.mp3'}},
+  } as any);
+  const queue = (TrackPlayer as any).__queue;
+  expect(queue[queue.length - 1].artwork).toBeUndefined();
 });

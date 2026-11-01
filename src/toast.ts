@@ -10,12 +10,13 @@
  * so the transport is a module-level store instead. Same behaviour.
  */
 import {useSyncExternalStore} from 'react';
+import {createEmitter} from './emitter';
 
 /** 'info' is the everyday confirmation; 'warn' is a notice about the app
  *  itself ("press back again to exit"), never washed in a song's colour. */
 export type ToastKind = 'info' | 'warn';
 /** One button on the toast, for a toast that asks something (Replace?). */
-export type ToastAction = {label: string; onPress: () => void};
+type ToastAction = {label: string; onPress: () => void};
 type Extra = {
   /** A song's cover: the toast shows it and takes its colour. */
   art?: string | null;
@@ -31,11 +32,11 @@ const GAP_MS = 180;
 let current: ToastItem | null = null;
 let nextId = 0;
 const queue: Array<{message: string; kind: ToastKind} & Extra> = [];
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function emit() {
-  listeners.forEach(l => l());
+  changes.emit();
 }
 
 function pump() {
@@ -82,10 +83,7 @@ export function toast(message: string, kind: ToastKind = 'info', extra: Extra = 
 
 export function useToast(): ToastItem | null {
   return useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => current,
   );
 }

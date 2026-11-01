@@ -1,6 +1,5 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
-  BackHandler,
   Linking,
   NativeModules,
   Platform,
@@ -12,10 +11,8 @@ import {
 } from 'react-native';
 import {
   Check,
-  ChevronLeft,
   ChevronRight,
   CirclePlay,
-  ExternalLink,
   Info,
   Layers,
   Monitor,
@@ -25,18 +22,7 @@ import {PageBar} from '../components/PageBar';
 import {SleepSheet} from '../components/SleepSheet';
 import {formatSize} from '../updateNotes';
 import {logEvent} from '../analytics';
-import {Gesture, GestureDetector} from 'react-native-gesture-handler';
-// Aliased: this file already has react-native's own Animated, for the refresh
-// glyph's rotation loop. Two different `Animated`s in one file is a bug waiting
-// to be written.
-import ReAnimated, {
-  runOnJS,
-  useAnimatedReaction,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-import {C, S, T, fs} from '../theme';
+import {C, S, T} from '../theme';
 import {
   appVersion,
   clearBackendCache,
@@ -57,14 +43,13 @@ import {
   writeSetting,
 } from '../store';
 import {createStore, storedBytes, useStoreValue} from '../storage';
-import {StorageBreakdown} from '../components/StorageBreakdown';
+import {formatStorage, StorageBreakdown} from '../components/StorageBreakdown';
 import {forgetDownloads} from '../downloads';
 import {DOCS_URL, LICENCE_URL, reportUrl} from '../links';
 import {LICENCES} from '../licences';
 import {CREDITS, PRIVACY, TERMS} from '../legal';
 import {LegalView} from '../components/LegalView';
 import {clearSearchHistory} from '../searchHistory';
-import {Toggle} from '../components/Toggle';
 import {Sheet} from '../components/Sheet';
 import {languagesLabel} from '../languages';
 import {LanguagesScreen} from './LanguagesScreen';
@@ -78,14 +63,20 @@ import {enforceCacheLimit} from '../cacheLimit';
 import {startUpdateInstall, useUpdate} from '../update';
 import {sleepLabel, useSleepTimer} from '../sleepTimer';
 import {BOTTOM_INSET} from '../layout';
-
-function formatBytes(n: number): string {
-  if (n < 1024) {
-    return `${n} B`;
-  }
-  const mb = n / (1024 * 1024);
-  return mb < 1 ? `${Math.round(n / 1024)} KB` : `${mb.toFixed(1)} MB`;
-}
+import {useBackPress} from '../useBackPress';
+import {
+  ActionRow,
+  CategoryRow,
+  CROSSFADE_MAX,
+  NavRow,
+  Pill,
+  Row,
+  Section,
+  SizeStepper,
+  StepSlider,
+  ToggleRow,
+  rowStyles,
+} from './settings/controls';
 
 /**
  * What the last visit to this screen learned from the backend.
@@ -183,380 +174,6 @@ const QUALITIES = [
   {value: 320, label: 'Very High', hint: '320 kbps — best quality'},
 ];
 
-/**
- * A settings group: a white heading over its rows, Spotify's way.
- *
- * No card, no hairlines. Ruled rows made the screen one long ribbon of lines;
- * a bold heading and the space around each group give it its start and end
- * instead, and the rows read as plain text.
- */
-function Section({
-  title,
-  Icon,
-  footer,
-  children,
-}: {
-  title: string;
-  Icon?: RowIcon;
-  /** One line under the card, for the explanation that would otherwise be
-   *  crammed into a row's `hint`. */
-  footer?: string;
-  children: React.ReactNode;
-}) {
-  const items = React.Children.toArray(children);
-  return (
-    <View style={styles.section}>
-      <View style={styles.sectionHead}>
-        {!!Icon && <Icon size={13} color={C.faint} strokeWidth={2.6} />}
-        <Text style={styles.sectionTitle}>{title}</Text>
-      </View>
-      <View style={styles.card}>
-        {items.map((child, i) => (
-          // child.key, not the index. These children are conditional (the
-          // update row's states, the sources list), and an index key makes
-          // React reuse the wrong instance when one appears or disappears —
-          // component state leaks across rows. React.Children.toArray already
-          // assigns stable keys; use them.
-          <React.Fragment key={(child as {key?: string}).key ?? i}>
-            {child}
-          </React.Fragment>
-        ))}
-      </View>
-      {!!footer && <Text style={styles.sectionFooter}>{footer}</Text>}
-    </View>
-  );
-}
-
-type RowIcon = React.ComponentType<{
-  size?: number;
-  color?: string;
-  strokeWidth?: number;
-}>;
-
-/** A row's leading icon, the same size and colour everywhere. */
-function Lead({Icon}: {Icon?: RowIcon}) {
-  return Icon ? <Icon size={19} color={C.sub} strokeWidth={2} /> : null;
-}
-
-function Row({
-  label,
-  value,
-  hint,
-  onPress,
-  Icon,
-  external,
-}: {
-  label: string;
-  value?: string;
-  hint?: string;
-  onPress?: () => void;
-  Icon?: RowIcon;
-  /** Leaves the app (a web page, the file manager): marked as such. */
-  external?: boolean;
-}) {
-  const Wrap: React.ElementType = onPress ? TouchableOpacity : View;
-  return (
-    <Wrap style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <Lead Icon={Icon} />
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
-      </View>
-      {!!value && (
-        <Text style={styles.rowValue} numberOfLines={1}>
-          {value}
-        </Text>
-      )}
-      {/* A row that DOES something has to look different from one that just
-          reports a number. Without this, "Streaming quality — Very High" was
-          indistinguishable from a read-only line, so nobody knew it opened. */}
-      {!!onPress &&
-        (external ? (
-          <ExternalLink size={17} color={C.faint} />
-        ) : (
-          <ChevronRight size={17} color={C.faint} />
-        ))}
-    </Wrap>
-  );
-}
-
-function ToggleRow({
-  label,
-  hint,
-  value,
-  onChange,
-  disabled,
-  Icon,
-}: {
-  label: string;
-  hint?: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-  Icon?: RowIcon;
-}) {
-  return (
-    <View style={styles.row}>
-      <Lead Icon={Icon} />
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {!!hint && <Text style={styles.rowHint}>{hint}</Text>}
-      </View>
-      <Toggle value={value} onChange={onChange} disabled={disabled} />
-    </View>
-  );
-}
-
-const CROSSFADE_MAX = 12;
-
-/** Position along the track (0..1) for a touch at `x` on a track `w` wide. */
-function fracAt(x: number, w: number): number {
-  'worklet';
-  return Math.max(0, Math.min(1, x / (w || 1)));
-}
-
-/** The nearest step for a track position: the value only ever lands on one. */
-function stepAt(f: number, max: number, step: number): number {
-  'worklet';
-  return Math.round((f * max) / step) * step;
-}
-
-/**
- * A horizontal bar you drag from Off up to `max` in whole steps: crossfade
- * (0–12s) and the cache limit (Off, 10–100 MB). 0 always reads as Off.
- *
- * It was a ‹‹ 9s ›› stepper because an earlier draggable bar was fiddly to land
- * on an exact second. That bar was fiddly for a reason this one does not share:
- * it ran on the JS thread, so the fill trailed the finger, and it reported a
- * continuous value the label then rounded — you could not see which second you
- * were on until you let go. Here the fill is a shared value written straight
- * from the worklet, the readout is derived from the position and crosses to JS
- * only when the WHOLE second changes, and the release snaps the fill to the
- * second it committed. Same machinery as the equalizer bands.
- *
- * The gesture is horizontal-only on purpose. Android's vertical ScrollView
- * intercepts on vertical travel past the touch slop and ignores horizontal
- * travel entirely, so activeOffsetX + failOffsetY is enough here — unlike the
- * equalizer, where the band drags along the SAME axis as its scroller and needs
- * blocksExternalGesture to stop the touch being taken.
- */
-function StepSlider({
-  label,
-  hint,
-  value,
-  max,
-  step,
-  format,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: number;
-  max: number;
-  step: number;
-  /** The readout for a value above 0; 0 always reads as Off. */
-  format: (v: number) => string;
-  onChange: (v: number) => void;
-}) {
-  const secsAt = useCallback(
-    (f: number) => {
-      'worklet';
-      return stepAt(f, max, step);
-    },
-    [max, step],
-  );
-  const t = useSharedValue(value / max);
-  /** The track's real measured width, so the worklet never has to ask JS. */
-  const w = useSharedValue(1);
-  /** 0 at rest, 1 while held — the thumb grows under the finger. */
-  const grow = useSharedValue(0);
-  const [shown, setShown] = useState(Math.round(value));
-  const dragging = useRef(false);
-  const changeRef = useRef(onChange);
-  changeRef.current = onChange;
-
-  // Follow the setting when it changes from OUTSIDE a drag (a reset, mostly).
-  useEffect(() => {
-    if (!dragging.current) {
-      t.value = value / max;
-    }
-  }, [value, t, max]);
-
-  // The readout, derived from the position rather than pushed by the gesture,
-  // so it is right whoever moved the bar — and it reaches JS about twelve times
-  // across a full drag instead of sixty times a second.
-  useAnimatedReaction(
-    () => secsAt(t.value),
-    (secs, prev) => {
-      if (secs !== prev) {
-        runOnJS(setShown)(secs);
-      }
-    },
-  );
-
-  const setDragging = useCallback((on: boolean) => {
-    dragging.current = on;
-  }, []);
-  const commit = useCallback((secs: number) => changeRef.current(secs), []);
-
-  const gesture = useMemo(() => {
-    const scrub = Gesture.Pan()
-      .activeOffsetX([-4, 4])
-      .failOffsetY([-14, 14])
-      .onBegin(() => {
-        runOnJS(setDragging)(true);
-      })
-      .onStart(e => {
-        grow.value = withTiming(1, {duration: 120});
-        t.value = fracAt(e.x, w.value);
-      })
-      .onUpdate(e => {
-        t.value = fracAt(e.x, w.value);
-      })
-      .onEnd(() => {
-        // Snap the FILL to the second being committed, so what is on screen and
-        // what was stored are the same thing.
-        const secs = secsAt(t.value);
-        t.value = withTiming(secs / max, {duration: 90});
-        runOnJS(commit)(secs);
-      })
-      .onFinalize(() => {
-        grow.value = withTiming(0, {duration: 180});
-        runOnJS(setDragging)(false);
-      });
-
-    // Tap to jump. A Pan cannot serve this without activating on touch-down,
-    // and activating on touch-down would take every touch that was meant for
-    // the page scroll.
-    const jump = Gesture.Tap()
-      .maxDuration(400)
-      .onEnd((e, success) => {
-        if (!success) {
-          return;
-        }
-        const secs = secsAt(fracAt(e.x, w.value));
-        t.value = withTiming(secs / max, {duration: 120});
-        runOnJS(commit)(secs);
-      });
-
-    return Gesture.Race(scrub, jump);
-  }, [grow, t, w, setDragging, commit, secsAt, max]);
-
-  const fillStyle = useAnimatedStyle(() => ({width: `${t.value * 100}%`}));
-  const thumbStyle = useAnimatedStyle(() => ({
-    left: `${t.value * 100}%`,
-    transform: [{scale: 1 + grow.value * 0.3}],
-  }));
-
-  return (
-    <View style={styles.slider}>
-      <View style={styles.sliderHead}>
-        <View style={styles.rowText}>
-          <Text style={styles.rowLabel}>{label}</Text>
-          <Text style={styles.rowHint}>{hint}</Text>
-        </View>
-        <Text style={[styles.sliderValue, shown === 0 && styles.sliderOff]}>
-          {shown > 0 ? format(shown) : 'Off'}
-        </Text>
-      </View>
-
-      {/* ~28px visual, 44px touch (Fitts') — a 4px bar is unhittable. */}
-      <GestureDetector gesture={gesture}>
-        <View
-          style={styles.sliderTouch}
-          onLayout={e => {
-            w.value = e.nativeEvent.layout.width;
-          }}>
-          <View style={styles.sliderTrack}>
-            <ReAnimated.View style={[styles.sliderFill, fillStyle]} />
-          </View>
-          <ReAnimated.View
-            style={[styles.sliderThumb, thumbStyle]}
-            pointerEvents="none"
-          />
-        </View>
-      </GestureDetector>
-
-      <View style={styles.sliderEnds}>
-        <Text style={styles.sliderEnd}>Off</Text>
-        <Text style={styles.sliderEnd}>{format(max)}</Text>
-      </View>
-    </View>
-  );
-}
-
-/**
- * A size picked from a short list, with arrows either side of it, on the
- * row's own line: for the cache limit, where only a few sizes make sense and
- * a slider made you hunt for them.
- */
-function SizeStepper({
-  label,
-  hint,
-  value,
-  steps,
-  onChange,
-}: {
-  label: string;
-  hint: string;
-  value: number;
-  /** In MB, ascending; 0 reads as Off. */
-  steps: number[];
-  onChange: (v: number) => void;
-}) {
-  const at = Math.max(0, steps.indexOf(value));
-  const go = (i: number) => onChange(steps[i]);
-  const arrow = (i: number, Icon: typeof ChevronLeft, name: string) => (
-    <TouchableOpacity
-      onPress={() => go(i)}
-      disabled={i < 0 || i >= steps.length}
-      hitSlop={8}
-      style={[styles.stepBtn, (i < 0 || i >= steps.length) && styles.stepOff]}
-      accessibilityRole="button"
-      accessibilityLabel={name}>
-      <Icon size={20} color={C.text} />
-    </TouchableOpacity>
-  );
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowHint}>{hint}</Text>
-      </View>
-      {arrow(at - 1, ChevronLeft, 'Smaller')}
-      <Text style={[styles.sizeValue, !value && styles.sliderOff]}>
-        {value ? `${value} MB` : 'Off'}
-      </Text>
-      {arrow(at + 1, ChevronRight, 'Bigger')}
-    </View>
-  );
-}
-
-function NavRow({
-  label,
-  value,
-  onPress,
-  Icon,
-}: {
-  label: string;
-  value?: string;
-  onPress: () => void;
-  Icon?: RowIcon;
-}) {
-  return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <Lead Icon={Icon} />
-      <Text style={[styles.rowLabel, styles.rowText]}>{label}</Text>
-      {!!value && (
-        <Text style={styles.rowValue} numberOfLines={1}>
-          {value}
-        </Text>
-      )}
-      <ChevronRight size={18} color={C.faint} />
-    </TouchableOpacity>
-  );
-}
-
 type Panel =
   | 'playback'
   | 'data'
@@ -584,88 +201,6 @@ const TITLES: Partial<Record<Panel, string>> = {
   storage: 'Storage',
   about: 'About and support',
 };
-
-/** One of the main list's categories: its icon, its name, what is inside. */
-function CategoryRow({
-  Icon,
-  label,
-  hint,
-  onPress,
-}: {
-  Icon: typeof Info;
-  label: string;
-  hint: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity
-      style={styles.category}
-      onPress={onPress}
-      activeOpacity={0.7}>
-      <Icon size={23} color={C.text} strokeWidth={1.8} />
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowHint}>{hint}</Text>
-      </View>
-      <ChevronRight size={18} color={C.faint} />
-    </TouchableOpacity>
-  );
-}
-
-/** A rounded button, outlined white as Spotify's settings have them; filled
- *  in the accent for the one thing to do now (Install). */
-function Pill({
-  label,
-  onPress,
-  disabled,
-  filled,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  filled?: boolean;
-}) {
-  return (
-    <TouchableOpacity
-      style={[
-        styles.pill,
-        filled && styles.pillFilled,
-        disabled && styles.pillOff,
-      ]}
-      onPress={onPress}
-      disabled={disabled}
-      activeOpacity={0.7}
-      accessibilityRole="button">
-      <Text style={styles.pillText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-/** A thing to do, said beside its button (Remove all downloads, Clear
- *  cache), one line as Spotify has it: no red, the confirmation asks first. */
-function ActionRow({
-  label,
-  hint,
-  action,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  hint: string;
-  action: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowHint}>{hint}</Text>
-      </View>
-      <Pill label={action} onPress={onPress} disabled={disabled} />
-    </View>
-  );
-}
 
 export function SettingsScreen({
   onClose,
@@ -704,17 +239,7 @@ export function SettingsScreen({
   // page, NOT the app-level handler, which would close Settings entirely.
   // Registered after the app's handler, so it runs first; on the main list it
   // declines and the app's handler closes Settings as before.
-  useEffect(() => {
-    const onBack = () => {
-      if (panel) {
-        back();
-        return true;
-      }
-      return false;
-    };
-    const sub = BackHandler.addEventListener('hardwareBackPress', onBack);
-    return () => sub.remove();
-  }, [panel, back]);
+  useBackPress(back, !!panel);
 
   useEffect(() => {
     if (focus === 'update') {
@@ -809,7 +334,7 @@ export function SettingsScreen({
       });
       clearSearchHistory();
       patchRemote({cacheBytes: 0});
-      toast(freed > 0 ? `Cleared ${formatBytes(freed)}` : 'Cache cleared');
+      toast(freed > 0 ? `Cleared ${formatStorage(freed)}` : 'Cache cleared');
       // Re-read rather than assume zero — Android may hold files open.
       refreshStorage();
       getCacheSize()
@@ -953,7 +478,7 @@ export function SettingsScreen({
           value={qualityLabel}
           onPress={() => setQualityOpen(true)}
         />
-        <Text style={styles.sectionFooter}>
+        <Text style={rowStyles.sectionFooter}>
           Downloads always use the best quality a source offers, regardless of
           this setting.
         </Text>
@@ -1004,15 +529,15 @@ export function SettingsScreen({
         )}
         <Section title="Downloads">
           <TouchableOpacity
-            style={styles.row}
+            style={rowStyles.row}
             onPress={pickDownloadFolder}
             activeOpacity={0.7}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>Download location</Text>
+            <View style={rowStyles.rowText}>
+              <Text style={rowStyles.rowLabel}>Download location</Text>
               {/* Cut in the middle, so the start and the end of a long path
                   both stay visible. */}
               <Text
-                style={styles.rowHint}
+                style={rowStyles.rowHint}
                 numberOfLines={1}
                 ellipsizeMode="middle">
                 {folder ||
@@ -1039,10 +564,10 @@ export function SettingsScreen({
             label="Clear cache"
             hint={
               cacheBytes == null
-                ? 'Temporary files, lyrics and search history. Downloads are kept.'
-                : `${formatBytes(
+                ? 'Temporary files and search history. Downloads are kept.'
+                : `${formatStorage(
                     cacheBytes,
-                  )} of temporary files, lyrics and search history. Downloads are kept.`
+                  )} of temporary files and search history. Downloads are kept.`
             }
             action={clearing ? 'Clearing…' : 'Clear'}
             onPress={() => setCacheOpen(true)}
@@ -1074,10 +599,10 @@ export function SettingsScreen({
             away. Checks run on their own, at launch and on every return to
             the app; there is nothing to press to look. */}
         {updateAvailable || update.phase === 'downloading' ? (
-          <View style={styles.row}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowLabel}>Version</Text>
-              <Text style={[styles.rowHint, styles.accentHint]}>
+          <View style={rowStyles.row}>
+            <View style={rowStyles.rowText}>
+              <Text style={rowStyles.rowLabel}>Version</Text>
+              <Text style={[rowStyles.rowHint, styles.accentHint]}>
                 {update.phase === 'downloading'
                   ? `Downloading ${update.info?.version}… ${update.pct}%`
                   : update.phase === 'failed'
@@ -1201,21 +726,21 @@ export function SettingsScreen({
         {QUALITIES.map(q => (
           <TouchableOpacity
             key={q.value}
-            style={styles.row}
+            style={rowStyles.row}
             activeOpacity={0.7}
             onPress={() => {
               writeSetting('audioQuality', q.value);
               setQualityOpen(false);
             }}>
-            <View style={styles.rowText}>
+            <View style={rowStyles.rowText}>
               <Text
                 style={[
-                  styles.rowLabel,
+                  rowStyles.rowLabel,
                   settings.audioQuality === q.value && styles.choiceOn,
                 ]}>
                 {q.label}
               </Text>
-              <Text style={styles.rowHint}>{q.hint}</Text>
+              <Text style={rowStyles.rowHint}>{q.hint}</Text>
             </View>
             {settings.audioQuality === q.value && (
               <Check size={18} color={C.brand} strokeWidth={2.6} />
@@ -1228,11 +753,11 @@ export function SettingsScreen({
         <ScrollView style={styles.licences}>
           {LICENCES.map(g => (
             <View key={g.group} style={styles.licenceGroup}>
-              <Text style={styles.sectionTitle}>{g.group}</Text>
+              <Text style={rowStyles.sectionTitle}>{g.group}</Text>
               {g.items.map(([name, licence]) => (
                 <View key={name} style={styles.licenceRow}>
                   <Text style={styles.licenceName}>{name}</Text>
-                  <Text style={styles.rowValue}>{licence}</Text>
+                  <Text style={rowStyles.rowValue}>{licence}</Text>
                 </View>
               ))}
             </View>
@@ -1267,7 +792,7 @@ export function SettingsScreen({
       <ConfirmModal
         visible={cacheOpen}
         title="Clear cache?"
-        message="Frees temporary files, saved lyrics and your search history."
+        message="Frees temporary files and your search history."
         confirmLabel="Clear"
         onConfirm={doClearCache}
         onCancel={() => setCacheOpen(false)}
@@ -1285,7 +810,6 @@ const styles = StyleSheet.create({
   // flexGrow: the page is at least the screen's height, so the main page's
   // Reset (marginTop 'auto') sits at its foot rather than under the list.
   scroll: {flexGrow: 1, paddingBottom: BOTTOM_INSET},
-  section: {paddingTop: 22},
   licences: {maxHeight: 420},
   credit: {
     color: C.faint,
@@ -1297,22 +821,6 @@ const styles = StyleSheet.create({
   licenceGroup: {paddingHorizontal: S.gutter, paddingTop: 14, gap: 8},
   licenceRow: {flexDirection: 'row', alignItems: 'center', gap: 12},
   licenceName: {flex: 1, color: C.text, fontSize: 14},
-  sectionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: S.gutter,
-    marginBottom: 2,
-  },
-  // A plain white heading, as Spotify's settings have: the group is named
-  // in the same voice as the screen, not in small grey capitals.
-  sectionTitle: {
-    fontSize: fs(18),
-    lineHeight: fs(24),
-    fontWeight: '700',
-    letterSpacing: -0.2,
-    color: C.text,
-  },
   /**
    * FLAT. No fill, no radius, no card.
    *
@@ -1322,24 +830,6 @@ const styles = StyleSheet.create({
    * nothing else — which reads as MORE scannable, not less, because the eye
    * stops having to parse three container edges per section.
    */
-  // No lines at all now: the heading and the space around a group are
-  // what separate it.
-  card: {},
-  sectionFooter: {
-    ...T.sub,
-    color: C.faint,
-    paddingHorizontal: S.gutter,
-    paddingTop: 7,
-    lineHeight: 16,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // Aligned to the page gutter now that there is no card inset to sit inside.
-    paddingHorizontal: S.gutter,
-    paddingVertical: 12,
-    gap: 14,
-  },
   sheetTitle: {
     ...T.body,
     color: C.text,
@@ -1349,42 +839,8 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   choiceOn: {color: C.brand},
-  rowText: {flex: 1, minWidth: 0},
-  // 15 px, Spotify's settings size: the list's 16 read heavy here.
-  rowLabel: {...T.listTitle, color: C.text, fontSize: 15, lineHeight: 20},
-  rowHint: {...T.listSub, color: C.sub, marginTop: 2},
-  rowValue: {
-    fontSize: fs(14),
-    fontWeight: '400',
-    color: C.sub,
-    flexShrink: 1,
-    maxWidth: 190,
-    textAlign: 'right',
-  },
   resetHint: {...T.listSub, color: C.sub, textAlign: 'center', marginTop: 8},
   tail: {height: 10},
-  category: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    minHeight: 64,
-    paddingHorizontal: S.gutter,
-    paddingVertical: 10,
-  },
-  pill: {
-    minHeight: 36,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.45)',
-  },
-  pillFilled: {
-    backgroundColor: C.accent,
-    borderColor: C.accent,
-  },
-  pillOff: {opacity: 0.4},
-  pillText: {color: C.text, fontSize: 14, fontWeight: '700'},
   accentHint: {color: C.accent},
   divider: {height: 1, backgroundColor: C.border, marginVertical: 6},
   // Pinned to the foot of the page, just above the mini player; on a screen
@@ -1395,58 +851,4 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingHorizontal: S.gutter,
   },
-  slider: {paddingHorizontal: S.gutter, paddingTop: 14, paddingBottom: 6},
-  sliderHead: {flexDirection: 'row', alignItems: 'flex-start', gap: 14},
-  sliderValue: {
-    ...T.rowTitle,
-    color: C.brand,
-    fontSize: 16,
-    // Tabular, or the whole row twitches sideways every time the number goes
-    // from one digit to two while you are dragging.
-    fontVariant: ['tabular-nums'],
-    minWidth: 40,
-    textAlign: 'right',
-  },
-  sliderOff: {color: C.faint},
-  stepBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: C.surfaceHi,
-  },
-  stepOff: {opacity: 0.3},
-  sizeValue: {
-    minWidth: 58,
-    textAlign: 'center',
-    color: C.text,
-    fontSize: 16,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  sliderTouch: {justifyContent: 'center', height: 44, marginTop: 4},
-  sliderTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    overflow: 'hidden',
-  },
-  sliderFill: {height: '100%', backgroundColor: C.brand, borderRadius: 2},
-  sliderThumb: {
-    position: 'absolute',
-    // Half the thumb's width, so it sits centred on the value.
-    marginLeft: -7,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: C.brand,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 3,
-    shadowOffset: {width: 0, height: 1},
-    elevation: 3,
-  },
-  sliderEnds: {flexDirection: 'row', justifyContent: 'space-between'},
-  sliderEnd: {...T.sub, color: C.faint, fontSize: 11},
 });

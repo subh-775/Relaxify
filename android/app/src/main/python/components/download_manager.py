@@ -19,7 +19,7 @@ import threading
 import re
 from queue import Queue, Empty
 from pathlib import Path
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict, Any, Callable
 from concurrent.futures import ThreadPoolExecutor, Future
@@ -145,13 +145,6 @@ class DownloadQueueConfig:
     auto_start: bool = True
 
 
-class ProgressCallback:
-    """Type hint for progress callbacks."""
-
-    def __call__(self, task: "DownloadTask") -> None:
-        pass
-
-
 class DownloadManager:
     """
     High-level download queue manager with progress tracking and metadata embedding.
@@ -160,9 +153,6 @@ class DownloadManager:
         manager = DownloadManager()
         task_id = manager.add_download(url, output_dir, track_info)
         manager.start()
-
-        # Progress callback
-        manager.on_progress(lambda task: print(f"{task.progress:.1f}%"))
     """
 
     def __init__(
@@ -181,9 +171,6 @@ class DownloadManager:
         self._shutdown = False
 
         # Callbacks
-        self._progress_callbacks: List[Callable[[DownloadTask], None]] = []
-        self._completion_callbacks: List[Callable[[DownloadTask], None]] = []
-        self._error_callbacks: List[Callable[[DownloadTask, str], None]] = []
 
         # Metadata embedder
         self._metadata_embedder = MetadataEmbedder() if MUTAGEN_AVAILABLE else None
@@ -193,69 +180,11 @@ class DownloadManager:
         # which screen triggered it.
         self._finalizer: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None
 
-        # Optional hook: fn() -> dict of YouTubeClient cookie kwargs
-        # ({"cookies_file":..., "cookies_from_browser":...}). Read live at
-        # download time so a YouTube download uses the same connected account as
-        # streaming (bot-gated/age-restricted videos). Set by the API layer.
-        self._yt_cookie_provider: Optional[Callable[[], Dict[str, Any]]] = None
-
     def set_finalizer(self, fn: Callable[[Dict[str, Any]], Dict[str, Any]]) -> None:
         """Register the metadata finalizer used right before embedding."""
         self._finalizer = fn
 
-    def set_youtube_cookie_provider(self, fn: Callable[[], Dict[str, Any]]) -> None:
-        """Register a provider returning the current YouTube cookie kwargs."""
-        self._yt_cookie_provider = fn
-
     # ==================== CALLBACK REGISTRATION ====================
-
-    def on_progress(
-        self, callback: Callable[[DownloadTask], None]
-    ) -> Callable[[], None]:
-        """Register a progress callback. Returns unsubscribe function."""
-        with self._lock:
-            self._progress_callbacks.append(callback)
-        return lambda: self._progress_callbacks.remove(callback)
-
-    def on_complete(
-        self, callback: Callable[[DownloadTask], None]
-    ) -> Callable[[], None]:
-        """Register a completion callback. Returns unsubscribe function."""
-        with self._lock:
-            self._completion_callbacks.append(callback)
-        return lambda: self._completion_callbacks.remove(callback)
-
-    def on_error(
-        self, callback: Callable[[DownloadTask, str], None]
-    ) -> Callable[[], None]:
-        """Register an error callback. Returns unsubscribe function."""
-        with self._lock:
-            self._error_callbacks.append(callback)
-        return lambda: self._error_callbacks.remove(callback)
-
-    def _emit_progress(self, task: DownloadTask):
-        """Emit progress to all registered callbacks."""
-        for cb in self._progress_callbacks:
-            try:
-                cb(task)
-            except Exception:
-                pass
-
-    def _emit_complete(self, task: DownloadTask):
-        """Emit completion to all registered callbacks."""
-        for cb in self._completion_callbacks:
-            try:
-                cb(task)
-            except Exception:
-                pass
-
-    def _emit_error(self, task: DownloadTask, error: str):
-        """Emit error to all registered callbacks."""
-        for cb in self._error_callbacks:
-            try:
-                cb(task, error)
-            except Exception:
-                pass
 
     # ==================== QUEUE MANAGEMENT ====================
 
@@ -306,41 +235,10 @@ class DownloadManager:
 
         return task_id
 
-    def add_batch_downloads(
-        self,
-        tracks: List[Dict[str, Any]],
-        output_dir: Optional[str] = None,
-        max_bitrate: int = 256,
-    ) -> List[str]:
-        """Add multiple downloads at once."""
-        task_ids = []
-        for track_info in tracks:
-            url = track_info.get("url") or track_info.get("url")
-            if not url:
-                continue
-            task_id = self.add_download(
-                url=url,
-                track_info=track_info,
-                output_path=None,
-                max_bitrate=max_bitrate,
-            )
-            task_ids.append(task_id)
-        return task_ids
-
     def get_task(self, task_id: str) -> Optional[DownloadTask]:
         """Get task by ID."""
         with self._lock:
             return self._tasks.get(task_id)
-
-    def get_all_tasks(self) -> List[DownloadTask]:
-        """Get all tasks."""
-        with self._lock:
-            return list(self._tasks.values())
-
-    def get_tasks_by_status(self, status: DownloadStatus) -> List[DownloadTask]:
-        """Get all tasks with a specific status."""
-        with self._lock:
-            return [t for t in self._tasks.values() if t.status == status]
 
     # ==================== QUEUE CONTROL ====================
 
@@ -361,14 +259,6 @@ class DownloadManager:
         )
         self._processor_thread.start()
 
-    def pause(self):
-        """Pause the queue (finishes current downloads)."""
-        self._paused = True
-
-    def resume(self):
-        """Resume the queue."""
-        self._paused = False
-
     def stop(self, wait: bool = True):
         """Stop the queue processor."""
         self._shutdown = True
@@ -379,65 +269,6 @@ class DownloadManager:
 
         if hasattr(self, "_processor_thread") and self._processor_thread.is_alive():
             self._processor_thread.join(timeout=5.0)
-
-    def cancel_task(self, task_id: str) -> bool:
-        """Cancel a pending or downloading task."""
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if not task:
-                return False
-
-            if task.status in (
-                DownloadStatus.PENDING,
-                DownloadStatus.QUEUED,
-                DownloadStatus.DOWNLOADING,
-            ):
-                task.status = DownloadStatus.CANCELLED
-                task.error = "Cancelled by user"
-                self._emit_error(task, "Cancelled by user")
-                return True
-            return False
-
-    def retry_task(self, task_id: str) -> bool:
-        """Retry a failed task."""
-        with self._lock:
-            task = self._tasks.get(task_id)
-            if not task or task.status != DownloadStatus.FAILED:
-                return False
-
-            # Reset for retry
-            task.status = DownloadStatus.PENDING
-            task.error = None
-            task.retries += 1
-            self._queue.put(task.id)
-            return True
-
-    def retry_all_failed(self) -> int:
-        """Retry all failed tasks."""
-        count = 0
-        with self._lock:
-            for task in self._tasks.values():
-                if task.status == DownloadStatus.FAILED:
-                    task.status = DownloadStatus.PENDING
-                    task.error = None
-                    task.retries += 1
-                    self._queue.put(task.id)
-                    count += 1
-        return count
-
-    def clear_completed(self) -> int:
-        """Remove completed tasks from queue."""
-        count = 0
-        with self._lock:
-            to_remove = [
-                tid
-                for tid, t in self._tasks.items()
-                if t.status == DownloadStatus.COMPLETED
-            ]
-            for tid in to_remove:
-                del self._tasks[tid]
-                count += 1
-        return count
 
     # ==================== QUEUE PROCESSOR ====================
 
@@ -462,14 +293,10 @@ class DownloadManager:
                 if task.retries >= self.config.max_retries:
                     task.status = DownloadStatus.FAILED
                     task.error = f"Max retries ({self.config.max_retries}) exceeded"
-                    self._emit_error(task, task.error)
                     continue
 
                 task.status = DownloadStatus.DOWNLOADING
                 task.started_at = time.time()
-
-                # Emit initial progress
-                self._emit_progress(task)
 
             # Execute download in thread pool. Bind `task` as a default arg so the
             # done-callback captures THIS task by value — capturing the loop
@@ -527,7 +354,6 @@ class DownloadManager:
             task.total_bytes = total or 0
             if total and total > 0:
                 task.progress = min(99.0, downloaded / total * 100.0)
-            self._emit_progress(task)
 
         if "jiosaavn.com" in url:
             from components.jiosaavn_downloader import JioSaavnClient
@@ -540,14 +366,6 @@ class DownloadManager:
             from components.soundcloud_downloader import SoundCloudClient
 
             client = SoundCloudClient()
-            return client.download_track(url, task.output_path, task.max_bitrate, _progress)
-        elif "youtube.com" in url or "youtu.be" in url or "music.youtube.com" in url:
-            from components.youtube_downloader import YouTubeClient
-
-            # Use the user's connected YouTube account (if any) so downloading a
-            # bot-gated/age-restricted video works the same as streaming it.
-            yt_kwargs = self._yt_cookie_provider() if self._yt_cookie_provider else {}
-            client = YouTubeClient(**yt_kwargs)
             return client.download_track(url, task.output_path, task.max_bitrate, _progress)
         else:
             return DownloadResult(
@@ -597,11 +415,7 @@ class DownloadManager:
             result = DownloadResult(success=False, error=str(e))
 
         if result.success:
-            # Flip to COMPLETED under the lock (fast field writes only) so the
-            # /api/downloads status endpoint and other workers see it instantly.
             with self._lock:
-                task.status = DownloadStatus.COMPLETED
-                task.completed_at = time.time()
                 task.file_path = result.file_path
                 task.file_size = result.file_size
                 task.bitrate = result.bitrate
@@ -615,21 +429,34 @@ class DownloadManager:
             if task.file_path and self._metadata_embedder:
                 try:
                     info = task.track_info
+                    # The cover the app showed for this song, taken before
+                    # enrichment can swap it for an iTunes one: this is the
+                    # picture it will have offline.
+                    cover_url = self._extract_cover_url(info)
                     if self._finalizer:
                         try:
                             info = self._finalizer(info) or task.track_info
                         except Exception:
                             info = task.track_info
+                    # Likewise the album: enrichment can land on a karaoke
+                    # or tribute record of the same song.
+                    album = task.track_info.get("album")
+                    if album:
+                        info = {**info, "album": album}
                     task.track_info = info
-                    cover_url = self._extract_cover_url(info)
+                    cover_url = cover_url or self._extract_cover_url(info)
                     self._metadata_embedder.embed_metadata(
                         task.file_path, info, cover_url
                     )
                 except Exception as e:
                     print(f"Metadata embedding failed: {e}")
 
-            self._emit_complete(task)
-            self._emit_progress(task)
+            # Only now. The app rescans the moment this says completed, and a
+            # scan before the tags are in read a song with no length or cover.
+            with self._lock:
+                task.status = DownloadStatus.COMPLETED
+                task.completed_at = time.time()
+
             return
 
         # Failure path. Decide retry-vs-fail under the lock, but never sleep or
@@ -665,68 +492,8 @@ class DownloadManager:
             timer.start()
             return
 
-        self._emit_error(task, result.error)
-        self._emit_progress(task)
 
     # ==================== STATUS & STATS ====================
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get queue statistics."""
-        with self._lock:
-            total = len(self._tasks)
-            by_status = {}
-            for status in DownloadStatus:
-                by_status[status.value] = sum(
-                    1 for t in self._tasks.values() if t.status == status
-                )
-
-            active = sum(
-                1
-                for t in self._tasks.values()
-                if t.status == DownloadStatus.DOWNLOADING
-            )
-            total_downloaded = sum(
-                t.file_size
-                for t in self._tasks.values()
-                if t.status == DownloadStatus.COMPLETED
-            )
-
-            return {
-                "total": total,
-                "by_status": by_status,
-                "active": active,
-                "max_concurrent": self.config.max_concurrent,
-                "total_downloaded_bytes": total_downloaded,
-                "total_downloaded_mb": round(total_downloaded / 1024 / 1024, 2),
-            }
-
-    def get_queue_state(self) -> Dict[str, Any]:
-        """Get serialized queue state for persistence."""
-        with self._lock:
-            return {
-                "tasks": {tid: task.to_dict() for tid, task in self._tasks.items()},
-                "config": asdict(self.config),
-            }
-
-    def load_queue_state(self, state: Dict[str, Any]):
-        """Load queue state from persistence."""
-        with self._lock:
-            self.config = DownloadQueueConfig(**state.get("config", {}))
-            for tid, task_data in state.get("tasks", {}).items():
-                # Convert string status back to DownloadStatus enum
-                if "status" in task_data and isinstance(task_data["status"], str):
-                    try:
-                        task_data["status"] = DownloadStatus(task_data["status"])
-                    except ValueError:
-                        task_data["status"] = DownloadStatus.FAILED
-                task = DownloadTask(**task_data)
-                # Reset running tasks to pending
-                if task.status in (DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED):
-                    task.status = DownloadStatus.PENDING
-                self._tasks[tid] = task
-                if task.status == DownloadStatus.PENDING:
-                    self._queue.put(tid)
-
 
 # ==================== METADATA EMBEDDER ====================
 
@@ -838,7 +605,6 @@ class MetadataEmbedder:
         # Add cover art
         if cover_url:
             try:
-                import requests
 
                 resp = SESSION.get(cover_url, timeout=10)
                 if resp.status_code == 200:
@@ -889,7 +655,6 @@ class MetadataEmbedder:
         # Cover art
         if cover_url:
             try:
-                import requests
 
                 resp = SESSION.get(cover_url, timeout=10)
                 if resp.status_code == 200:
@@ -940,7 +705,6 @@ class MetadataEmbedder:
         # Cover art
         if cover_url:
             try:
-                import requests
 
                 resp = SESSION.get(cover_url, timeout=10)
                 if resp.status_code == 200:
@@ -991,7 +755,6 @@ class MetadataEmbedder:
         # Cover art - Opus uses METADATA_BLOCK_PICTURE (base64 encoded)
         if cover_url:
             try:
-                import requests
                 import base64
                 import struct
 
@@ -1031,211 +794,37 @@ class MetadataEmbedder:
 # ==================== CONVENIENCE FUNCTIONS ====================
 
 
-def quick_download(
-    url: str,
-    track_info: Dict[str, Any],
-    output_dir: str = ".",
-    max_bitrate: int = 256,
-    progress_callback: Optional[Callable[[DownloadTask], None]] = None,
-) -> DownloadResult:
-    """One-liner for quick single downloads."""
-    # Use reasonable retries - YouTubeClient has its own fallback strategies
-    # but DownloadManager retries are needed for network errors between strategies
-    manager = DownloadManager(
-        config=DownloadQueueConfig(max_retries=3), download_dir=output_dir
-    )
-
-    # Generate proper output path from track_info
-    import re
-
-    safe_title = re.sub(r'[<>:"/\\|?*]', "_", track_info.get("title", "unknown"))
-    safe_artist = re.sub(r'[<>:"/\\|?*]', "_", track_info.get("artist", "unknown"))
-    output_path = str(Path(output_dir) / f"{safe_title} - {safe_artist}")
-
-    task_id = manager.add_download(url, track_info, output_path, max_bitrate)
-
-    if progress_callback:
-        manager.on_progress(progress_callback)
-
-    manager.start()
-
-    # Wait for completion with timeout (5 minutes max)
-    task = None
-    timeout_seconds = 300
-    elapsed = 0.0
-    poll_interval = 0.5
-    while elapsed < timeout_seconds:
-        task = manager.get_task(task_id)
-        if task and task.status in (
-            DownloadStatus.COMPLETED,
-            DownloadStatus.FAILED,
-            DownloadStatus.CANCELLED,
-        ):
-            break
-        time.sleep(poll_interval)
-        elapsed += poll_interval
-    else:
-        # Timeout reached — cancel the task
-        manager.cancel_download(task_id)
-        task = manager.get_task(task_id)
-
-    manager.stop()
-
-    return DownloadResult(
-        success=task.status == DownloadStatus.COMPLETED,
-        file_path=task.file_path,
-        file_size=task.file_size,
-        bitrate=task.bitrate,
-        codec=task.codec,
-        error=task.error,
-    )
-
-
-def batch_download(
-    tracks: List[Dict[str, Any]],
-    output_dir: str = ".",
-    max_bitrate: int = 256,
-    max_concurrent: int = 3,
-    progress_callback: Optional[Callable[[DownloadTask], None]] = None,
-) -> List[DownloadResult]:
-    """Batch download multiple tracks."""
-    manager = DownloadManager(
-        config=DownloadQueueConfig(max_concurrent=max_concurrent),
-        download_dir=output_dir,
-    )
-
-    manager.add_batch_downloads(tracks, output_dir, max_bitrate)
-
-    if progress_callback:
-        manager.on_progress(progress_callback)
-
-    manager.start()
-
-    # Wait for all to complete with timeout (10 minutes max)
-    timeout_seconds = 600
-    elapsed = 0.0
-    poll_interval = 0.5
-    all_tasks = []
-    while elapsed < timeout_seconds:
-        all_tasks = manager.get_all_tasks()
-        if all_tasks and all(
-            t.status
-            in (
-                DownloadStatus.COMPLETED,
-                DownloadStatus.FAILED,
-                DownloadStatus.CANCELLED,
-            )
-            for t in all_tasks
-        ):
-            break
-        time.sleep(poll_interval)
-        elapsed += poll_interval
-    else:
-        # Timeout — get final state
-        all_tasks = manager.get_all_tasks()
-
-    manager.stop()
-
-    return [
-        DownloadResult(
-            success=t.status == DownloadStatus.COMPLETED,
-            file_path=t.file_path,
-            file_size=t.file_size,
-            bitrate=t.bitrate,
-            codec=t.codec,
-            error=t.error,
-        )
-        for t in all_tasks
-    ]
-
-
 # ==================== CLI ====================
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print('  python download_manager.py "url" "title" "artist" [output_dir]')
-        print("  python download_manager.py batch <tracks.json> [output_dir]")
-        sys.exit(1)
-
-    if sys.argv[1] == "batch":
-        # Batch mode from JSON file
-        import json
-
-        json_file = sys.argv[2]
-        output_dir = sys.argv[3] if len(sys.argv) > 3 else "."
-
-        with open(json_file) as f:
-            tracks = json.load(f)
-
-        def progress(task):
-            if task.total_bytes > 0:
-                print(
-                    f"\r  {task.track_info.get('title', 'Unknown'):.40s} {task.progress:.1f}%",
-                    end="",
-                )
-
-        results = batch_download(
-            tracks,
-            output_dir=output_dir,
-            max_bitrate=256,
-            progress_callback=progress,
-        )
-
-        print()
-        for r in results:
-            status = "✓" if r.success else "✗"
-            print(f"  {status} {r.file_path or r.error}")
-
-    else:
-        # Single download
-        url = sys.argv[1]
-        title = sys.argv[2]
-        artist = sys.argv[3] if len(sys.argv) > 3 else "Unknown"
-        output_dir = sys.argv[4] if len(sys.argv) > 4 else "."
-
-        track_info = {
-            "title": title,
-            "artist": artist,
-        }
-
-        def progress(task):
-            if task.total_bytes > 0:
-                pct = (task.downloaded_bytes / task.total_bytes) * 100
-                sys.stdout.write(
-                    f"\r  {pct:.1f}% ({task.downloaded_bytes:,}/{task.total_bytes:,} bytes)"
-                )
-                sys.stdout.flush()
-
-        result = quick_download(
-            url,
-            {"title": title, "artist": artist},
-            output_dir,
-            progress_callback=progress,
-        )
-        print()
-
-        if result.success:
-            print("✓ Success!")
-            print(f"  File: {result.file_path}")
-            print(f"  Size: {result.file_size:,} bytes")
-            if result.bitrate:
-                print(f"  Bitrate: {result.bitrate // 1000} kbps")
-            if result.codec:
-                print(f"  Codec: {result.codec}")
-        else:
-            print(f"✗ Failed: {result.error}")
-
 
 # ==================== OFFLINE LIBRARY SCAN ====================
 
 # Audio extensions we recognise as downloaded tracks.
-_SCAN_AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".mp4", ".opus", ".ogg", ".wav"}
+_SCAN_AUDIO_EXTS = {".mp3", ".flac", ".m4a", ".mp4", ".opus", ".ogg", ".wav", ".aac", ".webm"}
 
 
-def scan_downloads(directory: str) -> List[Dict[str, Any]]:
+def fit_bytes(text: str, max_bytes: int) -> str:
+    """`text` cut to at most `max_bytes` of UTF-8, never mid-character."""
+    raw = text.encode("utf-8")
+    if len(raw) <= max_bytes:
+        return text
+    return raw[:max_bytes].decode("utf-8", "ignore").rstrip()
+
+
+def safe_stem(title: Any, artist: Any) -> str:
+    """The file name a song is saved under, without its extension.
+
+    Capped in BYTES: Android's file name limit is 255 bytes, and a Devanagari
+    character is three of them, so a long Hindi title (or a JioSaavn credit
+    listing a dozen singers) failed the download with "File name too long".
+    140 + " - " + 80 + ".m4a.part" stays well under it; the full title and
+    artist still go into the tags, and the library scan reads them back.
+    """
+    def part(text, cap):
+        return fit_bytes(re.sub(r'[<>:"/\\|?*]', "_", str(text or "")).strip(), cap) or "unknown"
+    return f"{part(title, 140)} - {part(artist, 80)}"
+
+
+def scan_downloads(directory: str, cache: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """Scan a folder (recursively) for downloaded audio files and read their
     embedded tags. The DISK is the source of truth for the offline library — it
     survives a cleared localStorage, a reinstall, or a backend restart, unlike
@@ -1246,6 +835,10 @@ def scan_downloads(directory: str) -> List[Dict[str, Any]]:
     has no tags. Cover art is intentionally not returned (would be heavy per
     file); the matched catalog track supplies artwork.
     ponytail: tag read only, no audio hashing/dedupe — fast startup scan.
+
+    `cache` holds each file's answer against its size and modified time. Tags
+    cost two full parses a file, and a long library then took longer than the
+    app waits for an answer: the scan failed and the songs did not show up.
     """
     out: List[Dict[str, Any]] = []
     base = Path(directory).expanduser()
@@ -1254,6 +847,16 @@ def scan_downloads(directory: str) -> List[Dict[str, Any]]:
 
     for p in sorted(base.rglob("*")):
         if not p.is_file() or p.suffix.lower() not in _SCAN_AUDIO_EXTS:
+            continue
+
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        stamp = [st.st_mtime_ns, st.st_size]
+        known = (cache or {}).get(str(p))
+        if known and known.get("stamp") == stamp:
+            out.append(known["track"])
             continue
 
         title = artist = album = ""
@@ -1313,8 +916,14 @@ def scan_downloads(directory: str) -> List[Dict[str, Any]]:
         # earlier completion bug embedded some files with the wrong track's
         # metadata; the filename was always correct). Tags fill the gap only when
         # the name has no " - " separator.
+        #
+        # Unless the tags are what the name was made from: then they are that
+        # same metadata, unmangled. The name alone has lost every ":" and "?"
+        # and cannot say where a title holding " - " ends.
         stem = p.stem
-        if " - " in stem:
+        if tag_title and tag_artist and stem == safe_stem(tag_title, tag_artist):
+            title, artist = tag_title, tag_artist
+        elif " - " in stem:
             f_title, f_artist = stem.split(" - ", 1)
             title, artist = f_title.strip(), f_artist.strip()
             # The download name is capped in bytes, so a long title or artist
@@ -1326,22 +935,20 @@ def scan_downloads(directory: str) -> List[Dict[str, Any]]:
         else:
             title, artist = (tag_title or stem), tag_artist
 
-        try:
-            size = p.stat().st_size
-        except Exception:
-            size = 0
-
-        out.append({
+        track = {
             "title": title,
             "artist": artist,
             "album": album,
             "duration_ms": duration_ms,
             "bitrate": bitrate,
             "codec": p.suffix.lower().lstrip("."),
-            "file_size": size,
+            "file_size": st.st_size,
             "file_path": str(p),
             "isrc": isrc or None,
             "has_embedded_art": has_art,
-        })
+        }
+        out.append(track)
+        if cache is not None:
+            cache[str(p)] = {"stamp": stamp, "track": track}
 
     return out

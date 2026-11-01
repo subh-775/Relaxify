@@ -20,13 +20,24 @@ object PythonBackend {
     private const val TAG = "MPBackend"
 
     /**
-     * Per-launch secret guarding the API routes. Loopback is NOT private on Android —
+     * Secret guarding the API routes. Loopback is NOT private on Android —
      * every installed app can reach 127.0.0.1 — so without this any app could
-     * drive our backend. Generated once at class load (so it is available to
-     * BackendModule whenever the RN bridge asks, regardless of start() timing),
-     * handed to the JS side over the bridge, and required on every API call.
+     * drive our backend. Made once per install and kept in this app's private
+     * storage: stream addresses carry it, and they are what the player's audio
+     * cache is keyed by, so a new one each launch threw that cache away. Set
+     * here before anything else runs, handed to the JS side over the bridge,
+     * and required on every API call.
      */
-    val apiToken: String = UUID.randomUUID().toString()
+    @Volatile var apiToken: String = ""
+        private set
+
+    private fun loadToken(app: Context): String {
+        val prefs = app.getSharedPreferences("backend", Context.MODE_PRIVATE)
+        return prefs.getString("token", null)
+            ?: UUID.randomUUID().toString().also {
+                prefs.edit().putString("token", it).apply()
+            }
+    }
 
     @Volatile private var started = false
 
@@ -35,13 +46,11 @@ object PythonBackend {
         started = true
 
         val app = context.applicationContext
+        apiToken = loadToken(app)
 
         val filesDir = app.filesDir.absolutePath
         val downloadsDir = File(app.getExternalFilesDir(null) ?: app.filesDir, "Music")
             .apply { mkdirs() }.absolutePath
-        // The backend still expects a web dir (it can serve an SPA); RN doesn't
-        // use those routes, so an empty dir is enough to satisfy the arg.
-        val webDir = File(app.filesDir, "web").apply { mkdirs() }.absolutePath
         val cacheDir = app.cacheDir.absolutePath
         // The phone's shared Download folder — where the real app keeps its
         // music (Download/Relaxify/music, or the older Fix_Spotify name).
@@ -80,7 +89,7 @@ object PythonBackend {
                     .getModule("mobile_server")
                     .callAttr(
                         "start_server",
-                        filesDir, downloadsDir, webDir, cacheDir,
+                        filesDir, downloadsDir, cacheDir,
                         port, publicDir, apiToken
                     )
                 Log.i(TAG, "Python backend stopped")

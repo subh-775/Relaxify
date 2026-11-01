@@ -140,8 +140,3 @@ export async function readResume(): Promise<ResumeState | null> {
     return null;
   }
 }
-
-export function clearResume(): void {
-  lastWrite = 0;
-  AsyncStorage.removeItem(KEY).catch(() => {});
-}

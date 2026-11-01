@@ -7,10 +7,11 @@
  * places. Memory only: the doodle sets it again at launch.
  */
 import {useSyncExternalStore} from 'react';
+import {createEmitter} from './emitter';
 
 /** Colour pairs; the first of each is the lead. Every colour is bright enough
  *  to read on #000 and to carry dark type. */
-export const PAIRS: [string, string][] = [
+const PAIRS: [string, string][] = [
   ['#FF5A5F', '#00B4FF'], // coral · sky
   ['#FF9F1C', '#B388FF'], // orange · lavender
   ['#8AE234', '#FF6FD8'], // lime · pink
@@ -22,21 +23,18 @@ export const PAIRS: [string, string][] = [
 ];
 
 let current = 0;
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 
 export function setAccent(index: number): void {
   if (index !== current && PAIRS[index]) {
     current = index;
-    listeners.forEach(l => l());
+    changes.emit();
   }
 }
 
 export function useAccent(): [string, string] {
   const i = useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => current,
   );
   return PAIRS[i];

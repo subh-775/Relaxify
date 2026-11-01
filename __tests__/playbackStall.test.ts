@@ -8,7 +8,8 @@
 import {expect, jest, test} from '@jest/globals';
 import TrackPlayer from 'react-native-track-player';
 import {logEvent} from '../src/analytics';
-import {earnedPlay, kickIfStalled, listenOutcome} from '../src/player';
+import {earnedPlay, listenOutcome} from '../src/listenRules';
+import {kickIfStalled} from '../src/player';
 
 jest.mock('react-native-track-player', () => ({
   __esModule: true,

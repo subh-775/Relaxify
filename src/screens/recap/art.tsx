@@ -39,7 +39,7 @@ export const DAYS = [
   'Friday',
   'Saturday',
 ];
-export const MONTHS = [
+const MONTHS = [
   'Jan',
   'Feb',
   'Mar',
@@ -184,7 +184,7 @@ export function Layer({h, children}: {h: number; children: React.ReactNode}) {
 }
 
 /** A rotation that runs forever while mounted (none with reduce motion). */
-export function useTurn(ms: number) {
+function useTurn(ms: number) {
   const reduce = useReducedMotion();
   const turn = useSharedValue(0);
   useEffect(() => {

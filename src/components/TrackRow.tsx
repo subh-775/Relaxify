@@ -27,8 +27,10 @@ import {
 } from '../tracks';
 import {AddButton} from './AddButton';
 import {openAddToPlaylist} from './AddToPlaylistSheet';
-import {addToQueue, useIsActiveTrack} from '../player';
-import {useIsDownloaded} from '../downloads';
+import {addToJam} from '../jam';
+import {useIsActiveTrack} from '../player';
+import {useIsDownloaded} from '../localFiles';
+import {useOffline} from '../offline';
 import {toast} from '../toast';
 import {SourceBadge} from './Badges';
 
@@ -61,6 +63,8 @@ export const listWindowing = {
  * re-renders when its own props change, or when its own highlight / liked /
  * downloaded answer actually flips.
  */
+const notSaved = () => toast("You're offline, and this isn't downloaded.");
+
 export const TrackRow = React.memo(function TrackRow({
   track,
   onPress,
@@ -96,6 +100,9 @@ export const TrackRow = React.memo(function TrackRow({
   // A small green tick marks anything already on disk — permanent until the
   // file is deleted (a disk scan drops the id).
   const downloaded = useIsDownloaded(track);
+  // With no internet only what is on the phone can play, and a row says so
+  // before it is tapped.
+  const unavailable = useOffline() && !downloaded;
 
   // Every row knows for itself whether it's the song playing — callers kept
   // forgetting to pass `active`, and a list where the playing song isn't green
@@ -109,7 +116,9 @@ export const TrackRow = React.memo(function TrackRow({
 
   const commitQueue = React.useCallback(() => {
     const t = trackRef.current;
-    addToQueue(t)
+    // In a Jam a swipe goes to the shared queue, as the menu's Add does. It went
+    // to this phone's own, so the song played next but no one could see it.
+    addToJam(t)
       .then(() => toast(`Queued "${cleanText(t.title)}"`))
       .catch(() => toast('Nothing is playing yet'));
   }, []);
@@ -158,7 +167,7 @@ export const TrackRow = React.memo(function TrackRow({
 
   return (
     <GestureDetector gesture={swipe}>
-      <View style={styles.swipeWrap}>
+      <View style={[styles.swipeWrap, unavailable && styles.unavailable]}>
         {/* Revealed behind the row as it slides. A soft translucent green, not a
           solid slab — a slightly-draggy tap barely shows it, and a real swipe
           still reads clearly against the accent-tinted icon. */}
@@ -172,7 +181,7 @@ export const TrackRow = React.memo(function TrackRow({
           <TouchableOpacity
             style={styles.row}
             activeOpacity={0.65}
-            onPress={onPress}
+            onPress={unavailable ? notSaved : onPress}
             onLongPress={onLongPress}
             delayLongPress={350}>
             {rank != null && (
@@ -235,6 +244,7 @@ export const TrackRow = React.memo(function TrackRow({
 });
 
 const styles = StyleSheet.create({
+  unavailable: {opacity: 0.4},
   swipeWrap: {justifyContent: 'center'},
   queueHintBg: {
     ...StyleSheet.absoluteFillObject,

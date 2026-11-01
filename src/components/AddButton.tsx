@@ -91,7 +91,7 @@ export function AddButton({
  * `ink` in src/glyphPaths.ts), so the disc needs no dark ring to keep it
  * legible on a coloured bar.
  */
-export function SavedGlyph({on, size = 25}: {on: boolean; size?: number}) {
+function SavedGlyph({on, size = 25}: {on: boolean; size?: number}) {
   return on ? (
     <SavedCircle size={size} color={C.accent} />
   ) : (

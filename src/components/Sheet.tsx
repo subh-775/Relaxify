@@ -26,7 +26,6 @@ import React, {
   useSyncExternalStore,
 } from 'react';
 import {
-  BackHandler,
   Pressable,
   StyleSheet,
   useWindowDimensions,
@@ -45,6 +44,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import {C} from '../theme';
+import {useBackPress} from '../useBackPress';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -280,16 +280,7 @@ export function Sheet({
   const engagedAt = useSharedValue(-1);
 
   // Hardware back dismisses the sheet before anything behind it sees the press.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [open, onClose]);
+  useBackPress(onClose, open);
 
   // Through a ref: owners pass inline arrows, so a `close` that depended on
   // onClose would change every render and take the memoised gesture with it.

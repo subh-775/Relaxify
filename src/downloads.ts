@@ -10,12 +10,30 @@
  * closed is finished by the backend regardless, and the file appears on the
  * next disk scan — so persisting a stale "in progress" row would be a lie.
  */
-import {useSyncExternalStore} from 'react';
-import {apiUrl, getDownloadStatus, startDownload, type Track} from './backend';
+import {useMemo, useSyncExternalStore} from 'react';
+import {AppState, PermissionsAndroid, Platform} from 'react-native';
+import {
+  apiUrl,
+  getDownloadStatus,
+  getLocalLibrary,
+  getLyrics,
+  startDownload,
+  waitForBackend,
+  type Track,
+} from './backend';
+import {
+  addLocalFile,
+  dropLocalFiles,
+  setLocalFiles,
+  useLocalTracks,
+  withLocalFile,
+} from './localFiles';
+import {isOffline} from './offline';
 import {getBestArtworkUrl, getDownloadKey} from './tracks';
-import {createStore, asArray, useStoreSelector} from './storage';
+import {createStore, asArray} from './storage';
 import {toast} from './toast';
 import {logEvent, songParams} from './analytics';
+import {createEmitter} from './emitter';
 
 /**
  * Artwork for downloaded songs, persisted.
@@ -48,12 +66,29 @@ function rememberArtwork(track: Track): void {
   artCache.set([entry, ...rest].slice(0, 500));
 }
 
-/** Fill in artwork for disk-scanned tracks: the cover remembered at download
- *  time first, else the backend's embedded-tag extractor — which also covers
- *  songs downloaded before this cache existed. */
-export function overlayDownloadArtwork(tracks: Track[]): Track[] {
+/** The web address of a download's cover, for sending to another phone. */
+export function rememberedArtwork(track: Track): string | undefined {
+  return new Map(artCache.get()).get(getDownloadKey(track));
+}
+
+/** The cover inside a downloaded file, which is there with no internet. */
+export function embeddedArtworkUrl(path: string): string {
+  return apiUrl(`/local/artwork?path=${encodeURIComponent(path)}`);
+}
+
+/** Fill in artwork for disk-scanned tracks: the cover in the file itself first,
+ *  then the one remembered at download time, a web address that needs the
+ *  internet or an image cache that still has it. */
+function overlayDownloadArtwork(tracks: Track[]): Track[] {
   const map = new Map(artCache.get());
   return tracks.map(t => {
+    if (t.file_path && t.has_embedded_art) {
+      return {
+        ...t,
+        artwork_url: embeddedArtworkUrl(t.file_path),
+        artwork_urls: undefined,
+      };
+    }
     if (t.artwork_url) {
       return t;
     }
@@ -61,16 +96,10 @@ export function overlayDownloadArtwork(tracks: Track[]): Track[] {
     if (remembered) {
       return {...t, artwork_url: remembered};
     }
-    // Only ask the backend for embedded art when the scan says there IS some.
     // `has_embedded_art` is undefined on an older backend, in which case try
     // anyway — that is the previous behaviour, and a miss costs one 404.
     if (t.file_path && t.has_embedded_art !== false) {
-      return {
-        ...t,
-        artwork_url: apiUrl(
-          `/local/artwork?path=${encodeURIComponent(t.file_path)}`,
-        ),
-      };
+      return {...t, artwork_url: embeddedArtworkUrl(t.file_path)};
     }
     return t;
   });
@@ -78,69 +107,80 @@ export function overlayDownloadArtwork(tracks: Track[]): Track[] {
 
 // ─── What's already on disk ─────────────────────────────────────────────────
 
-/**
- * Identities of completed downloads, persisted. This is what lets a search
- * result or player button say "already downloaded" (green tick) instead of
- * cheerfully downloading the same song five times.
- */
-const downloadedIds = createStore<string[]>('mp.downloadedIds.v1', [], raw =>
-  asArray<string>(raw)
-    .filter(x => typeof x === 'string')
-    // Migrate in place. Entries written before getDownloadKey existed are
-    // "title|artist|isrc"; keeping only the first two segments turns them into
-    // the new key and is a no-op on anything already in that form. Without
-    // this, every existing download would read as un-downloaded until the next
-    // Library visit re-scanned the folder.
-    .map(x => x.split('|').slice(0, 2).join('|'))
-    .slice(0, 2000),
+const accessAsked = createStore<boolean>(
+  'mp.musicAccessAsked.v1',
+  false,
+  raw => raw === true,
 );
 
-export function isDownloaded(track: Track | null | undefined): boolean {
-  if (!track) {
-    return false;
+/**
+ * Android shows an app only the files it wrote itself, so after a reinstall
+ * every song in the Download folder is there but invisible, until this is
+ * allowed. Asked once, where the songs would be missing from.
+ */
+export async function askForMusicAccess(): Promise<void> {
+  if (accessAsked.get()) {
+    return;
   }
-  return (
-    !!track.file_path || downloadedIds.get().includes(getDownloadKey(track))
-  );
+  accessAsked.set(true);
+  await PermissionsAndroid.request(
+    Number(Platform.Version) >= 33
+      ? PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO
+      : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+  ).catch(() => {});
 }
 
-/**
- * Feed a disk scan's results in so the set reflects reality — including files
- * deleted outside the app, whose keys drop out.
- *
- * A full replace is right (the folder IS the truth) but it must not be able to
- * un-mark a download that finished seconds ago and whose file the scan simply
- * has not seen flushed yet. Anything still sitting in `jobs` as done is unioned
- * back in; those rows clear themselves 1.5s later, which is the width of the
- * race this covers.
- */
-export function markDownloaded(tracks: Track[]): void {
-  const scanned = tracks.map(getDownloadKey);
-  const settling = jobs
-    .filter(j => j.status === 'done')
-    .map(j => getDownloadKey(j.track));
-  const ids = Array.from(new Set([...scanned, ...settling]));
-  const prev = downloadedIds.get();
-  const same = prev.length === ids.length && ids.every((v, i) => v === prev[i]);
-  if (!same) {
-    downloadedIds.set(ids);
-  }
-}
+/** One scan at a time; a request during one is answered by one more after. */
+let scanning: Promise<void> | null = null;
+let scanAgain = false;
 
 /**
- * Is THIS track on disk — as a boolean subscription.
- *
- * Subscribing to the whole id array meant any download finishing re-rendered
- * every row that read it. This re-renders a row only when that row's own answer
- * changes.
+ * Read the folder again: what every screen lists, and how every queue finds a
+ * song's file. A failed scan leaves the last answer standing, which is what
+ * keeps the list there while the engine is busy or restarting.
  */
-export function useIsDownloaded(track: Track | null | undefined): boolean {
-  const id = track ? getDownloadKey(track) : '';
-  const onDisk = !!track?.file_path;
-  return useStoreSelector(
-    downloadedIds,
-    ids => onDisk || (!!id && ids.includes(id)),
-  );
+export function refreshDownloads(): Promise<void> {
+  if (scanning) {
+    scanAgain = true;
+    return scanning;
+  }
+  scanning = (async () => {
+    do {
+      scanAgain = false;
+      try {
+        const {tracks} = await getLocalLibrary();
+        setLocalFiles(tracks);
+        // Anything finishing during that scan may have landed behind it.
+        jobs
+          .filter(j => j.status === 'done' && j.filePath)
+          .forEach(j => addLocalFile(j.track, j.filePath!));
+      } catch {}
+    } while (scanAgain);
+    scanning = null;
+  })();
+  return scanning;
+}
+
+/** The first scan once the engine is up, then every return to the app, which
+ *  is when a file may have been removed outside it. */
+export function watchDownloads(): () => void {
+  waitForBackend().then(ok => {
+    if (ok) {
+      refreshDownloads();
+    }
+  });
+  const sub = AppState.addEventListener('change', s => {
+    if (s === 'active') {
+      refreshDownloads();
+    }
+  });
+  return () => sub.remove();
+}
+
+/** The downloaded songs, covers included. Every list of them is this one. */
+export function useDownloads(): Track[] {
+  const tracks = useLocalTracks();
+  return useMemo(() => overlayDownloadArtwork(tracks), [tracks]);
 }
 
 export type DownloadJob = {
@@ -150,15 +190,17 @@ export type DownloadJob = {
   progress: number | null;
   status: 'queued' | 'downloading' | 'done' | 'error';
   error?: string;
+  filePath?: string;
 };
 
 let jobs: DownloadJob[] = [];
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 let timer: ReturnType<typeof setInterval> | null = null;
+let polling = false;
 
 function emit() {
   jobs = [...jobs];
-  listeners.forEach(l => l());
+  changes.emit();
 }
 
 function stopPolling() {
@@ -174,6 +216,11 @@ function ensurePolling() {
     return;
   }
   timer = setInterval(async () => {
+    // A tick can outlast the 500 ms while the engine is busy. A second one
+    // running alongside it would report the same finished download twice.
+    if (polling) {
+      return;
+    }
     const active = jobs.filter(
       j => j.status === 'queued' || j.status === 'downloading',
     );
@@ -181,6 +228,7 @@ function ensurePolling() {
       stopPolling();
       return;
     }
+    polling = true;
     await Promise.all(
       active.map(async job => {
         try {
@@ -193,15 +241,22 @@ function ensurePolling() {
           if (t.status === 'completed' || t.status === 'done') {
             job.status = 'done';
             job.progress = 1;
-            const id = getDownloadKey(job.track);
-            if (!downloadedIds.get().includes(id)) {
-              downloadedIds.set([...downloadedIds.get(), id]);
+            if (t.file_path) {
+              job.filePath = t.file_path;
+              addLocalFile(job.track, t.file_path);
             }
             // Re-scan now, not on the next Library visit. Until this existed,
             // the Downloaded collection and every ⋮ sheet outside Library were
             // stale until you happened to open the tab.
-            onDownloadComplete.forEach(fn => fn());
+            refreshDownloads();
             logEvent('song_downloaded', songParams(job.track));
+            // Fetched now while there is internet: the engine keeps them on
+            // disk, so they are there when this song plays without it.
+            getLyrics(
+              job.track.title,
+              job.track.artist,
+              job.track.duration_ms ?? 0,
+            ).catch(() => {});
           } else if (t.status === 'failed' || t.status === 'error') {
             job.status = 'error';
             job.error = t.error;
@@ -217,6 +272,7 @@ function ensurePolling() {
         }
       }),
     );
+    polling = false;
     emit();
 
     // Clear finished rows a moment later so the bar is seen completing.
@@ -230,52 +286,23 @@ function ensurePolling() {
   }, 500);
 }
 
-/**
- * Anyone who wants to know the moment a download lands.
- *
- * Library registers its disk scan here. A module-level set rather than a prop
- * chain because the thing that needs re-scanning (the Downloaded collection,
- * and every "already downloaded" tick in the app) is not on screen when the
- * download finishes — that is the whole point.
- */
-const onDownloadComplete = new Set<() => void>();
-
-/**
- * A download is gone: drop it from the registry and tell everyone.
- *
- * Deleting only removed the FILE. The id stayed in `downloadedIds`, so
- * `isDownloaded` kept saying yes, every row kept its downloaded tick, and
- * nothing re-scanned — the Library tab only rescans when it becomes visible or
- * when a download COMPLETES. That is the whole of "I deleted it and it is
- * still there, then I came back and the list was empty but the count said 1":
- * two different stale sources, neither of them the disk.
- *
- * The same listener set as a completed download, because it is the same
- * question: what is on disk changed.
- */
+/** A download is gone: drop it from the record, or every row keeps its tick
+ *  and the queue keeps asking for a file that is not there. */
 export function forgetDownloads(tracks: Track[]): void {
-  const gone = new Set(tracks.map(getDownloadKey));
-  const prev = downloadedIds.get();
-  const next = prev.filter(id => !gone.has(id));
-  if (next.length !== prev.length) {
-    downloadedIds.set(next);
-  }
-  onDownloadComplete.forEach(fn => fn());
-}
-
-export function onDownloadsChanged(fn: () => void): () => void {
-  onDownloadComplete.add(fn);
-  return () => {
-    onDownloadComplete.delete(fn);
-  };
+  dropLocalFiles(tracks);
+  refreshDownloads();
 }
 
 /** Start a download and track it. Ignores a track already in flight — and one
  *  already ON DISK, which used to be re-downloadable indefinitely. */
 export async function enqueueDownload(track: Track): Promise<void> {
   const id = getDownloadKey(track);
-  if (isDownloaded(track)) {
+  if (withLocalFile(track).file_path) {
     toast('Already downloaded');
+    return;
+  }
+  if (isOffline()) {
+    toast("You're offline. Download this when you're back.");
     return;
   }
   if (jobs.some(j => getDownloadKey(j.track) === id && j.status !== 'error')) {
@@ -298,10 +325,7 @@ export async function enqueueDownload(track: Track): Promise<void> {
 
 export function useDownloadJobs(): DownloadJob[] {
   return useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => jobs,
   );
 }

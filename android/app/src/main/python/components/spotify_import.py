@@ -13,7 +13,6 @@ If Spotify changes the page shape this returns None, so the caller degrades to
 import json
 import re
 
-import requests
 from components.http import SESSION
 
 _URL_RE = re.compile(
@@ -206,12 +205,3 @@ def is_good_match(item, track, weak_artist: bool = False) -> bool:
         if a and (a in cand_artist or fuzz.partial_ratio(a, cand_artist) >= 88):
             return True
     return False
-
-
-if __name__ == "__main__":
-    # Smoke test against a stable public playlist (Spotify's own "Today's Top Hits").
-    k, i = parse_url("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
-    assert k == "playlist" and i == "37i9dQZF1DXcBWIGoYBM5M", (k, i)
-    out = fetch_tracklist(k, i)
-    assert out and out["tracks"], "no tracks scraped"
-    print(f"OK: {out['name']} — {len(out['tracks'])} tracks; first = {out['tracks'][0]}")

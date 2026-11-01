@@ -30,6 +30,7 @@ import {
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {enqueueDownload, forgetDownloads} from '../downloads';
+import {withLocalFile} from '../localFiles';
 import {cleanText, getBestArtworkUrl} from '../tracks';
 import {isLiked, toggleLike} from '../store';
 import {removeTrackFromPlaylist} from '../playlists';
@@ -106,10 +107,11 @@ function TrackActionSheetView({
   }, [track, onClose]);
 
   const removeDownload = useCallback(async () => {
-    if (!track?.file_path) {
+    const path = track && withLocalFile(track).file_path;
+    if (!path) {
       return;
     }
-    const ok = await deleteDownload(track.file_path);
+    const ok = await deleteDownload(path);
     // Either way the file is not there any more, so the registry must not go on
     // claiming it is: "already gone" is still gone.
     forgetDownloads([track]);
@@ -124,7 +126,7 @@ function TrackActionSheetView({
   }
   // Everything below renders from `shown`, not `track` — see the note on it.
   const t = shown;
-  const downloaded = !!t.file_path;
+  const downloaded = !!withLocalFile(t).file_path;
   const artwork = getBestArtworkUrl(t);
 
   const items: Array<{

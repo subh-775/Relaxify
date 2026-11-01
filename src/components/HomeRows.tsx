@@ -79,7 +79,7 @@ function Header({title, note}: {title: string; note?: string}) {
 
 // ── Ranked ───────────────────────────────────────────────────────────────
 const RANK_COVER = 118;
-export function RankedRow({row, onPick}: Props) {
+function RankedRow({row, onPick}: Props) {
   const items = row.items.slice(0, 10);
   return (
     <View style={styles.row}>
@@ -163,7 +163,7 @@ function HeroCard({item, width, onPick}: {item: HomeItem; width: number; onPick:
   );
 }
 
-export function HeroRow({row, onPick}: Props) {
+function HeroRow({row, onPick}: Props) {
   const {width} = useWindowDimensions();
   const cardW = Math.min(320, width - 2 * S.gutter - 24);
   return (
@@ -209,7 +209,7 @@ function ColourCard({item, onPick}: {item: HomeItem; onPick: Props['onPick']}) {
   );
 }
 
-export function ColourRow({row, onPick}: Props) {
+function ColourRow({row, onPick}: Props) {
   return (
     <View style={styles.row}>
       <Header title={row.title} />
@@ -227,7 +227,7 @@ export function ColourRow({row, onPick}: Props) {
 
 // ── Two-row shelf ────────────────────────────────────────────────────────
 const SHELF = 104;
-export function ShelfRow({row, onPick}: Props) {
+function ShelfRow({row, onPick}: Props) {
   const columns: HomeItem[][] = [];
   for (let i = 0; i < row.items.length; i += 2) {
     columns.push(row.items.slice(i, i + 2));

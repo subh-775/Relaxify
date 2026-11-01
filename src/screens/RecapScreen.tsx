@@ -17,7 +17,6 @@
  */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
-  BackHandler,
   findNodeHandle,
   type LayoutChangeEvent,
   NativeModules,
@@ -49,6 +48,7 @@ import {buildCards} from './recap/cards';
 import {CW, styles} from './recap/styles';
 import {useStatsState} from '../stats';
 import {toast} from '../toast';
+import {useBackPress} from '../useBackPress';
 
 /** ImageShareModule.kt: a picture of a view, with text, to the share sheet. */
 const imageShare = NativeModules.ImageShare as
@@ -234,13 +234,7 @@ export function RecapScreen({onClose}: {onClose: () => void}) {
   );
 
   // Back puts it away the same way a swipe does.
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      dismiss();
-      return true;
-    });
-    return () => sub.remove();
-  }, [dismiss]);
+  useBackPress(dismiss);
 
   const gesture = useMemo(() => {
     const pan = Gesture.Pan()

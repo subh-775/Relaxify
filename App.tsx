@@ -80,12 +80,11 @@ import {
   appVersion,
   getAlbum,
   getCollection,
-  getLocalLibrary,
   type HomeItem,
   type Track,
 } from './src/backend';
-import {collectionKey, downloadsCollection} from './src/collections';
-import {overlayDownloadArtwork} from './src/downloads';
+import {collectionKey} from './src/collections';
+import {refreshDownloads, watchDownloads} from './src/downloads';
 import {
   playTrack,
   restoreSession,
@@ -262,6 +261,8 @@ function Shell() {
     watchForegroundUpdates();
     // Data saver on mobile data, and the weekly Recap notification.
     startDevice();
+    // What is on the phone: known before anything plays or lists it.
+    const stopDownloads = watchDownloads();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
     // the last moment we are reliably given before Android may reclaim the
     // process, so anything still pending goes out now.
@@ -273,6 +274,7 @@ function Shell() {
     return () => {
       clearTimeout(bootCap);
       bg.remove();
+      stopDownloads();
     };
   }, [liftSplash]);
 
@@ -372,7 +374,14 @@ function Shell() {
       setCollectionZ(++zRef.current);
       setCollectionLoading(true);
       try {
-        const data = await getAlbum(albumName, artistName, '', albumId);
+        // The song's own page names its album exactly; by name alone a film
+        // soundtrack finds nothing and the page stays at the one seed song.
+        const data = await getAlbum(
+          albumName,
+          artistName,
+          seed[0]?.sources?.jiosaavn?.url ?? '',
+          albumId,
+        );
         if (!data.tracks.length && !seed.length) {
           // Nothing to show: close it rather than leave an empty page open.
           setCollection(prev =>
@@ -479,16 +488,7 @@ function Shell() {
 
   /** Home's quick-access tiles. Home only knows WHAT was tapped; the
    *  tracklists live here, next to everything else that opens a Collection. */
-  /** Re-read the download folder and swap the open collection for what is
-   *  actually on disk now. */
-  const refreshDownloadsCollection = useCallback(async () => {
-    try {
-      const {tracks} = await getLocalLibrary();
-      setCollection(downloadsCollection(overlayDownloadArtwork(tracks)));
-    } catch {
-      setCollection(null);
-    }
-  }, []);
+  const refreshDownloadsCollection = refreshDownloads;
 
   const switchTab = useCallback((next: Tab) => {
     logEvent('screen_view', {screen_name: next});

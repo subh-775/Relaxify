@@ -18,9 +18,8 @@
  * and it floats over the mini player. As a plain absolute overlay it can be
  * half-open, which is the whole feature.
  */
-import React, {useCallback, useEffect, useMemo, useRef} from 'react';
+import React, {useCallback, useMemo, useRef} from 'react';
 import {
-  BackHandler,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -48,6 +47,7 @@ import {useUpdateAvailable} from '../update';
 import {DRAWER_W, drawerX, settleDrawer} from '../drawer';
 
 import {LogoMark} from './Logo';
+import {useBackPress} from '../useBackPress';
 
 export type SidebarDest =
   | 'settings'
@@ -140,16 +140,7 @@ export const Sidebar = React.memo(function Sidebar({
   }, []);
 
   // Hardware back closes the drawer before anything else sees it.
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      close();
-      return true;
-    });
-    return () => sub.remove();
-  }, [visible, close]);
+  useBackPress(close, visible);
 
   /**
    * Drag LEFT on the open panel to push it back out — the mirror of the gesture

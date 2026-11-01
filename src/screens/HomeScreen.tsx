@@ -296,8 +296,8 @@ export const HomeScreen = React.memo(function HomeScreen({
     }
   }, [settled, phase, onReady]);
 
-  if (offline && onOpenCollection) {
-    return <OfflineScreen onOpenCollection={onOpenCollection} />;
+  if (offline) {
+    return <OfflineScreen onPlayTrack={onPlayTrack} />;
   }
 
   if (phase === 'error') {

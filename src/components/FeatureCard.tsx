@@ -18,7 +18,7 @@ import {
 import {S} from '../theme';
 import type {Pal} from '../brandArt';
 
-export const CARD_H = 156;
+const CARD_H = 156;
 export const CARD_ART = 190;
 
 export function FeatureCard({

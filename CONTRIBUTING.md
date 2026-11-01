@@ -60,15 +60,18 @@ would be silent: ordering, matching, parsing, version comparison and similar.
 | --- | --- |
 | `index.js` | Entry point. Registers the app and the background playback service. |
 | `App.tsx` | The shell: tabs, overlays, the mini player, the full player and the sheets. |
-| `src/screens/` | One file per screen: Home, Search, Library, Player, Queue, Settings and so on. |
+| `src/screens/` | One file per screen: Home, Search, Library, Player, Queue, Settings and so on. A folder beside a screen holds its parts (`settings/controls.tsx`, `player/LyricsPane.tsx`). |
 | `src/components/` | Shared pieces: rows, sheets, the mini player (`PlayerBar.tsx`), the seekbar. |
 | `src/player.ts` | Playback: building and editing the queue, skipping, shuffle, Autoplay and resume. |
+| `src/queueOrder.ts`, `src/listenRules.ts` | The pure rules behind it: queue order, and what counts as a listen. |
 | `src/playbackService.ts` | Lock-screen, notification and headset controls. |
 | `src/playerSheet.ts` | The geometry of the mini player to full player transition. |
 | `src/backend.ts` | The client for the embedded engine, and the shared data types. |
 | `src/store.ts`, `src/storage.ts` | Settings, likes and other saved state. |
+| `src/emitter.ts`, `src/useBackPress.ts` | Shared plumbing: a subscribable value for `useSyncExternalStore`, and the Android back button. Use these rather than writing a listener set or a `BackHandler` effect. |
 | `src/audioEffects.ts`, `src/eq.ts` | The bridge to the native equalizer, loudness and crossfade. |
 | `src/downloads.ts`, `src/update.ts` | Downloads, and the in-app updater. |
+| `src/localFiles.ts`, `src/offline.ts` | Which songs are on the phone, and whether there is internet. Every queue finds a song's file through `chosenCopy`. |
 | `src/theme.ts`, `src/font.ts` | Colours, type and the app-wide font. |
 
 ### Native: `android/app/src/main/java/com/musicplayer/`
@@ -89,7 +92,8 @@ would be silent: ordering, matching, parsing, version comparison and similar.
 | `mobile_server.py` | The HTTP API the app calls: search, streams, lyrics, downloads, library. |
 | `components/unified_search.py`, `source_merger.py`, `fuzzy_matcher.py` | Searching the three sources and merging matching results. |
 | `components/radio.py` | Autoplay: similar songs from Last.fm, resolved to playable sources. |
-| `components/*_downloader.py`, `download_manager.py` | Resolving streams and downloading from each source. |
+| `components/lyrics.py` | Finding a song's lyrics, from lrclib and JioSaavn. |
+| `components/*_downloader.py`, `download_manager.py` | Resolving streams and downloading from each source. YouTube goes through NewPipe (`newpipe_yt.py`). |
 
 ### Other
 

@@ -39,7 +39,7 @@ export type Play = {
    *  and artist. Absent on plays logged before v1.2.24. */
   k?: string;
 };
-export type ArtistStat = {
+type ArtistStat = {
   name: string;
   image?: string;
   count: number;

@@ -31,7 +31,7 @@ export const RATE_PRESETS = [1, 1.25, 1.5, 2];
 
 /** Half a step — the tolerance for "is this the same speed". Comparing floats
  *  with === is the other way this control goes wrong. */
-export const RATE_EPSILON = RATE_STEP / 2;
+const RATE_EPSILON = RATE_STEP / 2;
 
 /** Snap and clamp a rate arriving from anywhere: a preset, a +/- tap, or a
  *  value stored by a build that used a different range. */

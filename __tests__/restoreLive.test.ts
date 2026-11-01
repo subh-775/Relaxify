@@ -40,7 +40,6 @@ jest.mock('../src/resume', () => ({
   saveResume: jest.fn(),
   readResume: async () => ({track: saved, position: 40, queue: [saved], index: 0, savedAt: 0}),
   resumeIndex: () => 0,
-  clearResume: () => undefined,
 }));
 jest.mock('../src/analytics', () => ({logEvent: jest.fn(), songParams: () => ({})}));
 jest.mock('../src/backend', () => ({

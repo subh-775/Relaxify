@@ -8,12 +8,16 @@
  * Deliberately device-agnostic: we respond to the standard remote events every
  * headset and car stereo emits, with no per-device mapping.
  */
-import TrackPlayer, {Event, State} from 'react-native-track-player';
+import TrackPlayer, {Event} from 'react-native-track-player';
 import {setPausedByDuck, wasPausedByDuck} from './duckState';
 import {
-  markManualTrackChange,
+  isRunning,
+  pause,
   playWithFade,
   seekTo,
+  skipNext,
+  skipPrevious,
+  stop,
   topUpFromRadio,
 } from './player';
 
@@ -40,11 +44,11 @@ module.exports = async function playbackService() {
   });
   TrackPlayer.addEventListener(Event.RemotePause, () => {
     setPausedByDuck(false);
-    TrackPlayer.pause();
+    pause().catch(() => {});
   });
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
     setPausedByDuck(false);
-    TrackPlayer.reset();
+    stop().catch(() => {});
   });
   TrackPlayer.addEventListener(Event.RemoteSeek, ({position}) =>
     seekTo(position),
@@ -75,40 +79,14 @@ module.exports = async function playbackService() {
     }
   });
 
-  TrackPlayer.addEventListener(Event.RemoteNext, async () => {
-    try {
-      // The user pressed a button, so this is not a song ending — an armed
-      // end-of-track timer must not be consumed by it.
-      markManualTrackChange();
-      await TrackPlayer.skipToNext();
-    } catch {
-      // End of the queue: find similar songs first, as the app's own Next
-      // button does (skipNext), then move on to them.
-      try {
-        await topUpFromRadio(true);
-        await TrackPlayer.skipToNext();
-        await playWithFade();
-      } catch {
-        /* still nothing to skip to */
-      }
-    }
+  // The app's own Next and Previous, so a headset gets the same behaviour: an
+  // overlap is cut, a skip resumes a paused song, Next at the end of the queue
+  // finds similar songs, and Previous restarts the song before it jumps back.
+  TrackPlayer.addEventListener(Event.RemoteNext, () => {
+    skipNext().catch(() => {});
   });
-
-  // A headset's "previous" restarts the track first, and only jumps back when
-  // pressed near the start. That is the behaviour every other player has, and
-  // it stops one stray double-tap from losing your place.
-  TrackPlayer.addEventListener(Event.RemotePrevious, async () => {
-    try {
-      const position = await TrackPlayer.getPosition();
-      if (position > 3) {
-        await seekTo(0);
-      } else {
-        markManualTrackChange();
-        await TrackPlayer.skipToPrevious();
-      }
-    } catch {
-      await seekTo(0);
-    }
+  TrackPlayer.addEventListener(Event.RemotePrevious, () => {
+    skipPrevious().catch(() => {});
   });
 
   // Audio focus changed — a call, another player, a notification chime.
@@ -118,7 +96,7 @@ module.exports = async function playbackService() {
       if (permanent) {
         // Focus is gone for good (another app took over). Never auto-resume.
         setPausedByDuck(false);
-        await TrackPlayer.pause();
+        await pause();
         return;
       }
       if (paused) {
@@ -126,13 +104,9 @@ module.exports = async function playbackService() {
         // otherwise a duck arriving while already paused would later "resume"
         // music the user had stopped.
         const {state} = await TrackPlayer.getPlaybackState();
-        const wasPlaying =
-          state === State.Playing ||
-          state === State.Buffering ||
-          state === State.Loading;
-        if (wasPlaying) {
+        if (isRunning(state)) {
           setPausedByDuck(true);
-          await TrackPlayer.pause();
+          await pause();
         }
         return;
       }

@@ -56,12 +56,14 @@ import {
   topUpFromRadio,
   warmTrack,
 } from './player';
+import {rememberedArtwork} from './downloads';
 import {getTrackId} from './tracks';
 import {logEvent} from './analytics';
 import {toast} from './toast';
 import {createStore} from './storage';
+import {createEmitter} from './emitter';
 
-export const JAM_DB =
+const JAM_DB =
   'https://relaxify-observability-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -126,16 +128,13 @@ export type JamView = {
 
 // ── state ────────────────────────────────────────────────────────────────
 let view: JamView | null = null;
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 function emit() {
-  listeners.forEach(l => l());
+  changes.emit();
 }
 export function useJam(): JamView | null {
   return useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => view,
   );
 }
@@ -260,9 +259,9 @@ export function shareable(t: Track): Track {
   // A downloaded song's cover is this phone's own backend
   // (http://127.0.0.1:…/api/local/artwork?path=…&_t=<token>): it carries the
   // file's path and the API token, and on a friend's phone it asks THEIR
-  // backend, which refuses it, so they see no cover anyway.
+  // backend, which refuses it. The web cover from download time goes instead.
   if (/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/i.test(rest.artwork_url ?? '')) {
-    delete rest.artwork_url;
+    rest.artwork_url = rememberedArtwork(t);
   }
   return rest;
 }
@@ -559,11 +558,11 @@ async function sync(): Promise<void> {
   const members = Object.entries(rec.members ?? {})
     .filter(([, m]) => m && t - (m.seen || 0) < MEMBER_STALE_MS)
     .map(([id, m]) => ({id, name: m.name || 'Friend'}));
-  const queue = Object.entries(rec.queue ?? {}).map(([key, q]) => ({
-    key,
-    track: q.track,
-    by: q.by,
-  }));
+  // Sorted: the keys Firebase makes run in the order songs were added, but
+  // the JSON it answers with promises no order.
+  const queue = Object.entries(rec.queue ?? {})
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([key, q]) => ({key, track: q.track, by: q.by}));
   view = {...v, members, now: rec.now ?? null, queue};
   emit();
 

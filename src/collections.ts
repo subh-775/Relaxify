@@ -17,7 +17,7 @@ import type {Track} from './backend';
 import {logEvent} from './analytics';
 import {type Playlist, type SharedCopy, usePlaylists} from './playlists';
 
-export type CollectionKind =
+type CollectionKind =
   | 'album'
   | 'sourcePlaylist' // an album/playlist from JioSaavn et al, saved to library
   | 'userPlaylist' // one the user made — or imported from Spotify
@@ -76,7 +76,7 @@ const saved = createStore<Collection[]>('mp.savedCollections.v1', [], raw =>
 );
 
 /** Stable identity for something saved from a source. */
-export function savedId(c: {
+function savedId(c: {
   source?: string;
   name?: string;
   artist?: string;
@@ -118,13 +118,13 @@ export function toggleSaved(c: Collection): boolean {
   return true;
 }
 
-export function useSavedCollections(): Collection[] {
+function useSavedCollections(): Collection[] {
   return useStoreValue(saved);
 }
 
 // ─── Building collections from the app's other stores ───────────────────────
 
-export const LIKED_ID = '__liked__';
+const LIKED_ID = '__liked__';
 export const DOWNLOADS_ID = '__downloads__';
 
 export function playlistToCollection(p: Playlist): Collection {
@@ -142,11 +142,11 @@ export function playlistToCollection(p: Playlist): Collection {
   };
 }
 
-export function likedCollection(tracks: Track[]): Collection {
+function likedCollection(tracks: Track[]): Collection {
   return {id: LIKED_ID, kind: 'liked', name: 'Liked Songs', tracks};
 }
 
-export function downloadsCollection(tracks: Track[]): Collection {
+function downloadsCollection(tracks: Track[]): Collection {
   return {id: DOWNLOADS_ID, kind: 'downloads', name: 'Downloads', tracks};
 }
 

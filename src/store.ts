@@ -70,7 +70,7 @@ export function setOnCellular(v: boolean): void {
 /** Data saver is on AND the phone is on mobile data: hold background fetches. */
 export const savingData = () => settingsStore.get().dataSaver && cellular;
 
-export const DEFAULT_SETTINGS: Settings = {
+const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
   showSourceBadge: true,
   showQualityBadge: true,

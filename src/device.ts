@@ -6,12 +6,14 @@
  * worked out here whenever the stats change and handed over ahead of time.
  */
 import {DeviceEventEmitter, NativeModules} from 'react-native';
+import {noteNetwork} from './offline';
 import {setOnCellular} from './store';
 import {onStatsChange, readStats} from './stats';
 import {buildRecap, recapEligible, reminderText} from './recap';
 
 type DeviceNative = {
   watchNetwork?: () => Promise<boolean>;
+  hasNetwork?: () => Promise<boolean>;
   setRecapReminder?: (enabled: boolean, body: string) => void;
 };
 
@@ -45,6 +47,8 @@ export function startDevice(): void {
   if (typeof native.watchNetwork === 'function') {
     native.watchNetwork().then(setOnCellular, () => {});
     DeviceEventEmitter.addListener('mp.network', (v: boolean) => setOnCellular(!!v));
+    native.hasNetwork?.().then(up => !up && noteNetwork(false), () => {});
+    DeviceEventEmitter.addListener('mp.online', (v: boolean) => noteNetwork(!!v));
   }
   // Scheduled on every start as well (sent is null here), which is what
   // brings the alarm back after a reboot.
