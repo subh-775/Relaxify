@@ -17,6 +17,7 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * In-app updates for the sideloaded APK — ported from the WebView build.
@@ -40,6 +41,9 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
     override fun getName() = "Updater"
 
     private var pending: Release? = null
+
+    /** A download is running. A second one would write over the same file. */
+    private val downloading = AtomicBoolean(false)
 
     data class Release(
         val version: String,
@@ -113,7 +117,14 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
             openInstallPermission()
             return
         }
-        Thread { downloadAndInstall(rel) }.start()
+        if (!downloading.compareAndSet(false, true)) return
+        Thread {
+            try {
+                downloadAndInstall(rel)
+            } finally {
+                downloading.set(false)
+            }
+        }.start()
     }
 
     /** API 26+ gates sideloaded installs per-app; below that the old global
@@ -380,6 +391,7 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
             val total = conn.contentLength.toLong()
             var read = 0L
             var lastPct = -1
+            var lastSent = 0L
             conn.inputStream.use { input ->
                 out.outputStream().use { output ->
                     val buf = ByteArray(64 * 1024)
@@ -390,8 +402,13 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
                         read += n
                         if (total > 0) {
                             val pct = ((read * 100) / total).toInt()
-                            if (pct != lastPct) {
+                            // A few times a second is all a bar needs. One
+                            // event per percent outran JS on a fast connection,
+                            // and the installer opened with the bar far behind.
+                            val now = System.currentTimeMillis()
+                            if (pct != lastPct && now - lastSent >= PROGRESS_GAP_MS) {
                                 lastPct = pct
+                                lastSent = now
                                 emit("mp.update.progress", pct)
                             }
                         }
@@ -425,6 +442,7 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
                 return
             }
             emit("mp.update.progress", 100)
+            Log.i(TAG, "download complete, opening the installer")
 
             val uri: Uri = FileProvider.getUriForFile(
                 ctx, "${ctx.packageName}.fileprovider", out,
@@ -445,6 +463,7 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
 
     companion object {
         private const val TAG = "MusicPlayerUpd"
+        private const val PROGRESS_GAP_MS = 250L
         private const val RELEASES_API =
             "https://api.github.com/repos/subh-775/Relaxify/releases/latest"
         /** Test builds: the release list; see newestRcRelease. */
@@ -459,4 +478,11 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
         private const val DOWNLOAD_BASE =
             "https://github.com/subh-775/Relaxify/releases/download"
     }
+
+    // RN's NativeEventEmitter wants these two on Android.
+    @ReactMethod
+    fun addListener(eventName: String) {}
+
+    @ReactMethod
+    fun removeListeners(count: Int) {}
 }

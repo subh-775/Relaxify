@@ -13,6 +13,7 @@ import {AppState, NativeEventEmitter, NativeModules} from 'react-native';
 import {createStore} from './storage';
 import {diag} from './diag';
 import {logEvent} from './analytics';
+import {createEmitter} from './emitter';
 
 /**
  * When the AUTOMATIC check last ran — whatever it found.
@@ -70,9 +71,9 @@ type UpdaterNative = {
 
 const native = (NativeModules.Updater ?? {}) as UpdaterNative;
 
-export const updateSupported = typeof native.check === 'function';
+const updateSupported = typeof native.check === 'function';
 
-export type UpdateInfo = {
+type UpdateInfo = {
   available: boolean;
   version: string;
   /** Bytes of the .apk asset. 0 when GitHub did not report a size. */
@@ -82,7 +83,7 @@ export type UpdateInfo = {
   /** The version actually installed, as native sees it. */
   installed?: string;
 };
-export type UpdatePhase =
+type UpdatePhase =
   | 'idle'
   | 'checking'
   | 'current'
@@ -109,11 +110,11 @@ let state: UpdateState = {
   error: '',
   attempted: false,
 };
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 
 function emit() {
   state = {...state}; // new identity so useSyncExternalStore re-renders
-  listeners.forEach(l => l());
+  changes.emit();
 }
 
 let registered = false;
@@ -186,6 +187,9 @@ function ensureRegistered() {
       emit();
       return;
     }
+    if (p >= 100) {
+      diag('update', 'download complete, opening the installer');
+    }
     // 100 means the system installer is now in front. The card goes back to
     // offering Install: left on "Downloading… 100%" it had no close button and
     // blocked every later check, so backing out of the installer stranded it
@@ -198,7 +202,7 @@ function ensureRegistered() {
 /** Kick a silent check. Safe to call repeatedly (launch + opening Settings). */
 let checkTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export function checkUpdate(): void {
+function checkUpdate(): void {
   ensureRegistered();
   if (!updateSupported) {
     diag('update', 'native Updater module missing from this build');
@@ -276,7 +280,9 @@ export function watchForegroundUpdates(): void {
 /** Begin downloading + installing (the user still confirms the OS install). */
 export function startUpdateInstall(): void {
   ensureRegistered();
-  if (!updateSupported) {
+  // One download at a time: the strip and Settings can both start one, and two
+  // would write the same file and take turns moving the bar.
+  if (!updateSupported || state.phase === 'downloading') {
     return;
   }
   logEvent('update_install', {version: state.info?.version ?? ''});
@@ -303,16 +309,29 @@ export function dismissUpdate(): void {
  * dot on the menu is what keeps it findable afterwards.
  */
 export function useUpdateAvailable(): boolean {
-  return useUpdate().info?.available === true;
+  return useUpdateSelect(s => s.info?.available === true);
+}
+
+function subscribe(listener: () => void): () => void {
+  ensureRegistered();
+  return changes.subscribe(listener);
+}
+
+/**
+ * One answer from the state, re-rendering only when THAT answer changes.
+ *
+ * The app shell, the side menu and every list watch the update too, and a
+ * download changes the state up to a hundred times. Watching all of it had the
+ * whole app re-render for each percent, faster than it could, so the bar was
+ * still behind at 50-60% when the finished download opened the installer.
+ */
+export function useUpdateSelect<T>(pick: (s: UpdateState) => T): T {
+  return useSyncExternalStore(subscribe, () => pick(state));
 }
 
 export function useUpdate(): UpdateState {
   return useSyncExternalStore(
-    l => {
-      ensureRegistered();
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    subscribe,
     () => state,
   );
 }
