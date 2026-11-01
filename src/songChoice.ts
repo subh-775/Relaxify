@@ -14,6 +14,8 @@
  * the phone, and the sheet offers to replace the download instead.
  */
 import type {Track} from './backend';
+import {withLocalFile} from './localFiles';
+import {isOffline} from './offline';
 import {createStore} from './storage';
 import {getDownloadKey, getPlayableSources} from './tracks';
 
@@ -26,12 +28,18 @@ const choices = createStore<Choices>('mp.songChoice.v1', {}, raw =>
   raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Choices) : {},
 );
 
-/** The copy to play for `t`: your pick if you made one, else `t` itself. */
+/**
+ * The copy to play for `t`: your pick if you made one, else the file on this
+ * phone if there is one, else `t` itself. With no internet the file wins over
+ * a pick, as it is the only copy that can play. Every queue is built from this,
+ * so a downloaded song plays from the phone wherever it was tapped.
+ */
 export function chosenCopy(t: Track): Track {
   if (t.file_path) {
     return t;
   }
-  return choices.get()[getDownloadKey(t)] ?? t;
+  const pick = choices.get()[getDownloadKey(t)];
+  return pick && !isOffline() ? pick : withLocalFile(pick ?? t);
 }
 
 /**
@@ -61,7 +69,14 @@ export function otherCopies(t: Track): Track[] {
   const current = t.playable_source || t.primary_source || '';
   return getPlayableSources(t)
     .filter(s => s.source !== current)
-    .map(s => ({...t, primary_source: s.source, playable_source: s.source}));
+    .map(s => ({
+      ...t,
+      primary_source: s.source,
+      playable_source: s.source,
+      // The file on the phone is the copy being replaced, not this one.
+      file_path: undefined,
+      has_embedded_art: undefined,
+    }));
 }
 
 /** Is `a` the same copy as `b`: the same source, at the same address. */

@@ -10,32 +10,32 @@
 
 /** What is collected, as the Privacy Policy states it. There is no switch;
  *  the Privacy Policy is the disclosure. */
-export const COLLECTED_ITEMS =
+const COLLECTED_ITEMS =
   'songs played and how long you listened, searches, likes, playlists and ' +
   'downloads, which features you use, whether lyrics were found for a song, ' +
   'settings you change, errors, the app version, your phone model and your ' +
   'approximate location (country and city)';
-export const COLLECTED_PROMISE =
+const COLLECTED_PROMISE =
   'They are linked to an anonymous ID for this phone, never to your name, ' +
   'account or contacts.';
 /** The one thing beyond statistics that leaves the phone, and only in a Jam. */
-export const JAM_NOTE =
+const JAM_NOTE =
   'During a Jam, the song, where it is, the Jam queue and the names you enter ' +
   'are shared through our database so the phones can follow each other. They ' +
   'are deleted when the Jam ends.';
 /** And when you share a playlist. */
-export const SHARE_NOTE =
+const SHARE_NOTE =
   'When you share a playlist, its name, its songs and the name you share it ' +
   "under (the name you use in a Jam, or else your phone's name) are kept in our " +
   "database for anyone who has its link, and the link's page shows the " +
   "playlist's name, until you delete the playlist.";
 
 /** The music services Relaxify plays from, credited wherever the terms are. */
-export const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
+const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
 
 export const LEGAL_UPDATED = '18 October 2026';
 
-export type LegalSection = {heading: string; paras?: string[]; list?: string[]};
+type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
   key: 'terms' | 'privacy';
   title: string;

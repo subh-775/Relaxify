@@ -21,7 +21,6 @@ _dirs = {
     "files": "",       # app-private internal storage (config, cookies, caches)
     "downloads": "",   # app-private EXTERNAL storage — the FALLBACK for audio
     "public": "",      # /storage/emulated/0/Download — the PREFERRED root
-    "web": "",         # extracted React bundle served as the SPA
     "cache": "",
 }
 
@@ -39,7 +38,6 @@ LEGACY_PUBLIC_SUBDIRS = (("Fix_Spotify", "music"),)
 def configure(
     files_dir: str,
     downloads_dir: str,
-    web_dir: str,
     cache_dir: str,
     public_dir: str = "",
 ) -> None:
@@ -47,7 +45,6 @@ def configure(
     _dirs["files"] = files_dir
     _dirs["downloads"] = downloads_dir
     _dirs["public"] = public_dir
-    _dirs["web"] = web_dir
     _dirs["cache"] = cache_dir
 
     for key in ("files", "downloads", "cache"):
@@ -234,7 +231,7 @@ def downloads_dir() -> str:
 
     Order of preference:
       1. a custom folder the user picked in Settings
-      2. Downloads/Relaxify/music  (needs All-files access)
+      2. Downloads/Relaxify/music
       3. the app-private external dir  (always writable, no permission, but
          invisible in file managers and WIPED on uninstall)
 
@@ -278,16 +275,14 @@ def downloads_status() -> dict:
     }
 
 
-def web_dir() -> str:
-    return _dirs["web"]
+def data_path(name: str) -> str:
+    """A file the app keeps in its private storage, which, unlike the cache
+    dir, Android never clears on its own."""
+    return str(Path(_dirs["files"] or ".") / name)
 
 
 def cache_dir() -> str:
     return _dirs["cache"]
-
-
-def is_android() -> bool:
-    return bool(_dirs["files"])
 
 
 def install_stdio_logging() -> None:

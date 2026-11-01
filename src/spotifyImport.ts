@@ -13,6 +13,7 @@ import {createStore, useStoreValue} from './storage';
 import {addTracksToPlaylist, createPlaylist, setImportedFrom} from './playlists';
 import {normalizeTracks} from './tracks';
 import {toast} from './toast';
+import {createEmitter} from './emitter';
 
 /**
  * The last finished import, for Home's import card: shown as "Imported, saved
@@ -143,7 +144,7 @@ function empty(): ImportState {
 }
 
 let state: ImportState = empty();
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 let timer: ReturnType<typeof setTimeout> | null = null;
 /** Bumped by every start and stop, so a poll already in flight for an old
  *  run cannot write into the new one. */
@@ -154,7 +155,7 @@ let lastMove = 0;
 function emit() {
   // New identity each tick so useSyncExternalStore re-renders.
   state = {...state};
-  listeners.forEach(l => l());
+  changes.emit();
 }
 
 function stop() {
@@ -166,7 +167,7 @@ function stop() {
 }
 
 /** A public Spotify playlist/album link (or spotify: URI). */
-export function isSpotifyUrl(text: string): boolean {
+function isSpotifyUrl(text: string): boolean {
   const s = (text || '').trim();
   return (
     /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(playlist|album)\//i.test(s) ||
@@ -176,7 +177,7 @@ export function isSpotifyUrl(text: string): boolean {
 
 /** A YouTube or YouTube Music link that carries a playlist (list=). The
  *  engine's components/youtube_playlist.py parse_url is the same rule. */
-export function isYouTubePlaylistUrl(text: string): boolean {
+function isYouTubePlaylistUrl(text: string): boolean {
   const s = (text || '').trim();
   return (
     /^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//i.test(s) &&
@@ -246,7 +247,7 @@ export function startImport(url: string): void {
         lastMove = Date.now();
       }
       state = {url, ...res, stalled: !res.finished && Date.now() - lastMove > STALL_MS};
-      listeners.forEach(l => l());
+      changes.emit();
       if (res.finished && !res.error && res.matched > 0) {
         saveFinished(url, res);
       }
@@ -339,10 +340,7 @@ export function dismissImport(): void {
 
 export function useSpotifyImport(): ImportState {
   return useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => state,
   );
 }

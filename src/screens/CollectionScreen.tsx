@@ -33,13 +33,20 @@ import {
   Plus,
   RefreshCw,
   Search as SearchIcon,
-  Share2,
   Square,
   SquareX,
   X,
   ArrowUpDown,
 } from '../icons';
-import {MoreVertical, Pause, Pen, Play, Shuffle, Trash} from '../glyphs';
+import {
+  MoreVertical,
+  Pause,
+  Pen,
+  Play,
+  Share as ShareGlyph,
+  Shuffle,
+  Trash,
+} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
@@ -55,15 +62,15 @@ import {toast} from '../toast';
 import {
   enqueueDownload,
   forgetDownloads,
-  overlayDownloadArtwork,
+  useDownloads,
   useDownloadJobs,
 } from '../downloads';
 import {DownloadRow} from '../components/DownloadRow';
 import {
+  isRunning,
   State,
   setShuffle,
   shuffleInAfterCurrent,
-  shuffleUpcoming,
   togglePlay,
   useActiveTrack,
   usePlaybackOrigin,
@@ -87,13 +94,13 @@ import {syncImport} from '../backend';
 import {sharePlaylist} from '../sharedPlaylists';
 import {PlaylistSourceBadge} from '../components/Badges';
 import {shareMessage} from '../links';
-import {getLocalLibrary} from '../backend';
 import {ConfirmModal} from '../components/ConfirmModal';
 import {Sheet} from '../components/Sheet';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {EmptyState} from '../components/EmptyState';
 import {MoreByArtist} from '../components/MoreByArtist';
+import {shuffleUpcoming} from '../queueOrder';
 
 /** The small word over the title: what kind of list this is. */
 function kindLabel(kind: Collection['kind']): string {
@@ -160,24 +167,8 @@ export function CollectionScreen({
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
   const playlists = usePlaylists();
-  const [localTracks, setLocalTracks] = useState<Track[] | null>(null);
+  const localTracks = useDownloads();
   const jobs = useDownloadJobs();
-
-  // Re-scan disk when a download finishes (and once on open) so a completed
-  // song appears in the Downloads list the moment its bar completes.
-  const doneCount = jobs.filter(j => j.status === 'done').length;
-  useEffect(() => {
-    if (collection.kind !== 'downloads') {
-      return;
-    }
-    let alive = true;
-    getLocalLibrary()
-      .then(({tracks: t}) => alive && setLocalTracks(overlayDownloadArtwork(t)))
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [collection.kind, doneCount]);
 
   const tracks = useMemo(() => {
     switch (collection.kind) {
@@ -188,7 +179,7 @@ export function CollectionScreen({
         return pl?.tracks ?? collection.tracks;
       }
       case 'downloads':
-        return localTracks ?? collection.tracks;
+        return localTracks;
       default:
         return collection.tracks;
     }
@@ -334,10 +325,7 @@ export function CollectionScreen({
         (t.artist || '').toLowerCase() === aa,
     );
   }, [activeEngine, tracks]);
-  const isPlaying =
-    playState === State.Playing ||
-    playState === State.Buffering ||
-    playState === State.Loading;
+  const isPlaying = isRunning(playState);
 
   // The header art shrinks as the list scrolls up and comes back full-size on
   // the way down — the Spotify header feel.
@@ -636,7 +624,7 @@ export function CollectionScreen({
                 {sharing ? (
                   <ActivityIndicator size="small" color={C.text} />
                 ) : (
-                  <Share2 size={21} color={C.text} />
+                  <ShareGlyph size={21} color={C.text} />
                 )}
               </TouchableOpacity>
             )}

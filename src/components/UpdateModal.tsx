@@ -14,7 +14,12 @@ import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Animated, {FadeInDown, FadeOutDown} from 'react-native-reanimated';
 import {X} from '../icons';
 import {C, S} from '../theme';
-import {dismissUpdate, startUpdateInstall, useUpdate} from '../update';
+import {
+  dismissUpdate,
+  startUpdateInstall,
+  useUpdate,
+  useUpdateSelect,
+} from '../update';
 import {formatSize} from '../updateNotes';
 import {BOTTOM_INSET} from '../layout';
 
@@ -39,8 +44,8 @@ function stripUp(u: ReturnType<typeof useUpdate>): boolean {
  * still be scrolled clear of it. Only the END of a list grows, so nothing on
  * screen moves when the strip comes or goes.
  */
-export function useUpdateStripRoom(): number {
-  return stripUp(useUpdate()) ? STRIP_ROOM : 0;
+function useUpdateStripRoom(): number {
+  return useUpdateSelect(stripUp) ? STRIP_ROOM : 0;
 }
 
 /** A list's end padding: clear of the bottom bars, and of the strip if up. */

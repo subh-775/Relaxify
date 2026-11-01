@@ -61,7 +61,7 @@ const SCREEN = Dimensions.get('window');
  * orientations, and this activity handles rotation itself rather than being
  * recreated, so a portrait height captured in landscape would be wrong.
  */
-export const FALLBACK_SPAN = Math.max(SCREEN.width, SCREEN.height);
+const FALLBACK_SPAN = Math.max(SCREEN.width, SCREEN.height);
 
 /**
  * How far along the transition the panel is: **0 fully open, 1 fully closed.**

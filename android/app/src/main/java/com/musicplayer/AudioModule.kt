@@ -1119,6 +1119,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
     // crossfade whose handoff never arrives — can leave the player stuck quiet.
     private var volRamp: Runnable? = null
     private var volRestore: Runnable? = null
+    private var fadeDone: Promise? = null
     private val volHandler = Handler(Looper.getMainLooper())
 
     /**
@@ -1150,18 +1151,29 @@ class AudioModule(private val ctx: ReactApplicationContext) :
         volRestore?.let { volHandler.removeCallbacks(it) }
         volRamp = null
         volRestore = null
+        finishFade()
+    }
+
+    /** Answers fadeOutPlayer's caller, once: a ramp cut short counts as over. */
+    private fun finishFade() {
+        fadeDone?.let {
+            fadeDone = null
+            it.resolve(true)
+        }
     }
 
     /**
      * Fade the playing track down over [durationMs], then restore full volume
-     * shortly after — by which point the queue has advanced to the next track,
-     * so the incoming song is never the one left quiet.
+     * shortly after, so the next play is not silent.
+     *
+     * Resolves when the ramp ENDS, which is the caller's moment to pause: a
+     * native answer reaches JS with the screen off, where a timer would not.
      */
     @ReactMethod
     fun fadeOutPlayer(durationMs: Int, promise: Promise) {
         volHandler.post {
             fadeExoDown(durationMs)
-            promise.resolve(true)
+            fadeDone = promise
         }
     }
 
@@ -1181,6 +1193,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                     volHandler.postDelayed(this, stepMs)
                 } else {
                     volRamp = null
+                    finishFade()
                 }
             }
         }
@@ -1198,6 +1211,7 @@ class AudioModule(private val ctx: ReactApplicationContext) :
                 resetCf()
             }
             setExoVolume(1f)
+            finishFade()
         }
         volRestore = restore
         volHandler.postDelayed(restore, durationMs.toLong() + RESTORE_GRACE_MS)

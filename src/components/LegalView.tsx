@@ -4,11 +4,11 @@
  * /privacy. Opened from Settings > About and support.
  */
 import React from 'react';
-import {ScrollView, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
-import {ChevronLeft} from '../icons';
-import {C, S, T} from '../theme';
+import {ScrollView, StyleSheet, Text, View} from 'react-native';
+import {C, S} from '../theme';
 import {BOTTOM_INSET} from '../layout';
 import {CREDITS, LEGAL_UPDATED, boldRuns, type LegalDoc} from '../legal';
+import {TitleBar} from './TitleBar';
 
 /** A string with **bold** runs. */
 function Rich({text, style}: {text: string; style: object | object[]}) {
@@ -30,17 +30,7 @@ function Rich({text, style}: {text: string; style: object | object[]}) {
 export function LegalView({doc, onBack}: {doc: LegalDoc; onBack: () => void}) {
   return (
     <View style={styles.wrap}>
-      <View style={styles.bar}>
-        <TouchableOpacity
-          onPress={onBack}
-          hitSlop={12}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel="Back">
-          <ChevronLeft size={28} color={C.text} />
-        </TouchableOpacity>
-        <Text style={styles.barTitle}>{doc.title}</Text>
-      </View>
+      <TitleBar title={doc.title} onBack={onBack} />
       <ScrollView
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
@@ -71,16 +61,6 @@ export function LegalView({doc, onBack}: {doc: LegalDoc; onBack: () => void}) {
 
 const styles = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: C.bg},
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingTop: 12,
-    paddingHorizontal: 8,
-    paddingBottom: 4,
-  },
-  back: {padding: 4},
-  barTitle: {...T.screenTitle, color: C.text, fontSize: 22},
   body: {paddingHorizontal: S.gutter + 4, paddingTop: 8, paddingBottom: BOTTOM_INSET + 24},
   updated: {color: C.faint, fontSize: 12.5, fontWeight: '600'},
   intro: {color: C.text, fontSize: 15, lineHeight: 23, fontWeight: '600', marginTop: 10},

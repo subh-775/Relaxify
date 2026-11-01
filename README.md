@@ -63,7 +63,7 @@ use and much lighter on the phone's processor and battery.
 - **Sound:** an eight-band equalizer with presets that each pair of headphones
   remembers, volume normalization, crossfade, and playback speed.
 - **Lyrics**, synced where the source provides timing; tap a line to jump there.
-- **Home in your languages**, a home-screen widget, a data saver for mobile
+- **Home in your languages**, a data saver for mobile
   data, and Auto quality that steps down on a weak signal instead of stopping.
 - **In-app updates** that install over the current version and keep your
   library.

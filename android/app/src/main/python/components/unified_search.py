@@ -12,7 +12,6 @@ Features:
 - Caching support
 """
 
-import asyncio
 import time
 from typing import List, Dict, Any, Set
 from dataclasses import dataclass, field
@@ -58,7 +57,6 @@ class SearchConfig:
             SourceType.SOUNDCLOUD,
             SourceType.YOUTUBE,
             SourceType.ITUNES,
-            SourceType.MUSICBRAINZ,
         }
     )
     max_results_per_source: int = 10
@@ -127,18 +125,10 @@ class UnifiedSearchService:
                     from components.soundcloud_downloader import SoundCloudClient
 
                     self._clients[source_type] = SoundCloudClient()
-                elif source_type == SourceType.YOUTUBE:
-                    from components.youtube_downloader import YouTubeClient
-
-                    self._clients[source_type] = YouTubeClient()
                 elif source_type == SourceType.ITUNES:
                     from components.itunes_client import iTunesClient
 
                     self._clients[source_type] = iTunesClient()
-                elif source_type == SourceType.MUSICBRAINZ:
-                    from components.musicbrainz_client import MusicBrainzClient
-
-                    self._clients[source_type] = MusicBrainzClient()
         return self._clients.get(source_type)
 
     def _cleanup_cache(self, ttl_seconds: int):
@@ -229,12 +219,6 @@ class UnifiedSearchService:
                     {"source_type": "itunes", **track.to_dict()} for track in results
                 ]
 
-            elif source_type == SourceType.MUSICBRAINZ:
-                client = self._clients[SourceType.MUSICBRAINZ]
-                results = client.search_recordings(query, limit)
-                return [
-                    {"source_type": "musicbrainz", **rec.to_dict()} for rec in results
-                ]
 
         except Exception as e:
             # Log error but don't fail the whole search
@@ -489,7 +473,6 @@ class UnifiedSearchService:
             SourceType.YOUTUBE: "youtube_results",
             SourceType.DEEZER: "deezer_results",
             SourceType.ITUNES: "itunes_results",
-            SourceType.MUSICBRAINZ: "musicbrainz_results",
         }
         kwargs = {mapping[k]: v for k, v in all_results.items() if v and k in mapping}
         return self.source_merger.merge_search_results(**kwargs)
@@ -514,175 +497,10 @@ class UnifiedSearchService:
 # ==================== HIGH-LEVEL API ====================
 
 
-class MusicSearchAPI:
-    """Simple synchronous API for common use cases."""
-
-    def __init__(self, config: SearchConfig = None):
-        self.service = UnifiedSearchService(config)
-
-    def search(self, query: str, limit: int = 20) -> List:
-        """Search for tracks and return simplified results."""
-        config = self.service.config
-        config.max_total_results = limit
-        return self.service.search(query, config)
-
-    def search_and_download(self, query: str, output_dir: str = ".") -> List[Dict]:
-        """Search and download the best match."""
-        results = self.search(query, limit=1)
-        if not results:
-            return []
-
-        track = results[0]
-        download_info = track.get_download_recommendations(
-            [track], prefer_streaming=False
-        )[0]
-
-        if not download_info["url"]:
-            return [{"error": "No download URL available"}]
-
-        # Download using the appropriate client
-        # (Implementation depends on source)
-        return [
-            {
-                "track": track.to_dict(),
-                "file_path": f"Downloads/{track.title}.mp3",
-                "source": download_info["source"],
-            }
-        ]
-
-    def get_track_by_isrc(self, isrc: str) -> Any:
-        """Get full track metadata by ISRC."""
-        # Search across all sources for this ISRC
-        config = SearchConfig(
-            enabled_sources=self.service.config.enabled_sources,
-            max_results_per_source=1,
-            max_total_results=5,
-        )
-        context = SearchContext(query=f"isrc:{isrc}", config=config)
-        all_results = {}
-
-        for source_type in config.enabled_sources:
-            if source_type in [
-                SourceType.JIOSAAVN,
-                SourceType.SOUNDCLOUD,
-                SourceType.MUSICBRAINZ,
-                SourceType.ITUNES,
-            ]:
-                results = self.service._search_source(source_type, context)
-                if results:
-                    all_results[source_type] = [
-                        r for r in results if r.get("isrc") == isrc
-                    ]
-
-        # Convert to merge_search_results kwargs
-        source_mapping = {
-            SourceType.JIOSAAVN: "jiosaavn_results",
-            SourceType.SOUNDCLOUD: "soundcloud_results",
-            SourceType.YOUTUBE: "youtube_results",
-            SourceType.DEEZER: "deezer_results",
-            SourceType.ITUNES: "itunes_results",
-            SourceType.MUSICBRAINZ: "musicbrainz_results",
-        }
-        merge_kwargs = {
-            source_mapping.get(k, k): v for k, v in all_results.items() if v
-        }
-        return self.service.source_merger.merge_search_results(**merge_kwargs)
-
-
 # ==================== ASYNC VERSION ====================
-
-
-class AsyncMusicSearchService:
-    """Fully async version for high-performance concurrent searching."""
-
-    def __init__(self, config: SearchConfig = None):
-        self.sync_service = UnifiedSearchService(config)
-
-    async def search(self, query: str, config: SearchConfig = None) -> List:
-        """Async search using thread pool for blocking clients."""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, lambda: self.sync_service.search(query, config)
-        )
-
-    async def search_multiple(
-        self, queries: List[str], config: SearchConfig = None
-    ) -> Dict[str, List]:
-        """Search multiple queries in parallel."""
-        tasks = [self.search(q, config) for q in queries]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return {q: r for q, r in zip(queries, results) if not isinstance(r, Exception)}
 
 
 # ==================== FACTORY FUNCTIONS ====================
 
 
-def create_search_service(
-    enabled_sources: Set[SourceType] = None,
-    max_results: int = 20,
-    timeout: float = 30.0,
-) -> MusicSearchAPI:
-    """Factory function to create a configured search service."""
-    config = SearchConfig(
-        enabled_sources=enabled_sources
-        or {
-            SourceType.JIOSAAVN,
-            SourceType.SOUNDCLOUD,
-            SourceType.YOUTUBE,
-            SourceType.ITUNES,
-            SourceType.MUSICBRAINZ,
-        },
-        max_total_results=max_results,
-        timeout_seconds=timeout,
-    )
-    return MusicSearchAPI(config)
-
-
-def quick_search(query: str, limit: int = 10) -> List:
-    """One-liner for quick searches."""
-    api = create_search_service(max_results=limit)
-    return api.search(query, limit=limit)
-
-
-def search_and_download(query: str, output_dir: str = ".") -> List[Dict]:
-    """Search and download the best match."""
-    api = create_search_service(max_results=1)
-    return api.search_and_download(query, output_dir)
-
-
 # ==================== CLI ====================
-
-if __name__ == "__main__":
-    import sys
-
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print('  python unified_search.py "query" [limit]')
-        sys.exit(1)
-
-    # Parse args
-    query = sys.argv[1]
-    limit = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 20
-
-    # Create service
-    api = create_search_service(max_results=limit)
-
-    print(f"Searching for: {query} (limit: {limit})")
-
-    results = api.search(query, limit=limit)
-
-    print(f"\nFound {len(results)} results:\n")
-    for i, track in enumerate(results, 1):
-        print(f"  {i}. {track.title} - {track.artist}")
-        print(f"     Album: {track.album or 'N/A'}")
-        print(
-            f"     Duration: {track.duration_ms // 1000 // 60}:{track.duration_ms // 1000 % 60:02d}"
-            if track.duration_ms
-            else "     Duration: N/A"
-        )
-        if track.sources:
-            sources = [s.value for s in track.sources.keys()]
-            print(f"     Sources: {', '.join(sources)}")
-        if track.isrc:
-            print(f"     ISRC: {track.isrc}")
-        print()

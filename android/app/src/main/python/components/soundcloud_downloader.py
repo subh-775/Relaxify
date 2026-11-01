@@ -540,15 +540,17 @@ class SoundCloudClient:
         Path(output_base).parent.mkdir(parents=True, exist_ok=True)
 
         def _ydl_progress_hook(d):
-            if d["status"] == "downloading" and progress_hook:
-                downloaded = d.get("downloaded_bytes", 0)
-                total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
-                if total > 0:
-                    progress_hook(downloaded, total)
-            elif d["status"] == "finished" and progress_hook:
-                total = d.get("total_bytes") or d.get("total_bytes_estimate", 0)
-                if total > 0:
-                    progress_hook(total, total)
+            if not progress_hook:
+                return
+            # `or 0`: yt-dlp sends these keys with a None value, and an
+            # exception raised in a hook aborts the download.
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            if total <= 0:
+                return
+            if d["status"] == "downloading":
+                progress_hook(d.get("downloaded_bytes") or 0, total)
+            elif d["status"] == "finished":
+                progress_hook(total, total)
 
         # Probe available formats first
         ydl_info_opts = self._get_ydl_opts(
@@ -588,38 +590,15 @@ class SoundCloudClient:
             f"Selected native SoundCloud format: {format_id} ({native_abr}kbps {native_acodec})"
         )
 
-        # Only transcode if not MP3/M4A or bitrate exceeds max
-        needs_transcode = (
-            native_acodec not in ["mp3", "mp2"] or native_abr > max_bitrate * 1.1
-        )
-
-        if hls:
-            # Saved as served: re-encoding needs ffmpeg, and the stream is
-            # already at or under the ceiling pick_audio_format chose for.
-            format_spec = format_id
-            postprocessors = []
-            ext_out = native_ext
-        elif needs_transcode:
-            target_abr = min(native_abr, max_bitrate)
-            format_spec = format_id
-            postprocessors = [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": str(target_abr),
-                }
-            ]
-            ext_out = "mp3"
-        else:
-            format_spec = format_id
-            postprocessors = []
-            ext_out = native_ext if native_ext != "webm" else "m4a"
+        # Saved as served, always: re-encoding needs ffmpeg, which Android does
+        # not have, and pick_audio_format already chose at or under the ceiling.
+        ext_out = native_ext if hls or native_ext != "webm" else "m4a"
 
         ydl_opts = self._get_ydl_opts(
             quiet=True,
-            format=format_spec,
+            format=format_id,
             outtmpl=f"{output_base}.%(ext)s",
-            postprocessors=postprocessors,
+            progress_hooks=[_ydl_progress_hook],
         )
 
         result = self._execute_download(
@@ -768,74 +747,3 @@ def download_track(
 
 
 # ==================== CLI ====================
-
-if __name__ == "__main__":
-    import sys
-
-    def print_progress(downloaded: int, total: int):
-        pct = (downloaded / total) * 100
-        bar_len = 40
-        filled = int(bar_len * downloaded / total)
-        bar = "█" * filled + "░" * (bar_len - filled)
-        sys.stdout.write(f"\r  [{bar}] {pct:.1f}% ({downloaded:,}/{total:,} bytes)")
-        sys.stdout.flush()
-
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print('  python soundcloud_downloader.py search "query"')
-        print(
-            '  python soundcloud_downloader.py download "https://soundcloud.com/..." [output_dir]'
-        )
-        sys.exit(1)
-
-    command = sys.argv[1]
-
-    if command == "search":
-        query = sys.argv[2] if len(sys.argv) > 2 else "believer imagine dragons"
-        print(f"\nSearching SoundCloud for: {query}")
-        tracks = search_tracks(query, 10)
-
-        if not tracks:
-            print("No results found.")
-        else:
-            print(f"\nFound {len(tracks)} results:\n")
-            for i, track in enumerate(tracks, 1):
-                duration = ""
-                if track.duration_ms:
-                    m = track.duration_ms // 60000
-                    s = (track.duration_ms % 60000) // 1000
-                    duration = f" ({m}:{s:02d})"
-                print(f"  {i}. {track.title} - {track.artist}{duration}")
-                print(f"     URL: {track.url}")
-                print()
-
-    elif command == "download":
-        if len(sys.argv) < 3:
-            print("Error: URL required")
-            sys.exit(1)
-
-        url = sys.argv[2]
-        output_dir = sys.argv[3] if len(sys.argv) > 3 else "."
-
-        print(f"\nDownloading: {url}")
-        print(f"Output directory: {output_dir}")
-
-        result = download_track(url, output_dir, progress_callback=print_progress)
-        print()
-
-        if result.success:
-            print("✓ Success!")
-            print(f"  File: {result.file_path}")
-            print(
-                f"  Size: {result.file_size:,} bytes ({result.file_size / 1024 / 1024:.2f} MB)"
-            )
-            if result.bitrate:
-                print(f"  Bitrate: {result.bitrate // 1000} kbps")
-            if result.codec:
-                print(f"  Codec: {result.codec}")
-        else:
-            print(f"✗ Failed: {result.error}")
-
-    else:
-        print(f"Unknown command: {command}")
-        sys.exit(1)

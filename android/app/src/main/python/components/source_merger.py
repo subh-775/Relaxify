@@ -29,7 +29,6 @@ class SourceType(Enum):
     YOUTUBE_MUSIC = "youtube_music"
     DEEZER = "deezer"
     ITUNES = "itunes"
-    MUSICBRAINZ = "musicbrainz"
     UNKNOWN = "unknown"
 
 
@@ -149,36 +148,6 @@ class UnifiedTrack:
 
         return self.fallback_artwork
 
-    def get_best_audio_source(self) -> Optional[AudioSource]:
-        """Get the highest priority available audio source."""
-        if not self.sources:
-            return None
-
-        # Sort by priority (descending)
-        sorted_sources = sorted(
-            self.sources.items(), key=lambda x: x[1].priority, reverse=True
-        )
-        return sorted_sources[0][1] if sorted_sources else None
-
-    def get_download_url(self) -> Optional[str]:
-        """Get the best URL for downloading the full track."""
-        source = self.get_best_audio_source()
-        return source.url if source else None
-
-    def get_stream_url(self) -> Optional[str]:
-        """Get the best URL for streaming (prefers preview if no full track)."""
-        # Try full download source first
-        source = self.get_best_audio_source()
-        if source and source.url:
-            return source.url
-
-        # Fallback to preview
-        for source in self.sources.values():
-            if source.preview_url:
-                return source.preview_url
-
-        return None
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "title": self.title,
@@ -222,7 +191,6 @@ class SourceMerger:
         SourceType.YOUTUBE: 60,  # Variable quality
         SourceType.DEEZER: 50,  # 30s preview only
         SourceType.ITUNES: 40,  # 30s preview, metadata only
-        SourceType.MUSICBRAINZ: 30,  # Metadata only
     }
 
     PLAYABLE_SOURCES = {
@@ -268,22 +236,6 @@ class SourceMerger:
         t = re.sub(r"\b(official|music|video|lyrics?|audio|hd|4k|visuali[sz]er|mv)\b", " ", t)
         return re.sub(r"\s+", " ", t).strip()
 
-    def _generate_key(self, track: Dict) -> str:
-        """Generate a normalized key for deduplication."""
-        # Use ISRC if available (most reliable)
-        isrc = track.get("isrc") or track.get("isrc_id")
-        if isrc:
-            return f"isrc:{isrc.lower()}"
-
-        # Fallback to normalized title + artist. Album is deliberately EXCLUDED:
-        # sources rarely agree on album text (often empty), which used to split
-        # the SAME song across sources — so a dead SoundCloud copy had no YouTube
-        # fallback. Title (artist-prefix/noise-stripped) + artist is the
-        # cross-source identity.
-        artist = self._normalize_text(track.get("artist", ""))
-        title = self._key_title(track.get("title", ""), artist)
-        return f"{title}|{artist}"
-
     # Sources whose `artist` field is a real artist credit. SoundCloud and
     # YouTube report the UPLOADER instead — "Blinding Lights" comes back credited
     # to "Minh Prime" or "8DZone" — so their artist string can never be used to
@@ -291,7 +243,6 @@ class SourceMerger:
     TRUSTED_ARTIST_SOURCES = {
         SourceType.JIOSAAVN,
         SourceType.ITUNES,
-        SourceType.MUSICBRAINZ,
     }
 
     TITLE_MATCH_THRESHOLD = 88.0    # token_set_ratio, 0-100
@@ -369,14 +320,12 @@ class SourceMerger:
     def merge_results(
         self,
         source_results: Dict[SourceType, List[Dict]],
-        enrich_metadata: bool = True,
     ) -> List:
         """
         Merge results from multiple sources into unified tracks.
 
         Args:
             source_results: Dict mapping SourceType -> list of raw result dicts
-            enrich_metadata: Whether to fill missing metadata from other sources
 
         Returns:
             List of UnifiedTrack objects, sorted by relevance
@@ -742,7 +691,6 @@ class SourceMerger:
         youtube_results: List[Dict] = None,
         deezer_results: List[Dict] = None,
         itunes_results: List[Dict] = None,
-        musicbrainz_results: List[Dict] = None,
         **other_results,
     ) -> List[UnifiedTrack]:
         """
@@ -760,8 +708,6 @@ class SourceMerger:
             source_results[SourceType.DEEZER] = deezer_results
         if itunes_results:
             source_results[SourceType.ITUNES] = itunes_results
-        if musicbrainz_results:
-            source_results[SourceType.MUSICBRAINZ] = musicbrainz_results
 
         # Add any additional sources
         for source_str, results in other_results.items():
@@ -776,164 +722,7 @@ class SourceMerger:
 
         return self.merge_results(source_results)
 
-    def find_track_by_isrc(
-        self,
-        isrc: str,
-        source_results: Dict[SourceType, List[Dict]],
-    ) -> Optional[Any]:
-        """Find a track by ISRC across all source results."""
-        for source_type, results in source_results.items():
-            for raw in results:
-                if raw.get("isrc") == isrc or raw.get("isrc_id") == isrc:
-                    return self._merge_entries(
-                        "isrc:" + isrc,
-                        [(source_type, self._normalize_result(raw, source_type))],
-                    )
-        return None
-
-    def get_download_recommendations(
-        self,
-        tracks: List[UnifiedTrack],
-        prefer_streaming: bool = False,
-    ) -> List[Dict]:
-        """Get download/stream recommendations for a list of tracks."""
-        recommendations = []
-
-        for track in tracks:
-            source = track.get_best_audio_source()
-
-            if prefer_streaming:
-                url = track.get_stream_url()
-                url_type = "stream"
-            else:
-                url = track.get_download_url()
-                url_type = "download"
-
-            if url:
-                recommendations.append(
-                    {
-                        "track": track.to_dict(),
-                        "url": url,
-                        "type": url_type,
-                        "source": source.source.value if source else None,
-                        "bitrate": source.bitrate if source else None,
-                        "codec": source.codec if source else None,
-                    }
-                )
-
-        return recommendations
-
-
 # ==================== CONVENIENCE FUNCTIONS ====================
 
 
-def merge_sources(
-    jiosaavn_results: List[Dict] = None,
-    soundcloud_results: List[Dict] = None,
-    youtube_results: List[Dict] = None,
-    deezer_results: List[Dict] = None,
-    itunes_results: List[Dict] = None,
-    musicbrainz_results: List[Dict] = None,
-) -> List:
-    """Convenience function to merge results from all sources."""
-    merger = SourceMerger()
-    return merger.merge_search_results(
-        jiosaavn_results=jiosaavn_results,
-        soundcloud_results=soundcloud_results,
-        youtube_results=youtube_results,
-        deezer_results=deezer_results,
-        itunes_results=itunes_results,
-        musicbrainz_results=musicbrainz_results,
-    )
-
-
 # ==================== CLI ====================
-
-if __name__ == "__main__":
-    import sys
-    import json
-
-    if len(sys.argv) < 2:
-        print("Usage: python source_merger.py <command> [args]")
-        print("Commands:")
-        print("  merge <source1.json> <source2.json> ... - Merge result files")
-        print("  demo - Run demo with sample data")
-        sys.exit(1)
-
-    command = sys.argv[1]
-
-    if command == "demo":
-        # Create sample data
-        merger = SourceMerger()
-
-        # Sample JioSaavn results
-        jiosaavn = [
-            {
-                "title": "Believer",
-                "artist": "Imagine Dragons",
-                "album": "Evolve",
-                "isrc": "USUG11700235",
-                "duration_ms": 204386,
-                "release_date": "2017-07-23",
-                "genre": "Alternative",
-                "artwork_url": "https://c.saavncdn.com/248/Evolve-English-2018-20260605220036-500x500.jpg",
-                "url": "https://example.com/jiosaavn/believer.mp4",
-                "bitrate": 320000,
-                "codec": "aac",
-            }
-        ]
-
-        # Sample SoundCloud results
-        soundcloud = [
-            {
-                "title": "Believer",
-                "artist": "Imagine Dragons",
-                "album": "Evolve",
-                "isrc": "USUG11700235",
-                "duration_ms": 204386,
-                "url": "https://soundcloud.com/...",
-                "bitrate": 256,
-                "codec": "mp3",
-            }
-        ]
-
-        # Sample iTunes results
-        itunes = [
-            {
-                "title": "Believer",
-                "artist": "Imagine Dragons",
-                "album": "Evolve",
-                "isrc": "USUG11700235",
-                "release_date": "2017-07-23",
-                "artwork_url": "https://is1-ssl.mzstatic.com/image/thumb/...100x100bb.jpg",
-                "preview_url": "https://audio-ssl.itunes.apple.com/...mzaf_12345.plus.aac.p.m4a",
-            }
-        ]
-
-        # Sample MusicBrainz
-        musicbrainz = [
-            {
-                "title": "Believer",
-                "artist": "Imagine Dragons",
-                "isrc": "USUG11700235",
-                "release_date": "2017-07-23",
-                "genre": "alternative rock",
-            }
-        ]
-
-        # Merge
-        merged = merge_sources(
-            jiosaavn_results=jiosaavn,
-            soundcloud_results=soundcloud,
-            itunes_results=itunes,
-            musicbrainz_results=[],
-        )
-
-        print(f"Merged {len(merged)} tracks:\n")
-        for track in merged:
-            print(json.dumps(track.to_dict(), indent=2))
-            print()
-
-    else:
-        print("Unknown command")
-        sys.exit(1)

@@ -58,7 +58,7 @@ const M = CARD_ART / 2;
 
 type W = {width?: number};
 
-export function JamCard({onOpen, width}: {onOpen: () => void} & W) {
+function JamCard({onOpen, width}: {onOpen: () => void} & W) {
   const jam = useJam();
   const p = JAM_PAL;
   const listening = jam ? Math.max(1, jam.members.length) : 0;
@@ -126,7 +126,7 @@ type ImportPhase = 'running' | 'slow' | 'cancelled' | 'failed' | 'done' | 'ask';
 
 /** Which state the import card is in. There is always one: the card stays on
  *  Home for good, asking for a link when nothing else is going on. */
-export function useImportPhase(): ImportPhase {
+function useImportPhase(): ImportPhase {
   const job = useSpotifyImport();
   const last = useLastImport();
   if (job.url && job.cancelled) {
@@ -206,7 +206,7 @@ function WarmBar() {
   );
 }
 
-export function ImportCard({
+function ImportCard({
   onAskImport,
   onOpenImport,
   onOpenCollection,
@@ -383,7 +383,7 @@ export function ImportCard({
   );
 }
 
-export function ContinueCard({
+function ContinueCard({
   onOpen,
   starter,
   onOpenStarter,

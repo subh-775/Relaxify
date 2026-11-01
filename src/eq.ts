@@ -18,7 +18,7 @@ export const EQ_BANDS = [60, 150, 400, 1000, 2400, 6000, 12000, 16000];
 export const EQ_MIN_DB = -12;
 export const EQ_MAX_DB = 12;
 
-export const FLAT = [0, 0, 0, 0, 0, 0, 0, 0];
+const FLAT = [0, 0, 0, 0, 0, 0, 0, 0];
 
 export type EqPreset = {
   id: string;

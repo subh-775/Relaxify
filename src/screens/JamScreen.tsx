@@ -5,10 +5,9 @@
  * leaves. The code card wears one of the Recap's palettes, the one bright
  * thing on an otherwise plain page, because the code is the thing to share.
  */
-import React, {useEffect, useState} from 'react';
+import React, {useState} from 'react';
 import {
   ActivityIndicator,
-  BackHandler,
   Image,
   ScrollView,
   Share,
@@ -18,14 +17,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {ChevronLeft} from '../icons';
-import {C, S, T} from '../theme';
+import {C, S} from '../theme';
 import {BOTTOM_INSET} from '../layout';
 import {BRIGHT_PALS} from '../brandArt';
 import {useStoreValue} from '../storage';
 import {joinJam, leaveJam, savedName, startJam, useJam} from '../jam';
 import {getBestArtworkUrl} from '../tracks';
 import {toast} from '../toast';
+import {useBackPress} from '../useBackPress';
+import {TitleBar} from '../components/TitleBar';
 
 export function JamScreen({onClose}: {onClose: () => void}) {
   const jam = useJam();
@@ -33,13 +33,7 @@ export function JamScreen({onClose}: {onClose: () => void}) {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [onClose]);
+  useBackPress(onClose);
 
   const start = async () => {
     setBusy(true);
@@ -69,12 +63,7 @@ export function JamScreen({onClose}: {onClose: () => void}) {
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.bar}>
-        <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.back}>
-          <ChevronLeft size={28} color={C.text} />
-        </TouchableOpacity>
-        <Text style={styles.barTitle}>Jam</Text>
-      </View>
+      <TitleBar title="Jam" onBack={onClose} />
 
       <ScrollView
         contentContainerStyle={styles.body}
@@ -191,7 +180,7 @@ export function JamScreen({onClose}: {onClose: () => void}) {
               ))
             ) : (
               <Text style={styles.note}>
-                Add songs from any song&apos;s menu: Add to Jam queue.
+                Swipe a song right, or use its menu, to add it here.
               </Text>
             )}
 
@@ -232,16 +221,6 @@ function SongRow({art, title, sub}: {art?: string; title: string; sub: string}) 
 
 const styles = StyleSheet.create({
   wrap: {flex: 1, backgroundColor: C.bg},
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingTop: 12,
-    paddingHorizontal: 8,
-    paddingBottom: 4,
-  },
-  back: {padding: 4},
-  barTitle: {...T.screenTitle, color: C.text, fontSize: 22},
   body: {padding: S.gutter, paddingBottom: BOTTOM_INSET + 20, gap: 10},
   lede: {color: C.sub, fontSize: 14.5, lineHeight: 21, marginBottom: 8},
   label: {color: C.text, fontSize: 13.5, fontWeight: '700'},

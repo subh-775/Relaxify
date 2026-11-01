@@ -24,7 +24,7 @@ const MANIFEST = 'https://relaxify.pages.dev/doodles/manifest.json';
 const KEY = 'mp.doodles.v1';
 const STALE_MS = 6 * 3600 * 1000;
 
-export type Doodle = {
+type Doodle = {
   id: string;
   name: string;
   kind: 'fest' | 'every';
@@ -63,7 +63,7 @@ export type Pick = {
 };
 
 /** The phone's own date, YYYY-MM-DD. */
-export function localDay(d: Date = new Date()): string {
+function localDay(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }

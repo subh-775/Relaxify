@@ -230,13 +230,14 @@ export const GLYPHS = {
       w: 1.8,
     },
   ],
-  // Three linked dots: pass Relaxify on.
+  // An arrow rising out of an open tray: pass it on (Recommend Relaxify, a
+  // shared playlist, the Recap card).
   share: [
+    {d: 'M12 3v11.5M8 7l4-4 4 4', w: 2},
     {
-      d: 'M20.6 5.5a2.6 2.6 0 1 1-5.2 0 2.6 2.6 0 1 1 5.2 0zM8.6 12a2.6 2.6 0 1 1-5.2 0 2.6 2.6 0 1 1 5.2 0zM20.6 18.5a2.6 2.6 0 1 1-5.2 0 2.6 2.6 0 1 1 5.2 0z',
-      w: 1.8,
+      d: 'M8 10H6.5A2.5 2.5 0 0 0 4 12.5v6A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5v-6A2.5 2.5 0 0 0 17.5 10H16',
+      w: 2,
     },
-    {d: 'M8.3 10.75l7.4-4M8.3 13.25l7.4 4', w: 1.8},
   ],
   // The big player's download, the + circle's twin: the same ring, an arrow
   // in it. Once the song is on the phone the arrow becomes a tick, in white.

@@ -7,9 +7,8 @@
  * People who were already using the app before this existed never see it
  * (settleWelcome marks them done on their first start with it).
  */
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useCallback, useRef, useState} from 'react';
 import {
-  BackHandler,
   FlatList,
   StyleSheet,
   Text,
@@ -25,6 +24,7 @@ import {CARD_PALS, PALS, blob, burst, sparkle, type Pal} from '../brandArt';
 import {createStore, useStoreValue} from '../storage';
 import {readStats} from '../stats';
 import {logEvent} from '../analytics';
+import {useBackPress} from '../useBackPress';
 
 const welcomed = createStore<boolean>(
   'mp.welcomed.v1',
@@ -129,13 +129,7 @@ export function WelcomeScreen() {
   const finishRef = useRef(finish);
   finishRef.current = finish;
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      finishRef.current('skip');
-      return true;
-    });
-    return () => sub.remove();
-  }, []);
+  useBackPress(useCallback(() => finishRef.current('skip'), []));
 
   const go = (i: number) => {
     list.current?.scrollToIndex({index: i, animated: true});

@@ -138,7 +138,7 @@ export const SearchScreen = React.memo(function SearchScreen({
   visible: boolean;
   /** A result tapped: that song alone. Autoplay follows it with similar
    *  songs, not with the rest of the list (other versions, covers, remixes). */
-  onPickTrack: (track: Track) => void;
+  onPickTrack: (track: Track, context?: Track[]) => void;
   onImportSpotify: (url: string) => void;
   onMenu: (track: Track) => void;
   onOpenArtist?: (name: string) => void;
@@ -429,7 +429,7 @@ export const SearchScreen = React.memo(function SearchScreen({
     return (
       <View style={styles.wrap}>
         {top}
-        <OfflineScreen onOpenCollection={onOpenCollection} />
+        <OfflineScreen onPlayTrack={onPickTrack} query={query} />
       </View>
     );
   }
@@ -653,7 +653,7 @@ export const SearchScreen = React.memo(function SearchScreen({
           contentContainerStyle={[styles.list, listEnd]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            query.trim() && !error ? (
+            query.trim() && !error && !spotify && !codeIn(query) ? (
               <Text style={styles.empty}>No songs matched that.</Text>
             ) : null
           }

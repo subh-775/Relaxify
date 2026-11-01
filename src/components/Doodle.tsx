@@ -12,8 +12,8 @@
  * takes to load, so the header never flashes empty. Before there is any
  * doodle at all (first launch offline), the plain wordmark.
  *
- * A tap replays it from the start and says what it is: "Happy Diwali", or
- * "Today's doodle: Vinyl". The app's accent colour is the doodle's.
+ * A tap replays it from the start, silently: no toast. The app's accent
+ * colour is the doodle's.
  */
 import React, {useEffect, useState} from 'react';
 import {
@@ -27,7 +27,6 @@ import {
 import {useReducedMotion} from 'react-native-reanimated';
 import {setAccent} from '../accent';
 import {useDoodle} from '../doodle';
-import {toast} from '../toast';
 import {C} from '../theme';
 
 /** The band's shape before a manifest says otherwise: the designs' own. */
@@ -56,7 +55,6 @@ export function Doodle({visible = true}: {visible?: boolean}) {
       onPress={() => {
         if (pick) {
           setPlay(p => p + 1);
-          toast(pick.caption);
         }
       }}
       accessibilityRole="button"

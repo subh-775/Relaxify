@@ -3,6 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Reads back songs already in Download/Relaxify/music. Without it Android
+         hides every file this install did not write itself, so a reinstall
+         emptied the library while the music sat in the folder. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <!-- In-app update: download the release APK and launch the system installer.
          The user still confirms the install; this only lets us start it. -->
@@ -94,18 +99,6 @@
 
       <!-- Posts the weekly Recap notification (RecapReminder). -->
       <receiver android:name=".RecapReminderReceiver" android:exported="false" />
-
-      <!-- The home-screen widget: now playing with play, pause and skip. -->
-      <receiver
-        android:name=".NowPlayingWidget"
-        android:exported="false">
-        <intent-filter>
-            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-        </intent-filter>
-        <meta-data
-          android:name="android.appwidget.provider"
-          android:resource="@xml/widget_now_playing_info" />
-      </receiver>
 
       <!-- Serves the downloaded update APK to the system installer as a
            content:// URI (a file:// URI throws FileUriExposedException on

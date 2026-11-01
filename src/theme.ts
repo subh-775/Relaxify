@@ -35,7 +35,7 @@ export const S = {
  * everything a couple of percent — enough to read easier on a phone without
  * reflowing any layout.
  */
-export const TYPE_SCALE = 1.02;
+const TYPE_SCALE = 1.02;
 
 /** Scale a font size by TYPE_SCALE, rounded to the nearest half point. */
 export const fs = (size: number): number =>

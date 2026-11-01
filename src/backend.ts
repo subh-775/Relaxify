@@ -99,25 +99,54 @@ async function warnIfEngineStopped(): Promise<void> {
  */
 const API_TIMEOUT_MS = 30_000;
 
+/** One request to the engine, abandoned after `timeoutMs`. A failure that was
+ *  not that timeout may be the engine dying, so it is checked for. */
+async function apiFetch(
+  path: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    return await fetch(apiUrl(path), {...init, signal: ctl.signal});
+  } catch (e) {
+    if (!ctl.signal.aborted) {
+      warnIfEngineStopped().catch(() => {});
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** POST to an /api endpoint. Returns the Response, because some endpoints
+ *  explain a refusal in the body of a non-2xx: reading it is the caller's. */
+function apiPost(
+  path: string,
+  body?: unknown,
+  timeoutMs = API_TIMEOUT_MS,
+): Promise<Response> {
+  return apiFetch(
+    path,
+    body === undefined
+      ? {method: 'POST'}
+      : {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        },
+    timeoutMs,
+  );
+}
+
 /** GET an /api endpoint as JSON. Throws on a non-2xx, a network error or a
  *  timeout. */
 export async function apiGet<T>(
   path: string,
   timeoutMs = API_TIMEOUT_MS,
 ): Promise<T> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  let res: Response;
-  try {
-    res = await fetch(apiUrl(path), {signal: ctl.signal});
-  } catch (e) {
-    clearTimeout(timer);
-    if (!ctl.signal.aborted) {
-      warnIfEngineStopped().catch(() => {});
-    }
-    throw e;
-  }
-  clearTimeout(timer);
+  const res = await apiFetch(path, {}, timeoutMs);
   if (!res.ok) {
     throw new Error(`${path} -> HTTP ${res.status}`);
   }
@@ -231,11 +260,7 @@ export async function getHome(language = 'hindi,english'): Promise<HomeRow[]> {
 
 /** POST a search. Returns playable tracks across all enabled sources. */
 export async function search(query: string, limit = 25): Promise<Track[]> {
-  const res = await fetch(apiUrl('/search'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({query, limit}),
-  });
+  const res = await apiPost('/search', {query, limit});
   if (!res.ok) {
     throw new Error(`search -> HTTP ${res.status}`);
   }
@@ -278,7 +303,7 @@ export async function getStreamInfo(
 
 // ─── Lyrics ─────────────────────────────────────────────────────────────────
 
-export type SyncedLine = {time: number; text: string};
+type SyncedLine = {time: number; text: string};
 export type Lyrics = {
   plain?: string;
   synced?: SyncedLine[];
@@ -407,11 +432,7 @@ export const getDownloadsInfo = () => apiGet<DownloadsInfo>('/downloads/info');
 export async function setDownloadsDir(
   path: string,
 ): Promise<{ok: boolean; error?: string} & DownloadsInfo> {
-  const res = await fetch(apiUrl('/downloads/dir'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path}),
-  });
+  const res = await apiPost('/downloads/dir', {path});
   return (await res.json()) as {ok: boolean; error?: string} & DownloadsInfo;
 }
 
@@ -445,7 +466,7 @@ export const getCacheSize = () => apiGet<{bytes: number}>('/cache');
 /** Drop resolved stream URLs, lyrics, home rows and cached files. Returns the
  *  bytes reclaimed. Never touches downloads, playlists or likes. */
 export async function clearBackendCache(): Promise<number> {
-  const res = await fetch(apiUrl('/cache/clear'), {method: 'POST'});
+  const res = await apiPost('/cache/clear');
   if (!res.ok) {
     throw new Error(`clear cache -> HTTP ${res.status}`);
   }
@@ -468,11 +489,11 @@ export async function getRadio(
 }
 
 /** Home's Discover: songs similar to these [title, artist] seeds, in a new
- *  order each call. More than the grid shows: the caller drops what the
- *  listener has already heard. */
+ *  order each call. Well over the grid's nine: the caller drops what the
+ *  listener has already heard, and radio picks are often songs they know. */
 export async function getDiscover(
   seeds: [string, string][],
-  limit = 16,
+  limit = 24,
 ): Promise<Track[]> {
   const data = await apiGet<{tracks?: Track[]}>(
     `/discover?seeds=${encodeURIComponent(JSON.stringify(seeds))}&limit=${limit}`,
@@ -587,33 +608,26 @@ export async function syncImport(
   keys: string[],
   have: Track[],
 ): Promise<SyncResult> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 180_000);
-  try {
-    const res = await fetch(apiUrl('/import/sync'), {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        url,
-        keys,
-        have: have.map(t => ({title: t.title, artist: t.artist})),
-      }),
-      signal: ctl.signal,
-    });
-    const data = (await res.json()) as Partial<SyncResult>;
-    if (!res.ok || data.error) {
-      throw new Error(data.error || 'Could not sync this playlist.');
-    }
-    return {
-      name: data.name || '',
-      keys: Array.isArray(data.keys) ? data.keys : [],
-      tracks: Array.isArray(data.tracks) ? data.tracks : [],
-      new: data.new ?? 0,
-      missing: data.missing ?? 0,
-    };
-  } finally {
-    clearTimeout(timer);
+  const res = await apiPost(
+    '/import/sync',
+    {
+      url,
+      keys,
+      have: have.map(t => ({title: t.title, artist: t.artist})),
+    },
+    180_000,
+  );
+  const data = (await res.json()) as Partial<SyncResult>;
+  if (!res.ok || data.error) {
+    throw new Error(data.error || 'Could not sync this playlist.');
   }
+  return {
+    name: data.name || '',
+    keys: Array.isArray(data.keys) ? data.keys : [],
+    tracks: Array.isArray(data.tracks) ? data.tracks : [],
+    new: data.new ?? 0,
+    missing: data.missing ?? 0,
+  };
 }
 
 /** Poll (and on the first call, start) the background import job for `url`.
@@ -678,7 +692,7 @@ export type DownloadTask = {
   status?: string;
   progress?: number;
   error?: string;
-  filepath?: string;
+  file_path?: string;
 };
 
 /**
@@ -697,22 +711,18 @@ export async function startDownload(
   if (!url) {
     throw new Error('This track has no downloadable source.');
   }
-  const res = await fetch(apiUrl('/download'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      url,
-      track_info: {
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
-        duration_ms: track.duration_ms,
-        artwork_url: getBestArtworkUrl(track),
-      },
-      // The backend clamps to 64..320 anyway; clamping here keeps the value
-      // we report to the user honest.
-      max_bitrate: Math.max(64, Math.min(bitrate, 320)),
-    }),
+  const res = await apiPost('/download', {
+    url,
+    track_info: {
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      duration_ms: track.duration_ms,
+      artwork_url: getBestArtworkUrl(track),
+    },
+    // The backend clamps to 64..320 anyway; clamping here keeps the value
+    // we report to the user honest.
+    max_bitrate: Math.max(64, Math.min(bitrate, 320)),
   });
   return (await res.json()) as DownloadTask;
 }
@@ -732,11 +742,7 @@ export async function deleteDownload(path: string): Promise<boolean> {
   if (!path) {
     return false;
   }
-  const res = await fetch(apiUrl('/downloads/delete'), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({path}),
-  });
+  const res = await apiPost('/downloads/delete', {path});
   const data = (await res.json()) as {ok?: boolean};
   return !!data.ok;
 }

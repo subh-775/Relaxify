@@ -154,16 +154,6 @@ class iTunesAlbum:
         }
 
 
-@dataclass
-class SearchResult:
-    """Generic search result container."""
-
-    tracks: List = field(default_factory=list)  # iTunesTrack
-    artists: List = field(default_factory=list)  # iTunesArtist
-    albums: List = field(default_factory=list)  # iTunesAlbum
-    total_results: int = 0
-
-
 class iTunesClient:
     """
     iTunes Search API client for metadata enrichment.
@@ -353,51 +343,7 @@ class iTunesClient:
         data = self._search(params)
         return [self._parse_album(item) for item in data.get("results", [])]
 
-    def search_all(
-        self,
-        query: str,
-        limit: int = 20,
-        country: Optional[str] = None,
-    ):
-        """Search tracks, artists, and albums in parallel."""
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            future_tracks = executor.submit(self.search_tracks, query, limit, country)
-            future_artists = executor.submit(self.search_artists, query, limit, country)
-            future_albums = executor.submit(self.search_albums, query, limit, country)
-
-            return {
-                "tracks": future_tracks.result(),
-                "artists": future_artists.result(),
-                "albums": future_albums.result(),
-            }
-
     # ==================== LOOKUP METHODS ====================
-
-    def lookup_track(self, track_id: str, country: Optional[str] = None) -> Optional[Any]:
-        """Get full track info by iTunes track ID."""
-        params = {"id": track_id, "entity": "musicTrack"}
-        if country:
-            params["country"] = country
-
-        data = self._lookup(params)
-        results = data.get("results", [])
-        if results:
-            return self._parse_track(results[0])
-        return None
-
-    def lookup_artist(self, artist_id: str, country: Optional[str] = None) -> Optional[Any]:
-        """Get artist details by ID."""
-        params = {"id": artist_id, "entity": "musicArtist"}
-        if country:
-            params["country"] = country
-
-        data = self._lookup(params)
-        results = data.get("results", [])
-        if results:
-            return self._parse_artist(results[0])
-        return None
 
     def lookup_album(
         self, album_id: str, country: Optional[str] = None, entity: str = "album"
@@ -422,20 +368,6 @@ class iTunesClient:
             return album
         return None
 
-    def lookup_by_ids(
-        self, ids: List[str], entity: str = "musicTrack", country: Optional[str] = None
-    ) -> List:
-        """Batch lookup multiple IDs (up to 50 at a time)."""
-        if len(ids) > 50:
-            raise ValueError("Maximum 50 IDs per request")
-
-        params = {"id": ",".join(ids), "entity": entity}
-        if country:
-            params["country"] = country
-
-        data = self._lookup(params)
-        return data.get("results", [])
-
     # ==================== ENRICHMENT HELPERS ====================
 
     def enrich_track(
@@ -457,24 +389,6 @@ class iTunesClient:
         if tracks:
             return tracks[0]
 
-        return None
-
-    def get_preview_url(
-        self, track_id: str, country: Optional[str] = None
-    ) -> Optional[str]:
-        """Get 30-second preview URL for a track."""
-        track = self.lookup_track(track_id, country)
-        return track.preview_url if track else None
-
-    def get_high_res_artwork(
-        self, track_id: str, size: int = 600, country: Optional[str] = None
-    ) -> Optional[str]:
-        """Get high-resolution artwork URL (up to 1200x1200)."""
-        track = self.lookup_track(track_id, country)
-        if track:
-            # iTunes artwork URLs follow pattern: .../WIDTHxHEIGHT/...
-            # Replace 100x100 with desired size
-            return track.artwork_url_100.replace("100x100", f"{size}x{size}")
         return None
 
     # ==================== PARSERS ====================
@@ -579,106 +493,4 @@ def enrich_track(title: str, artist: str, country: str = "US") -> Optional[Any]:
     return client.enrich_track(title, artist, country)
 
 
-def get_track_by_id(track_id: str, country: str = "US") -> Optional[Any]:
-    """Quick track lookup by iTunes ID."""
-    client = iTunesClient(default_country=country)
-    return client.lookup_track(track_id, country)
-
-
 # ==================== CLI ====================
-
-if __name__ == "__main__":
-    import sys
-    import json
-
-    if len(sys.argv) < 2:
-        print("Usage:")
-        print('  python itunes_client.py search "query" [limit] [country]')
-        print('  python itunes_client.py enrich "title" "artist" [country]')
-        print("  python itunes_client.py track <track_id> [country]")
-        print("  python itunes_client.py album <album_id> [country]")
-        print('  python itunes_client.py enrich-full "title" "artist" [country]')
-        sys.exit(1)
-
-    command = sys.argv[1]
-    country = sys.argv[-1] if len(sys.argv) > 3 and len(sys.argv[-1]) == 2 else "US"
-    client = iTunesClient(default_country=country)
-
-    if command == "search":
-        query = sys.argv[2]
-        limit = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else 10
-
-        print(f"\nSearching iTunes ({country}) for: {query}")
-        tracks = client.search_tracks(query, limit)
-
-        if not tracks:
-            print("No results found.")
-        else:
-            print(f"\nFound {len(tracks)} tracks:\n")
-            for i, track in enumerate(tracks, 1):
-                print(f"  {i}. {track.name} - {track.artist_name}")
-                print(
-                    f"     Album: {track.collection_name} ({track.release_date[:10] if track.release_date else '?'})"
-                )
-                print(f"     Duration: {track.duration_formatted}")
-                print(f"     Genre: {track.primary_genre_name or 'N/A'}")
-                print(f"     Explicit: {track.content_advisory_rating or 'Clean'}")
-                print(f"     Artwork (600x600): {track.artwork_url_600}")
-                print(f"     Preview: {track.preview_url or 'N/A'}")
-                print(f"     Track ID: {track.track_id}")
-                print()
-
-    elif command == "enrich":
-        if len(sys.argv) < 4:
-            print('Usage: python itunes_client.py enrich "title" "artist" [country]')
-            sys.exit(1)
-
-        title = sys.argv[2]
-        artist = sys.argv[3]
-
-        print(f"\nEnriching: {title} - {artist}")
-        track = client.enrich_track(title, artist)
-
-        if track:
-            print(json.dumps(track.to_dict(), indent=2))
-        else:
-            print("No match found.")
-
-    elif command == "track":
-        if len(sys.argv) < 3:
-            print("Usage: python itunes_client.py track <track_id> [country]")
-            sys.exit(1)
-
-        track_id = sys.argv[2]
-        print(f"\nFetching track: {track_id} ({country})")
-        track = client.lookup_track(track_id, country)
-
-        if track:
-            print(json.dumps(track.to_dict(), indent=2))
-        else:
-            print("Track not found.")
-
-    elif command == "album":
-        if len(sys.argv) < 3:
-            print("Usage: python itunes_client.py album <album_id> [country]")
-            sys.exit(1)
-
-        album_id = sys.argv[2]
-        print(f"\nFetching album with tracks: {album_id} ({country})")
-        album = client.lookup_album(album_id, country, entity="albumTrack")
-
-        if album:
-            result = album.to_dict()
-            result["tracks_count"] = len(getattr(album, "tracks", []))
-            print(json.dumps(result, indent=2))
-
-            if hasattr(album, "tracks") and album.tracks:
-                print(f"\nTracks ({len(album.tracks)}):")
-                for i, t in enumerate(album.tracks, 1):
-                    print(f"  {i}. {t.name} ({t.duration_formatted})")
-        else:
-            print("Album not found.")
-
-    else:
-        print(f"Unknown command: {command}")
-        sys.exit(1)

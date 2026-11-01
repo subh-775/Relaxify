@@ -8,7 +8,8 @@
 import {expect, jest, test} from '@jest/globals';
 import TrackPlayer from 'react-native-track-player';
 import {logEvent} from '../src/analytics';
-import {earnedPlay, kickIfStalled, listenOutcome} from '../src/player';
+import {earnedPlay, listenOutcome} from '../src/listenRules';
+import {kickIfStalled} from '../src/player';
 
 jest.mock('react-native-track-player', () => ({
   __esModule: true,
@@ -37,7 +38,6 @@ jest.mock('../src/recentlyPlayed', () => ({
 jest.mock('../src/resume', () => ({}));
 jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
 jest.mock('../src/toast', () => ({toast: () => undefined}));
-jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));
 
 test('waits out a normal rebuffer, then seeks past the buffer and re-arms', async () => {
   const seek = TrackPlayer.seekTo as unknown as jest.Mock;

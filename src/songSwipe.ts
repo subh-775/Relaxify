@@ -78,7 +78,7 @@ function same(a: Neighbour | null, b: Neighbour | null): boolean {
 }
 
 /** The cover URL a player shows for this track — the same rule both use. */
-export function coverUrl(t: RNTPTrack | null | undefined): string {
+function coverUrl(t: RNTPTrack | null | undefined): string {
   if (!t) {
     return '';
   }
@@ -86,7 +86,7 @@ export function coverUrl(t: RNTPTrack | null | undefined): string {
   return src ? getBestArtworkUrl(src) : String(t.artwork ?? '');
 }
 
-export function trackKey(t: RNTPTrack | null | undefined): string {
+function trackKey(t: RNTPTrack | null | undefined): string {
   return t ? `${t.title ?? ''}\u0000${t.artist ?? ''}` : '';
 }
 

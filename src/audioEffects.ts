@@ -25,7 +25,7 @@ type AudioNative = {
   getDiagnostics?: () => Promise<AudioDiagnostics>;
 };
 
-export type AudioDiagnostics = {
+type AudioDiagnostics = {
   serviceBound?: boolean;
   audioSession?: number;
   effectsAttached?: boolean;
@@ -38,7 +38,7 @@ export type AudioDiagnostics = {
 };
 
 /** Native's own account of why the effects are or aren't working. */
-export async function getAudioDiagnostics(): Promise<AudioDiagnostics | null> {
+async function getAudioDiagnostics(): Promise<AudioDiagnostics | null> {
   try {
     return (await native.getDiagnostics?.()) ?? null;
   } catch {

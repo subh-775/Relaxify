@@ -15,7 +15,7 @@ export type RecapMode = 'week' | 'all';
 
 export type Persona = {name: string; line: string};
 
-export type SongCount = {track: Track; count: number};
+type SongCount = {track: Track; count: number};
 export type ArtistCount = {name: string; image?: string; count: number};
 
 export type Recap = {
@@ -262,8 +262,8 @@ export function buildRecap(s: Stats, now: number, mode: RecapMode): Recap {
  * over at least 3 different days. Below that, "your top artist" is whoever
  * you tried first, so a new listener sees no Recap card and no notification.
  */
-export const RECAP_MIN_PLAYS = 15;
-export const RECAP_MIN_DAYS = 3;
+const RECAP_MIN_PLAYS = 15;
+const RECAP_MIN_DAYS = 3;
 
 export function recapEligible(s: Stats): boolean {
   const days = Object.values(s.days ?? {}).filter(n => n > 0).length;

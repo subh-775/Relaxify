@@ -23,7 +23,6 @@ import {ImagePlus, Search as SearchIcon, X} from '../icons';
 import {Pen, PlusSlim, Trash} from '../glyphs';
 import {C, S, T, fs} from '../theme';
 import {PinGlyph} from '../components/PinGlyph';
-import {getLocalLibrary, type Track} from '../backend';
 import {useLikes} from '../store';
 import {useFollowedArtists} from '../artists';
 import {
@@ -52,9 +51,9 @@ import {
 } from '../pins';
 import {CollectionArt, DOWNLOAD_TINT} from '../components/CollectionArt';
 import {
-  markDownloaded,
-  onDownloadsChanged,
-  overlayDownloadArtwork,
+  askForMusicAccess,
+  refreshDownloads,
+  useDownloads,
 } from '../downloads';
 import {usePlaybackOrigin} from '../player';
 import {toast} from '../toast';
@@ -144,7 +143,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const [filter, setFilter] = useState<Filter>('all');
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
-  const [downloads, setDownloads] = useState<Track[]>([]);
+  const downloads = useDownloads();
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -202,35 +201,16 @@ export const LibraryScreen = React.memo(function LibraryScreen({
     [library, artists],
   );
 
-  const loadDownloads = useCallback(async () => {
-    try {
-      const {tracks} = await getLocalLibrary();
-      // The disk scan carries no artwork; lay back the covers remembered at
-      // download time so offline rows aren't blank squares.
-      setDownloads(overlayDownloadArtwork(tracks));
-      // The scan is also the truth about what's downloaded — keep the
-      // "already downloaded" set in step with the actual files.
-      markDownloaded(tracks);
-    } catch {
-      // Offline library unavailable — the rest of the library still works.
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   // Re-scan whenever the tab comes on screen. Only the FIRST scan shows the
   // spinner (`loading` starts true); later ones swap the data in quietly, so
   // returning to the tab is instant.
   useEffect(() => {
     if (visible) {
-      loadDownloads();
+      askForMusicAccess()
+        .then(refreshDownloads)
+        .finally(() => setLoading(false));
     }
-  }, [visible, loadDownloads]);
-
-  // …and whenever a download actually lands, on screen or not. Waiting for a
-  // tab visit is why a song downloaded from Search still offered "Download"
-  // afterwards, and why the Downloaded collection was a scan behind.
-  useEffect(() => onDownloadsChanged(loadDownloads), [loadDownloads]);
+  }, [visible]);
 
   /**
    * Every row's place, worked out instead of measured.

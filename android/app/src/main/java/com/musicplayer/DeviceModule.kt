@@ -13,8 +13,9 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 /**
  * Two small things the app asks Android for:
  *
- *  - whether the phone is on mobile data (the data saver, src/network.ts),
- *    watched with a network callback so a switch from Wi-Fi is heard at once;
+ *  - whether the phone is on mobile data (the data saver) or on no network at
+ *    all (src/offline.ts), watched with a network callback so a change is
+ *    heard at once;
  *  - the weekly Recap notification (src/reminder.ts), kept by RecapReminder.
  */
 class DeviceModule(private val ctx: ReactApplicationContext) :
@@ -32,11 +33,11 @@ class DeviceModule(private val ctx: ReactApplicationContext) :
     private fun cellular(cm: ConnectivityManager): Boolean =
         cellular(cm.getNetworkCapabilities(cm.activeNetwork))
 
-    private fun emit(value: Boolean) {
+    private fun emit(value: Boolean, event: String = "mp.network") {
         if (!ctx.hasActiveReactInstance()) return
         try {
             ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit("mp.network", value)
+                .emit(event, value)
         } catch (e: Exception) {
         }
     }
@@ -48,6 +49,10 @@ class DeviceModule(private val ctx: ReactApplicationContext) :
             val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             if (callback == null) {
                 val cb = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(n: Network) {
+                        emit(true, "mp.online")
+                    }
+
                     // The default network's own capabilities: activeNetwork can
                     // still name the old one while this runs.
                     override fun onCapabilitiesChanged(n: Network, caps: NetworkCapabilities) {
@@ -56,6 +61,9 @@ class DeviceModule(private val ctx: ReactApplicationContext) :
 
                     override fun onLost(n: Network) {
                         emit(cellular(cm))
+                        // Only called with no default network left: a handover
+                        // is onAvailable for the new one.
+                        emit(false, "mp.online")
                     }
                 }
                 cm.registerDefaultNetworkCallback(cb)
@@ -65,6 +73,13 @@ class DeviceModule(private val ctx: ReactApplicationContext) :
         } catch (e: Exception) {
             promise.resolve(false)
         }
+    }
+
+    /** Whether the phone has any network at all right now. */
+    @ReactMethod
+    fun hasNetwork(promise: Promise) {
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        promise.resolve(cm.activeNetwork != null)
     }
 
     // RN's NativeEventEmitter wants these two on Android.

@@ -33,7 +33,7 @@ import {getArtist, type ArtistProfile, type Track} from '../backend';
 import {normalizeTracks} from '../tracks';
 import {TrackRow} from '../components/TrackRow';
 import {useFollowedArtists} from '../artists';
-import {State, togglePlay, useActiveTrack, usePlaybackState} from '../player';
+import {isRunning, State, togglePlay, useActiveTrack, usePlaybackState} from '../player';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {rememberArtistPhoto} from '../artistPhotos';
@@ -128,10 +128,7 @@ export function ArtistScreen({
         (t.artist || '').toLowerCase() === aa,
     );
   })();
-  const isPlaying =
-    playState === State.Playing ||
-    playState === State.Buffering ||
-    playState === State.Loading;
+  const isPlaying = isRunning(playState);
 
   const [allSongs, setAllSongs] = useState(false);
   const {width} = useWindowDimensions();
@@ -379,7 +376,7 @@ export function ArtistScreen({
 
 /** "Aditya Rikhari" -> "Aditya" over "Rikhari": a poster sets a name one word
  *  to a line. Initials ("A. R. Rahman") and one-word names stay on one line. */
-export function posterLines(name: string): string {
+function posterLines(name: string): string {
   const words = name.trim().split(/\s+/);
   return words.length > 1 && words[0].length > 2
     ? `${words[0]}\n${words.slice(1).join(' ')}`

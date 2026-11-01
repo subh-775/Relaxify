@@ -27,6 +27,7 @@ import {cancelCrossfade, fadeToPause} from './player';
 import {setPauseAtEndOfTrack} from './audioEffects';
 import {diag} from './diag';
 import {logEvent} from './analytics';
+import {createEmitter} from './emitter';
 
 type Mode = 'off' | 'clock' | 'endOfTrack';
 
@@ -39,12 +40,12 @@ type State = {
 };
 
 let state: State = {mode: 'off', endsAt: 0, remaining: 0};
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 let ticker: ReturnType<typeof setInterval> | null = null;
 
 function emit() {
   state = {...state};
-  listeners.forEach(l => l());
+  changes.emit();
 }
 
 function stopTicker() {
@@ -164,10 +165,7 @@ export function sleepLabel(s: State): string | null {
 
 export function useSleepTimer(): State {
   return useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => state,
   );
 }

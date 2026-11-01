@@ -1,15 +1,19 @@
 /**
  * Is the phone offline?
  *
- * Asked of the engine (/api/connectivity reaches two well-known hosts), and
- * only after something failed to load — then every few seconds while the
- * answer is yes, so Home and Search come back by themselves.
+ * Android says the moment the network goes (device.ts hands that to
+ * noteNetwork), so the app knows before anything has failed. A network that is
+ * there can still have no internet behind it, so that case is asked of the
+ * engine (/api/connectivity reaches two well-known hosts): after something
+ * failed to load, whenever Android reports a network, then every few seconds
+ * while the answer is yes, so Home and Search come back by themselves.
  */
 import {useSyncExternalStore} from 'react';
 import {apiGet} from './backend';
+import {createEmitter} from './emitter';
 
 let offline = false;
-const listeners = new Set<() => void>();
+const changes = createEmitter();
 let poll: ReturnType<typeof setInterval> | null = null;
 
 function setOffline(v: boolean): void {
@@ -23,7 +27,7 @@ function setOffline(v: boolean): void {
     clearInterval(poll);
     poll = null;
   }
-  listeners.forEach(l => l());
+  changes.emit();
 }
 
 /** Ask now; true when online. An engine that does not answer is not
@@ -36,12 +40,23 @@ export async function checkOnline(): Promise<boolean> {
   return !offline;
 }
 
+/** Android's word on the network. Its absence settles it; its presence is only
+ *  worth a check. */
+export function noteNetwork(up: boolean): void {
+  if (up) {
+    checkOnline().catch(() => {});
+  } else {
+    setOffline(true);
+  }
+}
+
+export function isOffline(): boolean {
+  return offline;
+}
+
 export function useOffline(): boolean {
   return useSyncExternalStore(
-    l => {
-      listeners.add(l);
-      return () => listeners.delete(l);
-    },
+    changes.subscribe,
     () => offline,
   );
 }

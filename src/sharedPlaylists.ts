@@ -67,7 +67,7 @@ function newKey(): string {
 }
 
 /** The name a friend sees: the one you use in a Jam, or your phone's. */
-export function shareName(): string {
+function shareName(): string {
   return (savedName.get().trim() || phoneName()).slice(0, 24);
 }
 

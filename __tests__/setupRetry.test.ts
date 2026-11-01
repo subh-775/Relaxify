@@ -42,3 +42,15 @@ test('a background refusal is retried, and concurrent callers share it', async (
   expect(b).toBe(true);
   expect(setup).toHaveBeenCalledTimes(3);
 });
+
+test('a player the service already holds is adopted, not read as no engine', async () => {
+  const setup = TrackPlayer.setupPlayer as jest.Mock<any>;
+  setup.mockReset();
+  setup.mockRejectedValue({code: 'player_already_initialized'});
+  jest.resetModules();
+  const {setupPlayer: fresh} = require('../src/player');
+  const engine = require('react-native-track-player').default;
+  engine.setupPlayer = setup;
+
+  await expect(fresh()).resolves.toBe(true);
+});

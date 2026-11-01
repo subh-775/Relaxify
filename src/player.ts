@@ -55,11 +55,16 @@ import {
 import {readRecentlyPlayed, remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
-import {pushWidget, pushWidgetPlaying} from './widget';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
-import {clearResume, readResume, resumeIndex, saveResume} from './resume';
+import {readResume, resumeIndex, saveResume} from './resume';
 import {DOWNLOADS_ID} from './collections';
 import {chosenCopy} from './songChoice';
+import {embeddedArtworkUrl, refreshDownloads} from './downloads';
+import {isOffline} from './offline';
+import {clampRate} from './playbackRate';
+import {createEmitter} from './emitter';
+import {alignUpcoming, restoreOrder, rowIndex, shuffleUpcoming} from './queueOrder';
+import {earnedPlay, listenOutcome} from './listenRules';
 
 let ready = false;
 let available: boolean | null = null;
@@ -180,12 +185,12 @@ const FIRST_FADE_MS = 700;
 export async function fadeToPause(ms = 2500): Promise<void> {
   cancelCrossfade();
   setPausedByDuck(false);
+  // Resolved by the native ramp as it ends, so this pause holds with the screen
+  // off, where a JS timer is frozen. The ramp restores 1.0 by itself shortly
+  // after: a pause that never came would have brought the music back up at
+  // full volume, and that restore is also why the next play is not silent.
   await fadeOutPlayer(ms);
-  // The native ramp restores 1.0 by itself once it completes, so the next play
-  // does not start silent.
-  setTimeout(() => {
-    TrackPlayer.pause().catch(() => {});
-  }, ms);
+  await TrackPlayer.pause();
 }
 
 /**
@@ -203,26 +208,20 @@ export async function fadeToPause(ms = 2500): Promise<void> {
  * album running out.
  */
 let playbackOrigin = '';
-const originListeners = new Set<() => void>();
+const originChanges = createEmitter();
 
 function setPlaybackOrigin(id: string): void {
   if (playbackOrigin === id) {
     return;
   }
   playbackOrigin = id;
-  originListeners.forEach(l => l());
+  originChanges.emit();
 }
 
 /** Subscribe to the origin. A string snapshot, so useSyncExternalStore bails
  *  out on an unchanged value and nothing re-renders. */
 export function usePlaybackOrigin(): string {
-  return useSyncExternalStore(
-    l => {
-      originListeners.add(l);
-      return () => originListeners.delete(l);
-    },
-    () => playbackOrigin,
-  );
+  return useSyncExternalStore(originChanges.subscribe, () => playbackOrigin);
 }
 
 /**
@@ -234,14 +233,9 @@ export function usePlaybackOrigin(): string {
  * event never fires. The engine really had shuffled; the list was rendering a
  * snapshot taken before it.
  */
-const queueListeners = new Set<() => void>();
+const queueChanges = createEmitter();
 
-export function onQueueChanged(l: () => void): () => void {
-  queueListeners.add(l);
-  return () => {
-    queueListeners.delete(l);
-  };
-}
+export const onQueueChanged = queueChanges.subscribe;
 
 /**
  * One queue mutation at a time.
@@ -289,7 +283,7 @@ const STREAM_UA = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36';
 
 /** Build the streaming URL. proxy_stream picks the bitrate rung and answers
  *  with a redirect to the CDN; apiUrl attaches the API token it requires. */
-export function streamUrlFor(
+function streamUrlFor(
   track: Track,
   bitrate = currentQuality(),
 ): string | null {
@@ -319,8 +313,9 @@ export function streamUrlFor(
   );
 }
 
-/** One-time engine setup. Returns false when the native module isn't in this build. */
 /**
+ * One-time engine setup. Returns false when the native module isn't in this build.
+ *
  * One setup at a time: boot and a first play can both call this, and the
  * second TrackPlayer.setupPlayer used to be refused ("already initialized")
  * and read as "no audio engine" for the rest of the session.
@@ -346,6 +341,11 @@ async function setupEngine(opts: Parameters<typeof TrackPlayer.setupPlayer>[0]) 
     try {
       return await TrackPlayer.setupPlayer(opts);
     } catch (e: any) {
+      // The service outlived the JS that set it up: the player is there, and
+      // the listeners below are what this JS still needs.
+      if (e?.code === 'player_already_initialized') {
+        return;
+      }
       if (e?.code !== 'android_cannot_setup_player_in_background' || i >= 20) {
         throw e;
       }
@@ -385,6 +385,10 @@ async function setupPlayerOnce(): Promise<boolean> {
       // through the proxy — was 0 (nothing kept), so even a 2-second rewind
       // paid the full resolve+reconnect cost again.
       backBuffer: 20,
+      // In KB. Songs heard lately replay from here instead of the network.
+      // Under the 100 MB the cache limit starts at, so this alone never sets
+      // off the whole-cache clear.
+      maxCacheSize: 80 * 1024,
     });
     await TrackPlayer.updateOptions({
       android: {
@@ -449,16 +453,12 @@ async function setupPlayerOnce(): Promise<boolean> {
       } catch {}
     });
 
-    // The home-screen widget follows play and pause, and every Playing
-    // re-arms the swipe-away guard (TaskGuard.kt says why it is needed). Only the two settled
-    // states: the buffering flicker around a seek would blink its button.
+    // Every Playing re-arms the swipe-away guard (TaskGuard.kt says why it is
+    // needed).
     TrackPlayer.addEventListener(Event.PlaybackState, e => {
       if (e.state === State.Playing) {
-        pushWidgetPlaying(true);
         guardTask();
         noteSkipToSound();
-      } else if (e.state === State.Paused || e.state === State.Stopped) {
-        pushWidgetPlaying(false);
       }
       // Stalls feed Auto quality (adaptiveQuality.ts).
       noteState(
@@ -564,9 +564,6 @@ async function setupPlayerOnce(): Promise<boolean> {
       }
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
-        TrackPlayer.getPlaybackState()
-          .then(p => pushWidget(src, p.state === State.Playing))
-          .catch(() => pushWidget(src, false));
         // Recents: a song you tapped goes in as it starts (playTrack); one the
         // engine moved on to (autoplay, Next, a swipe) only once it has earned a
         // play (countListened), so a song skipped after a second never shows up.
@@ -739,7 +736,6 @@ export async function restoreSession(): Promise<boolean> {
   }
 }
 
-/** Shape a backend Track for the audio engine. Returns null if unplayable. */
 /**
  * Fire the SAME resolve `/proxy_stream` will need, right now, in parallel with
  * whatever else is happening — never awaited.
@@ -753,16 +749,16 @@ export async function restoreSession(): Promise<boolean> {
  * instead, so by the time ExoPlayer actually asks, the answer is often
  * already cached.
  */
-/** Resolve a song's stream ahead of playing it (Jam warms the next song). */
 export function warmTrack(track: Track | null | undefined): void {
   warmStream(track, currentQuality());
 }
 
 function warmStream(track: Track | null | undefined, bitrate: number): void {
-  if (!track || track.file_path) {
+  const copy = track && chosenCopy(track);
+  if (!copy || copy.file_path || isOffline()) {
     return; // downloaded file — nothing to resolve
   }
-  getStreamInfo(track, bitrate).catch(() => {});
+  getStreamInfo(copy, bitrate).catch(() => {});
 }
 
 /**
@@ -794,6 +790,7 @@ function recordingOf(track: Track): string {
   return (source && track.sources?.[source]?.url) || '';
 }
 
+/** Shape a backend Track for the audio engine. Returns null if unplayable. */
 function toQueueItem(track: Track, bitrate: number) {
   const url = streamUrlFor(track, bitrate);
   if (!url) {
@@ -821,7 +818,13 @@ function toQueueItem(track: Track, bitrate: number) {
     artist: track.artist,
     // Not the baked artwork_url: songs saved by older builds carry an iTunes
     // cover there that the current order no longer picks.
-    artwork: getBestArtworkUrl(track),
+    // The cover inside a file, for the notification with no internet.
+    // undefined, never '': the engine refuses an empty URL, and with it every
+    // song in the list being queued, so one coverless song stopped them all.
+    artwork:
+      (track.file_path && track.has_embedded_art
+        ? embeddedArtworkUrl(track.file_path)
+        : getBestArtworkUrl(track)) || undefined,
     duration: track.duration_ms ? track.duration_ms / 1000 : undefined,
   };
 }
@@ -871,11 +874,15 @@ export async function playTrack(
     })
     .filter(
       (x): x is {orig: Track; t: Track; q: NonNullable<typeof x.q>} =>
-        x.q !== null,
+        x.q !== null && (!isOffline() || !!x.t.file_path),
     );
 
   if (!items.length) {
-    throw new Error('This track has no playable source.');
+    throw new Error(
+      isOffline()
+        ? "You're offline, and this isn't downloaded."
+        : 'This track has no playable source.',
+    );
   }
 
   // Find where the tapped track landed after unplayables were dropped.
@@ -1009,7 +1016,7 @@ export async function addToQueue(track: Track): Promise<void> {
   await requireEngine();
   const pick = chosenCopy(track);
   const item = toQueueItem(pick, currentQuality());
-  if (!item) {
+  if (!item || (isOffline() && !pick.file_path)) {
     throw new Error('This track has no playable source.');
   }
   logEvent('queue_add', songParams(pick));
@@ -1134,11 +1141,11 @@ async function moveQueueItemNow(from: number, to: number): Promise<boolean> {
 let engineQueue: RNTPTrack[] = [];
 let activeIndex = 0;
 let trackSnapshot: RNTPTrack | null = null;
-const trackListeners = new Set<() => void>();
+const trackChanges = createEmitter();
 
 function publishTrack(t: RNTPTrack | null): void {
   trackSnapshot = t;
-  trackListeners.forEach(l => l());
+  trackChanges.emit();
 }
 
 /**
@@ -1178,28 +1185,6 @@ function warmArtwork(index: number): void {
 }
 
 /** Re-read the engine's queue and index so the mirror is warm before a gesture. */
-/**
- * Where the playing row sits in `queue`, found by its row identity (`_qid`).
- *
- * The engine's index was read in a separate call from its queue, and songs
- * inserted in between (a list starting, the earlier songs going in front)
- * left it pointing at a different row. The swipe then drew that row as the
- * next song, and Next showed its name and cover for a moment before the
- * engine's own event put the real one back. The index is the fallback only.
- *
- * Exported for the test.
- */
-export function rowIndex<T>(
-  queue: T[],
-  active: T | null | undefined,
-  fallback: number,
-): number {
-  const qid = (t: T | null | undefined) => (t as {_qid?: unknown} | null)?._qid;
-  const want = qid(active);
-  const at = want ? queue.findIndex(t => qid(t) === want) : -1;
-  return at >= 0 ? at : fallback;
-}
-
 async function refreshEngineMirror(): Promise<void> {
   try {
     const queue = await TrackPlayer.getQueue();
@@ -1213,7 +1198,7 @@ async function refreshEngineMirror(): Promise<void> {
     // Here rather than at the five call sites: setShuffle, moveQueueItem,
     // playTrack, restoreSession, topUpFromRadio and both skips ALL end with
     // this, so this is the one place that knows the queue just moved.
-    queueListeners.forEach(l => l());
+    queueChanges.emit();
   } catch {
     /* engine not up — the next event refreshes it */
   }
@@ -1257,10 +1242,7 @@ export function useIsActiveTrack(track: Track): boolean {
   // The copy that plays when this row is tapped: your "Wrong song?" pick.
   const rec = recordingOf(chosenCopy(track));
   return useSyncExternalStore(
-    l => {
-      trackListeners.add(l);
-      return () => trackListeners.delete(l);
-    },
+    trackChanges.subscribe,
     () =>
       !!trackSnapshot &&
       String(trackSnapshot.title ?? '').toLowerCase() === t &&
@@ -1273,13 +1255,7 @@ export function useIsActiveTrack(track: Track): boolean {
 /** The track the UI should show: optimistic on gesture, reconciled by the
  *  engine event. Drop-in replacement for RNTP's useActiveTrack. */
 export function useActiveTrack(): RNTPTrack | null {
-  return useSyncExternalStore(
-    l => {
-      trackListeners.add(l);
-      return () => trackListeners.delete(l);
-    },
-    () => trackSnapshot,
-  );
+  return useSyncExternalStore(trackChanges.subscribe, () => trackSnapshot);
 }
 
 /** Skips always resume playback: changing song while paused and getting
@@ -1352,14 +1328,14 @@ export async function skipPrevious(always = false): Promise<void> {
  */
 let preShuffleUpcoming: RNTPTrack[] | null = null;
 let shuffleOn = false;
-const shuffleListeners = new Set<() => void>();
+const shuffleChanges = createEmitter();
 
 function setShuffleFlag(on: boolean) {
   if (shuffleOn === on) {
     return;
   }
   shuffleOn = on;
-  shuffleListeners.forEach(l => l());
+  shuffleChanges.emit();
 }
 
 /**
@@ -1367,16 +1343,10 @@ function setShuffleFlag(on: boolean) {
  * repeat-all by itself, and the screen's button has to show it.
  */
 let repeatMode: RepeatMode = RepeatMode.Off;
-const repeatListeners = new Set<() => void>();
+const repeatChanges = createEmitter();
 
 export function useRepeat(): RepeatMode {
-  return useSyncExternalStore(
-    l => {
-      repeatListeners.add(l);
-      return () => repeatListeners.delete(l);
-    },
-    () => repeatMode,
-  );
+  return useSyncExternalStore(repeatChanges.subscribe, () => repeatMode);
 }
 
 /**
@@ -1398,77 +1368,7 @@ export function isShuffled(): boolean {
 }
 
 export function useShuffle(): boolean {
-  return useSyncExternalStore(
-    l => {
-      shuffleListeners.add(l);
-      return () => shuffleListeners.delete(l);
-    },
-    () => shuffleOn,
-  );
-}
-
-/**
- * The original order of whatever is STILL upcoming.
- *
- * This is the whole of the shuffle-off bug, and it is worth being explicit
- * about. `preShuffleUpcoming` is a snapshot taken at the moment shuffle was
- * turned on — but the queue keeps moving afterwards. Songs play, so they leave
- * the upcoming list; radio appends more; a swipe skips two at once. Re-adding
- * that snapshot wholesale put songs back that had already been heard and
- * dropped ones added since, so turning shuffle OFF produced a queue that looked
- * every bit as random as turning it on. From the outside both directions
- * reshuffled, and neither ever restored anything.
- *
- * Filtering the snapshot by what is genuinely still ahead fixes it in one line
- * of intent: keep the ORDER from the snapshot, keep the MEMBERSHIP from the
- * live queue. `_qid` is the per-row identity toQueueItem already stamps — the
- * right key here, because the same song queued twice is two rows and only one
- * of them may still be upcoming.
- *
- * Exported for the test; nothing else calls it.
- */
-export function restoreOrder<T>(snapshot: T[], liveUpcoming: T[]): T[] {
-  // RNTP's Track carries an index signature rather than a declared `_qid`, so
-  // the key is read through a cast rather than constrained on T — constraining
-  // it would stop the engine's own queue type from being passed at all.
-  const qid = (t: T) => (t as {_qid?: unknown})._qid;
-  const live = new Set(liveUpcoming.map(qid));
-  return snapshot.filter(t => qid(t) !== undefined && live.has(qid(t)));
-}
-
-/**
- * The source list re-ordered to follow the engine after a shuffle.
- *
- * Shuffle reorders the ENGINE queue, and the source list is read by index
- * against it — the resume note above all. Left in the old order, the saved
- * index pointed at a different song, so a restart reopened on the wrong one.
- * Matched by `_qid`, not by title, so a song queued twice keeps both rows.
- *
- * Exported for the test.
- */
-export function alignUpcoming<S, R>(
-  source: S[],
-  index: number,
-  before: R[],
-  after: R[],
-): S[] {
-  const qid = (r: R) => (r as {_qid?: unknown})._qid;
-  const byQid = new Map(before.map((r, i) => [qid(r), source[index + 1 + i]]));
-  const upcoming = after
-    .map(r => byQid.get(qid(r)))
-    .filter((t): t is S => t !== undefined);
-  return [...source.slice(0, index + 1), ...upcoming];
-}
-
-/** Fisher-Yates, and it must not return the identity for a short list — a
- *  shuffle that visibly changes nothing reads as a broken button. */
-export function shuffleUpcoming<T>(rest: T[]): T[] {
-  const out = [...rest];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return out;
+  return useSyncExternalStore(shuffleChanges.subscribe, () => shuffleOn);
 }
 
 /**
@@ -1496,6 +1396,7 @@ async function setShuffleNow(on: boolean): Promise<boolean> {
     }
     preShuffleUpcoming = rest; // remember so OFF can restore it
     const mixed = shuffleUpcoming(rest);
+    queuedAhead = 0; // the block queued after this song has just been dealt out
     await TrackPlayer.removeUpcomingTracks();
     await TrackPlayer.add(mixed);
     queueSource = alignUpcoming(queueSource, index, rest, mixed);
@@ -1548,6 +1449,7 @@ export function shuffleInAfterCurrent(
     }
     const order = items.map(x => x.q as RNTPTrack);
     const mixed = shuffleUpcoming(order);
+    queuedAhead = 0;
     await TrackPlayer.removeUpcomingTracks();
     await TrackPlayer.add(mixed);
     // Everything after the playing song is now `items`, in `mixed` order —
@@ -1601,7 +1503,11 @@ async function dropQueuedRadioNow(): Promise<void> {
       return;
     }
     await TrackPlayer.remove(doomed);
-    queueSource = queueSource.filter(t => !t._autoplay);
+    // By position, not by the tag: radio songs already played, and the one
+    // playing now, stay in the engine, and this list is read by index against
+    // it. Filtering them out left every later lookup a row or more off.
+    const gone = new Set(doomed);
+    queueSource = queueSource.filter((_, i) => !gone.has(i));
     await refreshEngineMirror();
   } catch {
     // Nothing queued, or the engine is not up — either way there is nothing
@@ -1621,7 +1527,7 @@ export async function setRepeat(mode: RepeatMode): Promise<void> {
   await TrackPlayer.setRepeatMode(mode);
   if (repeatMode !== mode) {
     repeatMode = mode;
-    repeatListeners.forEach(l => l());
+    repeatChanges.emit();
   }
 }
 
@@ -1635,7 +1541,7 @@ export async function setRepeat(mode: RepeatMode): Promise<void> {
  * TrackPlayer.reset() tears the player's state down, and a rate that survived
  * one song and then quietly went back to normal would be worse than no control.
  */
-export async function applyPlaybackRate(): Promise<void> {
+async function applyPlaybackRate(): Promise<void> {
   try {
     await TrackPlayer.setRate(playbackRate());
   } catch {
@@ -1646,54 +1552,60 @@ export async function applyPlaybackRate(): Promise<void> {
 /** The current speed, clamped to the range the UI offers. Read in the
  *  crossfade watcher too, where it converts media seconds to real ones. */
 export function playbackRate(): number {
-  const r = readSettings().playbackRate;
-  return Number.isFinite(r) && r > 0 ? Math.min(2, Math.max(0.25, r)) : 1;
+  return clampRate(readSettings().playbackRate);
 }
 
 /** Change the speed and make it take effect now. */
 export async function setPlaybackRate(rate: number): Promise<void> {
-  writeSetting('playbackRate', Math.min(2, Math.max(0.25, rate)));
+  writeSetting('playbackRate', clampRate(rate));
   await applyPlaybackRate();
+}
+
+/** The engine is playing, or trying to. */
+export function isRunning(state: State | undefined): boolean {
+  return (
+    state === State.Playing ||
+    state === State.Buffering ||
+    state === State.Loading
+  );
+}
+
+/** The one place playback pauses: the overlap player has to go quiet too, or a
+ *  pause during a crossfade leaves the next song sounding on its own. */
+export async function pause(): Promise<void> {
+  cancelCrossfade();
+  await TrackPlayer.pause();
 }
 
 export async function togglePlay(): Promise<void> {
   const {state} = await TrackPlayer.getPlaybackState();
-  const active =
-    state === State.Playing ||
-    state === State.Buffering ||
-    state === State.Loading;
   // The user just made the call, so ducking no longer owns this pause — without
   // this, a focus regain later could resume music they had stopped by hand.
   setPausedByDuck(false);
-  if (active) {
-    cancelCrossfade(); // pausing must silence the overlap player too
-    await TrackPlayer.pause();
+  if (isRunning(state)) {
+    await pause();
   } else {
     await playWithFade();
   }
 }
 
+/** Stop and empty the queue. The resume point stays: reopening the app offers
+ *  the song again. */
 export async function stop(): Promise<void> {
   cancelCrossfade();
   closeListen(undefined, true);
   try {
     await TrackPlayer.reset();
-    clearResume(); // an explicit stop means "don't reopen on this"
   } catch {
     /* engine not up — nothing to stop */
   }
 }
 
-const seekListeners = new Set<() => void>();
+const seekChanges = createEmitter();
 
 /** Runs after every seek the person makes, wherever it came from (the Jam
  *  announces it at once rather than waiting to notice the jump). */
-export function onUserSeek(fn: () => void): () => void {
-  seekListeners.add(fn);
-  return () => {
-    seekListeners.delete(fn);
-  };
-}
+export const onUserSeek = seekChanges.subscribe;
 
 /** A seek the PERSON made: the scrubber, a lyric line, ±10 s, the
  *  notification or a headset. The app's own corrections call TrackPlayer
@@ -1701,7 +1613,7 @@ export function onUserSeek(fn: () => void): () => void {
 export async function seekTo(seconds: number): Promise<void> {
   userMoveAt = Date.now();
   await TrackPlayer.seekTo(seconds);
-  seekListeners.forEach(fn => fn());
+  seekChanges.emit();
 }
 
 /**
@@ -1709,9 +1621,6 @@ export async function seekTo(seconds: number): Promise<void> {
  * playing and append them — playback continues endlessly, like the WebView
  * build (and Spotify). Tracks are tagged `_autoplay` so the queue screen can
  * label them "Recommended".
- *
- * Runs off the same 1s watcher tick as the crossfade, so there is exactly one
- * background timer for playback upkeep.
  */
 let radioBusy = false;
 /**
@@ -1739,10 +1648,19 @@ async function saveSession(force = false): Promise<void> {
     TrackPlayer.getActiveTrackIndex(),
     TrackPlayer.getActiveTrack(),
   ]);
-  const src = sourceTrackFor(active ?? null);
-  if (src) {
+  noteResume(active ?? null, position, idx ?? 0, force);
+}
+
+function noteResume(
+  row: RNTPTrack | null,
+  position: number,
+  index: number,
+  force = false,
+): void {
+  const track = sourceTrackFor(row);
+  if (track) {
     saveResume(
-      {track: src, position, queue: queueSource, index: idx ?? 0, origin: playbackOrigin},
+      {track, position, queue: queueSource, index, origin: playbackOrigin},
       force,
     );
   }
@@ -1764,8 +1682,6 @@ let buildingQueue = false;
 /** Counts playTrack calls that reached the queue; only the newest goes on. */
 let playGen = 0;
 
-/** Exported for the playback service's PlaybackQueueEnded backstop — that
- *  runs outside the UI, which is exactly when the JS timer is frozen. */
 /**
  * Held while this phone follows someone else's Jam (jam.ts): the song after
  * this one is the Jam's choice, so autoplay must not append its own picks.
@@ -1776,6 +1692,9 @@ export function holdAutoplay(held: boolean): void {
 }
 
 /**
+ * Also the playback service's PlaybackQueueEnded backstop, which runs outside
+ * the UI, exactly when the JS timer is frozen.
+ *
  * `force` is a person pressing Next with nothing queued: that is a choice, so
  * it goes ahead even while a Jam holds autoplay (the Jam hears about it).
  */
@@ -1807,11 +1726,15 @@ export async function topUpFromRadio(force = false): Promise<void> {
   // deduped against the same pre-append snapshot. That is where the five
   // copies of one song in a queue came from.
   radioBusy = true;
+  const gen = playGen;
   try {
     const [queue, index] = await Promise.all([
       TrackPlayer.getQueue(),
       TrackPlayer.getActiveTrackIndex(),
     ]);
+    if (isOffline()) {
+      return;
+    }
     // Three songs of headroom, not two. Radio is a live network call; starting
     // it with two left meant a slow response still arrived after the queue had
     // run out. One extra song is roughly three more minutes to answer in.
@@ -1861,8 +1784,14 @@ export async function topUpFromRadio(force = false): Promise<void> {
       // Only the append is serialised — the radio fetch above is a network
       // call, and a drag's move must not queue up behind it.
       await serialQueueOp(async () => {
+        // The fetch takes seconds. A list tapped meanwhile owns the queue now,
+        // and these are picks for a song that is no longer in it.
+        if (gen !== playGen) {
+          return;
+        }
         await TrackPlayer.add(items.map(x => x.q!));
         queueSource = [...queueSource, ...items.map(x => x.t)];
+        await refreshEngineMirror();
       });
     }
   } catch {
@@ -1886,12 +1815,14 @@ async function prefetchNext(position: number, idx: number): Promise<void> {
     if (position < 3) {
       return;
     }
-    const key = `${idx}`;
+    // The row, not the index: the first song of one list and the first song of
+    // the next are both index 0, and the second never got its warm.
+    const key = String(engineQueue[idx]?._qid ?? idx);
     if (prefetchedFor === key) {
       return;
     }
     const next = queueSource[idx + 1];
-    if (!next || next.file_path) {
+    if (!next || next.file_path || isOffline()) {
       prefetchedFor = key;
       return;
     }
@@ -1903,9 +1834,7 @@ async function prefetchNext(position: number, idx: number): Promise<void> {
 }
 
 /**
- * A play counts for the Recap once it has been LISTENED to for 30 s (half the
- * song, if it is shorter than a minute): Spotify's rule, so a song you skip
- * every time does not become your song of the week.
+ * Whether this listen has earned its count (listenRules.ts has the rule).
  *
  * Two callers, one per situation. The watcher tick sees the song cross the
  * line while the app is in front; the track-change event (a native event, so
@@ -1915,26 +1844,9 @@ async function prefetchNext(position: number, idx: number): Promise<void> {
  * `from` is where this row was first seen. A session restored at 2:00 would
  * otherwise count the moment play is pressed; it has to be heard for 30 s.
  */
-const PLAY_COUNTS_AFTER = 30;
 let countRow: string | undefined;
 let countFrom = 0;
 let counted = false;
-
-export function playThreshold(duration: number): number {
-  return duration > 0
-    ? Math.min(PLAY_COUNTS_AFTER, duration / 2)
-    : PLAY_COUNTS_AFTER;
-}
-
-/** True when a play heard from `from` to `position` has earned its count. */
-export function earnedPlay(
-  from: number,
-  position: number,
-  duration: number,
-): boolean {
-  const need = playThreshold(duration);
-  return position >= need && (from < need || position - from >= need);
-}
 
 /**
  * The song whose listen is open. It is closed, and sent as `song_listened`,
@@ -1944,21 +1856,6 @@ export function earnedPlay(
  * every song left by tapping another was never reported.
  */
 let listening: {row: RNTPTrack; position: number} | null = null;
-
-/** How a listen ended. `full`: it reached the end, or the last few seconds
- *  a crossfade overlaps (the next song starts up to `crossfade` seconds
- *  early, which read as "not finished" with the old 5 s rule). `partial`:
- *  it earned a play (the Recap's rule), `skip`: it did not. */
-export function listenOutcome(
-  position: number,
-  duration: number,
-  crossfade: number,
-): 'full' | 'partial' | 'skip' {
-  if (duration > 0 && position >= duration - 5 - Math.max(0, crossfade)) {
-    return 'full';
-  }
-  return position >= playThreshold(duration) ? 'partial' : 'skip';
-}
 
 function closeListen(position?: number, byUser = false): void {
   const open = listening;
@@ -2096,7 +1993,7 @@ let retried = {qid: '', step: 0};
 async function retryAfterError(): Promise<boolean> {
   const t = await TrackPlayer.getActiveTrack().catch(() => undefined);
   const url = typeof t?.url === 'string' ? t.url : '';
-  if (!t || !url.includes('/proxy_stream')) {
+  if (!t || !url.includes('/proxy_stream') || isOffline()) {
     return false;
   }
   const qid = String(t._qid ?? url);
@@ -2128,6 +2025,12 @@ async function retryAfterError(): Promise<boolean> {
  */
 let errorSkips: number[] = [];
 function skipPastError(): void {
+  // A file that failed may have been removed since the last scan.
+  refreshDownloads();
+  if (isOffline()) {
+    playNextSaved().catch(() => {});
+    return;
+  }
   const now = Date.now();
   errorSkips = errorSkips.filter(t => now - t < 30000);
   if (errorSkips.length >= 3) {
@@ -2145,6 +2048,24 @@ function skipPastError(): void {
       });
     });
   skipNext().catch(() => {});
+}
+
+/** With no internet a queue can only go on through the songs on the phone. */
+async function playNextSaved(): Promise<void> {
+  const queue = await TrackPlayer.getQueue();
+  const idx = (await TrackPlayer.getActiveTrackIndex()) ?? -1;
+  const next = queue.findIndex(
+    (q, i) => i > idx && String(q.url).startsWith('file://'),
+  );
+  if (next < 0) {
+    // Stop, not pause: the engine stays in its error state through a pause,
+    // and the button goes on showing music that is not playing.
+    await TrackPlayer.stop();
+    toast("You're offline. Nothing downloaded is left in this queue.", 'warn');
+    return;
+  }
+  await TrackPlayer.skip(next);
+  await playWithFade();
 }
 
 let fadeTimer: ReturnType<typeof setInterval> | null = null;
@@ -2292,10 +2213,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
     let state: State | undefined;
     try {
       state = (await TrackPlayer.getPlaybackState()).state;
-      playing =
-        state === State.Playing ||
-        state === State.Buffering ||
-        state === State.Loading;
+      playing = isRunning(state);
     } catch {
       return; // engine not up — there is nothing to do either way
     }
@@ -2311,19 +2229,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
       // instead of a tick a second forever.
       if (wasPlaying) {
         wasPlaying = false;
-        try {
-          const {position} = await TrackPlayer.getProgress();
-          const idx = (await TrackPlayer.getActiveTrackIndex()) ?? 0;
-          const src = sourceTrackFor(
-            (await TrackPlayer.getActiveTrack()) ?? null,
-          );
-          if (src) {
-            saveResume(
-              {track: src, position, queue: queueSource, index: idx, origin: playbackOrigin},
-              true,
-            );
-          }
-        } catch {}
+        await saveSession(true).catch(() => {});
       }
       return;
     }
@@ -2381,10 +2287,7 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
           open.position = position;
         }
       }
-      const src = sourceTrackFor(active);
-      if (src) {
-        saveResume({track: src, position, queue: queueSource, index: idx, origin: playbackOrigin});
-      }
+      noteResume(active, position, idx);
     } catch {}
   }, 1000);
 }

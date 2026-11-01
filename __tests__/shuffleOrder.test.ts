@@ -29,7 +29,7 @@ jest.mock('react-native-track-player', () => ({
 }));
 
 // NB: this import must stay below the mocks above — jest hoists jest.mock().
-import {alignUpcoming, restoreOrder, shuffleUpcoming} from '../src/player';
+import {alignUpcoming, restoreOrder, shuffleUpcoming} from '../src/queueOrder';
 
 const row = (qid: string) => ({_qid: qid, title: qid});
 
