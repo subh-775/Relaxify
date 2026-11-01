@@ -71,7 +71,6 @@ jest.mock('../src/recentlyPlayed', () => ({
 }));
 jest.mock('../src/stats', () => ({recordPlay: () => undefined}));
 jest.mock('../src/toast', () => ({toast: () => undefined}));
-jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));
 
 const flush = () => new Promise(r => jest.requireActual<any>('timers').setImmediate(r));
 const listeners = (name: string) =>

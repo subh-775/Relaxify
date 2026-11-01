@@ -53,7 +53,6 @@ jest.mock('../src/audioEffects', () => ({
   guardTask: () => undefined,
   applyAudioEffects: async () => undefined,
 }));
-jest.mock('../src/widget', () => ({pushWidget: () => undefined, pushWidgetPlaying: () => undefined}));
 
 test('a song already in the engine is kept, not reset to the saved point', async () => {
   expect(await restoreSession()).toBe(true);

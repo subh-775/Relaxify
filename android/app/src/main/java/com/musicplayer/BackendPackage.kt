@@ -12,7 +12,6 @@ class BackendPackage : ReactPackage {
             AudioModule(reactContext),
             UpdateModule(reactContext),
             AnalyticsModule(reactContext),
-            WidgetModule(reactContext),
             DeviceModule(reactContext),
             ImageShareModule(reactContext),
         )

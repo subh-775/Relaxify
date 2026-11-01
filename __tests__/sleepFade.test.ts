@@ -34,7 +34,6 @@ jest.mock('../src/sleepTimer', () => ({}));
 jest.mock('../src/recentlyPlayed', () => ({}));
 jest.mock('../src/stats', () => ({}));
 jest.mock('../src/toast', () => ({}));
-jest.mock('../src/widget', () => ({}));
 jest.mock('../src/resume', () => ({}));
 
 test('pauses on the ramp ending, with no timer involved', async () => {

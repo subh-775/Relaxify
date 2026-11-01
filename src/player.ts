@@ -55,7 +55,6 @@ import {
 import {readRecentlyPlayed, remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
-import {pushWidget, pushWidgetPlaying} from './widget';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {readResume, resumeIndex, saveResume} from './resume';
 import {DOWNLOADS_ID} from './collections';
@@ -454,16 +453,12 @@ async function setupPlayerOnce(): Promise<boolean> {
       } catch {}
     });
 
-    // The home-screen widget follows play and pause, and every Playing
-    // re-arms the swipe-away guard (TaskGuard.kt says why it is needed). Only the two settled
-    // states: the buffering flicker around a seek would blink its button.
+    // Every Playing re-arms the swipe-away guard (TaskGuard.kt says why it is
+    // needed).
     TrackPlayer.addEventListener(Event.PlaybackState, e => {
       if (e.state === State.Playing) {
-        pushWidgetPlaying(true);
         guardTask();
         noteSkipToSound();
-      } else if (e.state === State.Paused || e.state === State.Stopped) {
-        pushWidgetPlaying(false);
       }
       // Stalls feed Auto quality (adaptiveQuality.ts).
       noteState(
@@ -569,9 +564,6 @@ async function setupPlayerOnce(): Promise<boolean> {
       }
       const src = sourceTrackFor(e.track ?? null);
       if (src) {
-        TrackPlayer.getPlaybackState()
-          .then(p => pushWidget(src, p.state === State.Playing))
-          .catch(() => pushWidget(src, false));
         // Recents: a song you tapped goes in as it starts (playTrack); one the
         // engine moved on to (autoplay, Next, a swipe) only once it has earned a
         // play (countListened), so a song skipped after a second never shows up.
