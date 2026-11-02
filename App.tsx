@@ -51,6 +51,7 @@ import {
   WrongSongSheet,
   useWrongSongHost,
 } from './src/components/WrongSongSheet';
+import {watchStalls} from './src/stallWatch';
 import {JamBar} from './src/components/JamBar';
 import {UpdateModal} from './src/components/UpdateModal';
 import {
@@ -264,6 +265,8 @@ function Shell() {
     startDevice();
     // What is on the phone: known before anything plays or lists it.
     const stopDownloads = watchDownloads();
+    // Logs any freeze of the JS thread (stallWatch.ts).
+    const stopStalls = watchStalls();
     // Store writes are debounced (see storage.ts). Leaving the foreground is
     // the last moment we are reliably given before Android may reclaim the
     // process, so anything still pending goes out now.
@@ -276,6 +279,7 @@ function Shell() {
       clearTimeout(bootCap);
       bg.remove();
       stopDownloads();
+      stopStalls();
     };
   }, [liftSplash]);
 

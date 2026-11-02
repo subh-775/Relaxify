@@ -58,6 +58,7 @@ import {
   warmTrack,
 } from './player';
 import {rememberedArtwork} from './downloads';
+import {stallContext} from './stallWatch';
 import {movedKey} from './jamQueue';
 import {getTrackId} from './tracks';
 import {logEvent} from './analytics';
@@ -140,6 +141,24 @@ export function useJam(): JamView | null {
     () => view,
   );
 }
+/** The same Jam as far as any screen can tell. */
+function sameView(a: JamView | null, b: JamView): boolean {
+  return (
+    !!a &&
+    a.code === b.code &&
+    a.now?.seq === b.now?.seq &&
+    a.now?.playing === b.now?.playing &&
+    a.members.map(m => `${m.id}:${m.name}`).join() ===
+      b.members.map(m => `${m.id}:${m.name}`).join() &&
+    a.queue.map(q => q.key).join() === b.queue.map(q => q.key).join()
+  );
+}
+
+/** One answer about the Jam, re-rendering only when that answer changes. */
+export function useJamSelect<T>(pick: (v: JamView | null) => T): T {
+  return useSyncExternalStore(changes.subscribe, () => pick(view));
+}
+
 export function inJam(): boolean {
   return !!view;
 }
@@ -495,6 +514,7 @@ async function playable(t: Track): Promise<Track> {
 }
 
 async function follow(now: Now): Promise<void> {
+  stallContext('jam follow');
   echoUntil = Date.now() + ECHO_MS;
   // Held only while someone else is choosing; with no chooser (they left),
   // this phone plays on by itself.
@@ -541,6 +561,7 @@ async function follow(now: Now): Promise<void> {
 }
 
 async function sync(): Promise<void> {
+  stallContext('jam sync');
   const v = view;
   if (!v) {
     return;
@@ -569,8 +590,13 @@ async function sync(): Promise<void> {
   const queue = Object.entries(rec.queue ?? {})
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([key, q]) => ({key, track: q.track, by: q.by}));
-  view = {...v, members, now: rec.now ?? null, queue};
-  emit();
+  const next = {...v, members, now: rec.now ?? null, queue};
+  // A poll or a friend's heartbeat usually changes nothing anyone sees:
+  // re-rendering every Jam screen and card for it was most of a Jam's cost.
+  if (!sameView(view, next)) {
+    view = next;
+    emit();
+  }
 
   if (rec.now && rec.now.seq > appliedSeq && rec.now.by !== myId) {
     appliedSeq = rec.now.seq;

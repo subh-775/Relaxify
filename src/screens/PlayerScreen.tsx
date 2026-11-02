@@ -153,7 +153,13 @@ const BAR_FALLBACK = '#262626';
  * frame of the animation redraws it. Memoised so a re-render of the player
  * does not either.
  */
-const CoverGlow = React.memo(function CoverGlow({tint}: {tint: string | null}) {
+/**
+ * The cover's colour, wherever the player uses it. Each reads it for itself:
+ * read at the top of PlayerScreen, the colour arriving a moment after every
+ * song change re-rendered the entire player once more.
+ */
+const CoverGlow = React.memo(function CoverGlow({url}: {url?: string}) {
+  const tint = useArtworkColor(url);
   if (!tint) {
     return null;
   }
@@ -201,6 +207,35 @@ const SEG_W = 40;
  * not work being done, but work being redone. Every prop below is
  * useCallback-stable in App, so this actually holds.
  */
+/** Writes the cover's colour to the surface's shared values. Renders nothing. */
+const TintSync = React.memo(function TintSync({
+  url,
+  stage,
+  bar,
+}: {
+  url?: string;
+  stage: SharedValue<string>;
+  bar: SharedValue<string>;
+}) {
+  const tint = useArtworkColor(url);
+  useEffect(() => {
+    stage.value = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
+    bar.value = tint ? surfaceTint(tint, BAR_L) : BAR_FALLBACK;
+  }, [tint, stage, bar]);
+  return null;
+});
+
+/** The swipe edges, faded into the cover's colour. */
+const TintedEdges = React.memo(function TintedEdges({
+  url,
+  ...rest
+}: {url?: string} & Omit<React.ComponentProps<typeof SwipeEdges>, 'top'>) {
+  const tint = useArtworkColor(url);
+  return (
+    <SwipeEdges {...rest} top={tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK} />
+  );
+});
+
 export const PlayerScreen = React.memo(function PlayerScreen({
   visible,
   onClose,
@@ -216,7 +251,24 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   /** The song's ⋮ menu, opened for the song playing now. */
   onOpenMenu: (track: Track, from: SheetContext) => void;
 }) {
-  const active = useActiveTrack();
+  /**
+   * Held still while fully closed. The whole player stays mounted under the
+   * mini player, and it followed every song change, cover colour and play
+   * state: three or four re-renders of this entire screen per song, with
+   * nobody looking. Measured at well over a second of frozen app per song.
+   * The moment a pull or a tap starts opening it, it catches up in one render.
+   */
+  const [atRest, setAtRest] = useState(true);
+  useAnimatedReaction(
+    () => sheetP.value > 0.98,
+    (now, prev) => {
+      if (now !== prev) {
+        runOnJS(setAtRest)(now);
+      }
+    },
+  );
+  const frozen = !visible && atRest;
+  const active = useActiveTrack(frozen);
   // The page behind may only stop drawing while this panel is really there —
   // see panelDrawn. Layout effect, so it flips in the same commit as the
   // panel appearing or vanishing rather than a frame after it.
@@ -226,8 +278,8 @@ export const PlayerScreen = React.memo(function PlayerScreen({
       panelDrawn.value = false;
     };
   }, [active]);
-  const playing = useIsPlaying();
-  const buffering = useIsBuffering();
+  const playing = useIsPlaying(frozen);
+  const buffering = useIsBuffering(frozen);
   const output = useAudioOutput();
 
   /**
@@ -278,22 +330,16 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   // (same cover, same in-flight request — see getArtworkColor), so the panel
   // costs no second download, and having the colour before the panel is
   // visible is what lets a pull up start tinted instead of black.
-  const tint = useArtworkColor(
-    track
-      ? getBestArtworkUrl(track)
-      : String(active?.artwork ?? '') || undefined,
-  );
+  const tintUrl = track
+    ? getBestArtworkUrl(track)
+    : String(active?.artwork ?? '') || undefined;
   /**
    * The two ends of the surface's colour, per song — see STAGE_L / BAR_L.
-   * Shared values so the morph reads them on the UI thread; a new song writes
-   * them once, and nothing re-renders for it.
+   * Shared values so the morph reads them on the UI thread; TintSync writes
+   * them, and nothing re-renders for it.
    */
   const stageColor = useSharedValue(STAGE_FALLBACK);
   const barColor = useSharedValue(BAR_FALLBACK);
-  useEffect(() => {
-    stageColor.value = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
-    barColor.value = tint ? surfaceTint(tint, BAR_L) : BAR_FALLBACK;
-  }, [tint, stageColor, barColor]);
 
   // Fetched here, not inside the pane: the tab bar has to know whether this
   // song has lyrics BEFORE the tab is pressed. Only while the sheet is open,
@@ -933,7 +979,6 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   // "(Live)" and all. The lists keep the tidied one.
   const title = fullText(active.title);
   // The open player's surface, which a swipe's soft edges fade into.
-  const fadeColor = tint ? surfaceTint(tint, STAGE_L) : STAGE_FALLBACK;
   const artistList = splitArtists(String(active.artist ?? ''));
   const artists = artistList.join(', ');
   const artistCount = artistList.length;
@@ -1029,7 +1074,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   style={[styles.artFrame, artStyle]}
                   pointerEvents="none">
                   <Animated.View style={[styles.glow, glowStyle]}>
-                    <CoverGlow tint={tint} />
+                    <CoverGlow url={tintUrl} />
                   </Animated.View>
                   <Animated.View
                     ref={artRef}
@@ -1152,7 +1197,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
               )}
               {/* Soft edges while the titles change places, so the next one
                   slips in beside the buttons instead of crossing a hard cut. */}
-              <SwipeEdges slide={slide} span={swipeSpan} top={fadeColor} />
+              <TintedEdges url={tintUrl} slide={slide} span={swipeSpan} />
             </View>
 
             <View style={styles.actionCol}>
@@ -1357,6 +1402,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
           inside the player's own animated transform and its display:none pane
           stack — it sits in a sheet of its own, mounted only once opened.
         */}
+        <TintSync url={tintUrl} stage={stageColor} bar={barColor} />
         <SpeedSheet open={speedOpen} onClose={() => setSpeedOpen(false)} />
         <SleepSheet open={sleepOpen} onClose={() => setSleepOpen(false)} />
 

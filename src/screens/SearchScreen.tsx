@@ -11,12 +11,12 @@
  * as an import rather than searched for as text.
  */
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {stallContext} from '../stallWatch';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Keyboard,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -199,6 +199,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       if (ticket !== latest.current) {
         return;
       }
+      stallContext('search results');
       setResults(found);
       if (!found.length) {
         checkOnline().catch(() => {});
@@ -227,7 +228,11 @@ export const SearchScreen = React.memo(function SearchScreen({
     } catch (e) {
       checkOnline().catch(() => {});
       if (ticket === latest.current) {
-        setError(e instanceof Error ? e.message : String(e));
+        // A slow connection timing every source out read as "No songs
+        // matched that", which sent people looking for a song that exists.
+        setError(
+          "Couldn't reach the music sources. Check your connection and try again.",
+        );
         setResults([]);
       }
     } finally {
@@ -496,7 +501,18 @@ export const SearchScreen = React.memo(function SearchScreen({
         </View>
       )}
 
-      {!!error && !busy && <Text style={styles.error}>{error}</Text>}
+      {!!error && !busy && (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retry}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            onPress={() => runSearch(query)}>
+            <Text style={styles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Over the lists below, not under the field: the import card sits
           right under the field and would be dimmed. */}
@@ -627,46 +643,29 @@ export const SearchScreen = React.memo(function SearchScreen({
         />
       )}
 
-      {showBrowse && (
-        <ScrollView
-          contentContainerStyle={[styles.list, listEnd]}
+      {/* Kept mounted, only hidden while something else shows, and
+          virtualised: as a ScrollView it built all fifty tiles at once (a
+          card, a drawing, a cover and a name each) every time the field was
+          cleared or results were left, and the whole app paused for it. */}
+      <View style={[styles.browse, !showBrowse && styles.hidden]}>
+        <FlatList
+          data={genres}
+          numColumns={2}
+          keyExtractor={(g, i) => `${g.perma_url || g.name}-${i}`}
+          contentContainerStyle={[styles.list, styles.grid, listEnd]}
+          columnWrapperStyle={styles.gridRow}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          overScrollMode="never">
-          {genres.length > 0 && (
-            <>
-              <View style={styles.grid}>
-                {genres.map((g, i) => (
-                  <TouchableOpacity
-                    key={`${g.perma_url || g.name}-${i}`}
-                    style={[styles.tile, {backgroundColor: tilePal(i).bg}]}
-                    activeOpacity={0.8}
-                    onPress={() => onOpenBrowse(g)}>
-                    <Svg
-                      width={110}
-                      height={110}
-                      style={styles.tileBlob}
-                      pointerEvents="none">
-                      <Path
-                        d={TILE_BLOBS[i % TILE_BLOBS.length]}
-                        fill={tilePal(i).a}
-                      />
-                    </Svg>
-                    <Text
-                      style={[styles.tileText, {color: tilePal(i).ink}]}
-                      numberOfLines={2}>
-                      {g.name || g.title}
-                    </Text>
-                    {!!g.image && (
-                      <Image source={{uri: g.image}} style={styles.tileArt} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
+          overScrollMode="never"
+          initialNumToRender={10}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          removeClippedSubviews
+          renderItem={({item: g, index: i}) => (
+            <BrowseTile genre={g} index={i} onOpen={onOpenBrowse} />
           )}
-        </ScrollView>
-      )}
+        />
+      </View>
 
       {!busy && !showHistory && !showSuggestions && !showBrowse && (
         <FlatList
@@ -748,6 +747,33 @@ export const SearchScreen = React.memo(function SearchScreen({
   );
 });
 
+/** One Browse tile. Memoised: the grid stays mounted while the screen above
+ *  it changes, and a tile has nothing to redraw for that. */
+const BrowseTile = React.memo(function BrowseTile({
+  genre: g,
+  index: i,
+  onOpen,
+}: {
+  genre: HomeItem;
+  index: number;
+  onOpen: (g: HomeItem) => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.tile, {backgroundColor: tilePal(i).bg}]}
+      activeOpacity={0.8}
+      onPress={() => onOpen(g)}>
+      <Svg width={110} height={110} style={styles.tileBlob} pointerEvents="none">
+        <Path d={TILE_BLOBS[i % TILE_BLOBS.length]} fill={tilePal(i).a} />
+      </Svg>
+      <Text style={[styles.tileText, {color: tilePal(i).ink}]} numberOfLines={2}>
+        {g.name || g.title}
+      </Text>
+      {!!g.image && <Image source={{uri: g.image}} style={styles.tileArt} />}
+    </TouchableOpacity>
+  );
+});
+
 const styles = StyleSheet.create({
   // Transparent: the window's black is the background (see styles.xml).
   wrap: {flex: 1},
@@ -805,12 +831,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: BOTTOM_INSET,
   },
-  error: {
-    color: C.danger,
-    paddingHorizontal: S.gutter,
-    paddingVertical: 20,
-    fontSize: 13,
+  errorBox: {
+    alignItems: 'center',
+    paddingHorizontal: S.gutter * 2,
+    paddingTop: 48,
+    gap: 16,
   },
+  error: {color: C.sub, fontSize: 15, lineHeight: 21, textAlign: 'center'},
+  retry: {
+    backgroundColor: C.text,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+  },
+  retryText: {color: C.bg, fontSize: 15, fontWeight: '700'},
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
@@ -826,13 +860,10 @@ const styles = StyleSheet.create({
   },
   // No heading over the tiles: the coloured tiles are all Search shows when
   // the field is empty, and say what they are themselves.
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: S.gutter,
-    paddingTop: 12,
-    gap: 10,
-  },
+  browse: {flex: 1},
+  hidden: {display: 'none'},
+  grid: {paddingHorizontal: S.gutter, paddingTop: 12 + TOP_FADE, gap: 10},
+  gridRow: {gap: 10},
   // Spotify's Browse tile: 100 tall, a small corner, the name bold.
   tile: {
     flexBasis: '47%',

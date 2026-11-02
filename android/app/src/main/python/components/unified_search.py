@@ -222,13 +222,15 @@ class UnifiedSearchService:
 
 
         except Exception as e:
-            # Log error but don't fail the whole search
+            # Log error but don't fail the whole search. None, not []: a
+            # source that failed did not say "no such song".
             print(f"Error searching {source_type}: {e}")
-            return []
+            return None
 
         return []
 
-    def search(self, query: str, config: SearchConfig = None) -> List:
+    def search(self, query: str, config: SearchConfig = None,
+               answered: Set = None) -> List:
         """
         Main search method.
 
@@ -260,6 +262,7 @@ class UnifiedSearchService:
         self._cleanup_cache(config.cache_ttl_seconds)
 
         all_results: Dict[SourceType, List[Dict]] = {}
+        responded: Set = set()
 
         if config.parallel_search:
             # Parallel search across all sources, on ONE wall-clock deadline.
@@ -298,6 +301,8 @@ class UnifiedSearchService:
                         # Already complete — as_completed only yields finished
                         # futures, so this cannot block.
                         results = future.result(timeout=0)
+                        if results is not None:
+                            responded.add(source_type)
                         if results:
                             all_results[source_type] = results
                     except Exception as e:
@@ -318,10 +323,16 @@ class UnifiedSearchService:
                 if context.is_timed_out():
                     break
                 results = self._search_source(source_type, context)
+                if results is not None:
+                    responded.add(source_type)
                 if results:
                     all_results[source_type] = results
 
         # Merge results
+        # Which sources answered at all, empty or not: none means the network,
+        # not the query, and the app must not say "no songs matched".
+        if answered is not None:
+            answered.update(responded)
         if not any(all_results.values()):
             return []
 

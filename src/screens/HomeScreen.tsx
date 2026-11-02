@@ -1,3 +1,4 @@
+import {stallContext} from '../stallWatch';
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
@@ -18,7 +19,6 @@ import {
   type Track,
 } from '../backend';
 import {Doodle} from '../components/Doodle';
-import {useRecentlyPlayed} from '../recentlyPlayed';
 import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
@@ -157,7 +157,6 @@ export const HomeScreen = React.memo(function HomeScreen({
   onOpenAlbum,
   visible,
 }: Props) {
-  const recent = useRecentlyPlayed();
   const discover = useDiscover();
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
@@ -209,6 +208,7 @@ export const HomeScreen = React.memo(function HomeScreen({
         if (n !== lastLoad.current) {
           return;
         }
+        stallContext('home rows');
         setFresh(data);
         homeCache.set(trimForCache(data)); // seed the next launch
       }
@@ -339,7 +339,6 @@ export const HomeScreen = React.memo(function HomeScreen({
       {/* Discover, then Recents: nine songs each, swiped, with dots. */}
       <HomeGrids
         discover={discover.length ? discover : trending}
-        recent={recent}
         onPlay={onPlayTrack}
       />
     </>

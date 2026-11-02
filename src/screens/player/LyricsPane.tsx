@@ -61,9 +61,14 @@ export function useLyrics(
 ): LyricsState {
   const cacheKey = `${title}|${artist}`.toLowerCase();
   const cached = lyricsCache.get(cacheKey);
-  const [lyrics, setLyrics] = useState<Lyrics | null>(cached ?? null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
+  // One state, so each step of a fetch is one render of the player that holds
+  // this hook, not one per field.
+  const [state, setState] = useState<{
+    lyrics: Lyrics | null;
+    busy: boolean;
+    err: string;
+  }>({lyrics: cached ?? null, busy: false, err: ''});
+  const {lyrics, busy, err} = state;
 
   useEffect(() => {
     if (!enabled || !title) {
@@ -73,15 +78,11 @@ export function useLyrics(
     // re-fetch what was on screen two taps ago.
     const hit = lyricsCache.get(cacheKey);
     if (hit) {
-      setLyrics(hit);
-      setBusy(false);
-      setErr('');
+      setState({lyrics: hit, busy: false, err: ''});
       return;
     }
     let alive = true;
-    setBusy(true);
-    setErr('');
-    setLyrics(null);
+    setState({lyrics: null, busy: true, err: ''});
     getLyrics(title, artist, durationMs)
       .then(l => {
         const result = l.synced?.length ? 'synced' : l.plain ? 'plain' : 'none';
@@ -97,11 +98,18 @@ export function useLyrics(
           trimCache(lyricsCache);
         }
         if (alive) {
-          setLyrics(l);
+          setState({lyrics: l, busy: false, err: ''});
         }
       })
-      .catch(e => alive && setErr(e instanceof Error ? e.message : String(e)))
-      .finally(() => alive && setBusy(false));
+      .catch(e => {
+        if (alive) {
+          setState({
+            lyrics: null,
+            busy: false,
+            err: e instanceof Error ? e.message : String(e),
+          });
+        }
+      });
     return () => {
       alive = false;
     };
@@ -173,6 +181,12 @@ export const LyricsPane = React.memo(function LyricsPane({
     });
   }, [activeLine, visible, paneH]);
 
+  // Hidden behind the cover, a song's lyrics were still laid out line by
+  // line, on every song change: dozens of Text views nobody could see. They
+  // are drawn when the pane is shown.
+  if (!visible) {
+    return <View style={styles.lyricScroll} />;
+  }
   if (busy) {
     return (
       <View style={styles.lyricCenter}>

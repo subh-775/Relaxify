@@ -10,6 +10,7 @@
  * closed is finished by the backend regardless, and the file appears on the
  * next disk scan — so persisting a stale "in progress" row would be a lie.
  */
+import {stallContext} from './stallWatch';
 import {useMemo, useSyncExternalStore} from 'react';
 import {AppState, PermissionsAndroid, Platform} from 'react-native';
 import {
@@ -153,6 +154,7 @@ export function refreshDownloads(): Promise<void> {
       scanAgain = false;
       try {
         const {tracks} = await getLocalLibrary();
+        stallContext('downloads scan');
         setLocalFiles(tracks);
         // Anything finishing during that scan may have landed behind it.
         jobs

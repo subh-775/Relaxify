@@ -68,14 +68,12 @@ import {
 import {useLocalMusic} from '../localMusic';
 import {DownloadRow} from '../components/DownloadRow';
 import {
-  isRunning,
-  State,
   setShuffle,
   shuffleInAfterCurrent,
   togglePlay,
   useActiveTrack,
   usePlaybackOrigin,
-  usePlaybackState,
+  useIsPlaying,
   useShuffle,
 } from '../player';
 import {useLikes} from '../store';
@@ -317,7 +315,7 @@ export function CollectionScreen({
   // Whether THIS collection is what's sounding right now — that's what decides
   // if the big green button means pause/resume or "start from the top".
   const activeEngine = useActiveTrack();
-  const {state: playState} = usePlaybackState() as {state?: State};
+  const isPlaying = useIsPlaying();
   const origin = usePlaybackOrigin();
   const playingHere = useMemo(() => {
     if (!activeEngine) {
@@ -331,7 +329,6 @@ export function CollectionScreen({
         (t.artist || '').toLowerCase() === aa,
     );
   }, [activeEngine, tracks]);
-  const isPlaying = isRunning(playState);
 
   // The header art shrinks as the list scrolls up and comes back full-size on
   // the way down — the Spotify header feel.

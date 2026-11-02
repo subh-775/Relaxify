@@ -673,7 +673,8 @@ def search_tracks():
                 if SourceType.SOUNDCLOUD not in req_config.enabled_sources
                 and SourceType.SOUNDCLOUD in PLAYABLE_SEARCH_SOURCES else None)
         t0 = time.monotonic()
-        results = _search_service.search(query, req_config)
+        answered = set()
+        results = _search_service.search(query, req_config, answered)
         if sc_f is not None and _needs_soundcloud(query, results, req_config):
             try:
                 extra = sc_f.result(timeout=SOUNDCLOUD_WAIT)
@@ -685,6 +686,8 @@ def search_tracks():
             results = _with_lyric_song(query, results, lyric_f, req_config)
         results = _without_previews(results)
         print(f"[search] {int((time.monotonic() - t0) * 1000)}ms | {query[:40]}")
+        if not results and not answered:
+            return jsonify({"error": "unreachable"}), 504
 
         from components import search_rank as sr
         out = []

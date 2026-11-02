@@ -8,7 +8,7 @@ import {StyleSheet, Text, TouchableOpacity, View} from 'react-native';
 import Animated, {FadeInDown, FadeOutDown} from 'react-native-reanimated';
 import {BRIGHT_PALS} from '../brandArt';
 import {ChevronRight} from '../icons';
-import {useJam} from '../jam';
+import {useJamSelect} from '../jam';
 import {BOTTOM_INSET} from '../layout';
 import {S} from '../theme';
 import {JAM_ROOM, useUpdateStripRoom} from './UpdateModal';
@@ -20,13 +20,14 @@ export function JamBar({
   hidden: boolean;
   onOpen: () => void;
 }) {
-  const jam = useJam();
+  const code = useJamSelect(v => v?.code ?? '');
+  const count = useJamSelect(v => v?.members.length ?? 0);
   const below = useUpdateStripRoom();
-  if (!jam || hidden) {
+  if (!code || hidden) {
     return null;
   }
   const pal = BRIGHT_PALS[0];
-  const n = jam.members.length || 1;
+  const n = count || 1;
   return (
     <Animated.View
       entering={FadeInDown.duration(220)}
@@ -40,7 +41,7 @@ export function JamBar({
         accessibilityLabel={`Open the Jam, ${n} listening`}>
         <View style={[styles.dot, {backgroundColor: pal.ink}]} />
         <Text style={[styles.text, {color: pal.ink}]} numberOfLines={1}>
-          {`Jam ${jam.code} · ${n} listening`}
+          {`Jam ${code} · ${n} listening`}
         </Text>
         <ChevronRight size={18} color={pal.ink} strokeWidth={2.6} />
       </TouchableOpacity>
