@@ -156,21 +156,16 @@ def _download_from_url_android(self, url: str, task):
     ext = "webm" if "opus" in codec or "webm" in codec else "m4a"
     out_path = f"{task.output_path}.{ext}"
 
+    def progress(done, total):
+        task.downloaded_bytes = done
+        task.total_bytes = total
+        if total:
+            task.progress = min(99.0, done / total * 100.0)
+
     try:
-        with _stream_session.get(info["url"], stream=True, timeout=60) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("Content-Length") or 0)
-            done = 0
-            with open(out_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=64 * 1024):
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    done += len(chunk)
-                    task.downloaded_bytes = done
-                    task.total_bytes = total
-                    if total:
-                        task.progress = min(99.0, done / total * 100.0)
+        from components.http import fetch_whole
+
+        fetch_whole(_stream_session, info["url"], out_path, progress)
     except Exception as e:
         # A half-written file is worse than none: the library would list a track
         # that cannot play.
