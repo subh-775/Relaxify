@@ -43,6 +43,13 @@ assert penalty("karma police radiohead", "Karma Police", "Piano Tribute Players"
 assert penalty("bags clairo", "Bags Clairo", "Dreamy Dynamics", {"clairo"}) >= 35
 assert penalty("bags clairo", "Bags", "Clairo", {"clairo"}) == 0
 assert penalty("space song beach house", "Space House", "XCXNX", {"beach", "house"}) == 0
+# Two songs joined with an x is a mashup, though it never says so; unless
+# the search has the x itself.
+assert penalty("summertime sadness", "Hiltz Simple x Summertime Sadness") >= 30
+assert penalty("summertime sadness", "HOODS HOTTEST X SUMMERTIME SADNESS") >= 30
+assert penalty("hiltz simple x summertime", "Hiltz Simple x Summertime Sadness") == 0
+assert penalty("x gon give it", "X Gon' Give It to Ya") == 0
+assert penalty("one kiss", "One Kiss") == 0
 # The release, however labelled, is not a version.
 for label in ("Heroes (Single Version)", "Heroes (2017 Remaster)",
               "Mr. Blue Sky (Album Version)", "Blinding Lights (Radio Edit)"):

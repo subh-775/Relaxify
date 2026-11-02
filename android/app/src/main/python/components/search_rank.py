@@ -170,6 +170,8 @@ def penalty(query: str, title: str, artist: str = "",
     asked = set(words(query))
     told = set(words(_RELEASE.sub(" ", fold(title))))
     pen = VERSION_PENALTY * len((told & VERSION_WORDS) - asked)
+    if _mashup(title) and "x" not in asked:
+        pen += VERSION_PENALTY
     pen += VIDEO_PENALTY * len((told & VIDEO_WORDS) - asked)
     folded = fold(title)
     if any(p in folded for p in JUNK_PHRASES):
@@ -177,6 +179,13 @@ def penalty(query: str, title: str, artist: str = "",
     if cover_act(query, title, artist, artist_words):
         pen += COVER_ACT_PENALTY
     return pen
+
+
+def _mashup(title: str) -> bool:
+    """Two songs joined with an x: "Hiltz Simple x Summertime Sadness",
+    "Fuck rap x summertime sadness". A mashup in all but name; the word is
+    never said."""
+    return bool(re.search(r"\S\s+x\s+\S", fold(title)))
 
 
 def cover_act(query: str, title: str, artist: str,

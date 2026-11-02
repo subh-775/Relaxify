@@ -735,14 +735,19 @@ def _first_sources(query: str) -> set:
 
 
 def _needs_soundcloud(query: str, results, config) -> bool:
-    """Too few real songs without it, and it was left out."""
+    """Too few real songs without it, and it was left out.
+
+    Not when the first one is plainly the song typed: a famous song's copies
+    fold into one row, so "summertime sadness" always had fewer than two, and
+    SoundCloud's mashups ("Hiltz Simple x Summertime Sadness") filled the
+    list under the real one."""
     from components import search_rank as sr
     if (SourceType.SOUNDCLOUD in config.enabled_sources
             or SourceType.SOUNDCLOUD not in PLAYABLE_SEARCH_SOURCES):
         return False
     songs = [t for t in results
              if sr.penalty(query, t.title or "") < sr.VERSION_PENALTY]
-    return len(songs) < SOUNDCLOUD_WHEN_FEWER_THAN
+    return len(songs) < SOUNDCLOUD_WHEN_FEWER_THAN and not _answers(query, songs)
 
 
 def _without_previews(results, top: int = 8, wait: float = 2.0):
