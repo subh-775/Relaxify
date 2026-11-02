@@ -663,18 +663,28 @@ def search_tracks():
         # A line of lyrics names a song without its title, and the sources
         # match titles. Asked of YouTube Music alongside the search (four
         # words or more), and its song leads when the results lack it.
-        lyric_f = (_suggest_pool.submit(_lyric_song, query)
+        lyric_f = (_search_pool.submit(_lyric_song, query)
                    if len(query.split()) >= 4 else None)
+        # SoundCloud, alongside rather than after: waited for only if the
+        # others find too little. Run after them it added three seconds.
+        sc_f = (_search_pool.submit(
+                    _search_service.search, query,
+                    replace(req_config, enabled_sources={SourceType.SOUNDCLOUD}))
+                if SourceType.SOUNDCLOUD not in req_config.enabled_sources
+                and SourceType.SOUNDCLOUD in PLAYABLE_SEARCH_SOURCES else None)
+        t0 = time.monotonic()
         results = _search_service.search(query, req_config)
-        if _needs_soundcloud(query, results, req_config):
-            # Only SoundCloud, added to what is here: asking every source
-            # again cost five to eight seconds.
-            extra = _search_service.search(
-                query, replace(req_config, enabled_sources={SourceType.SOUNDCLOUD}))
-            results = _search_service._rank_by_relevance(list(results) + list(extra), query)
-        if lyric_f is not None:
+        if sc_f is not None and _needs_soundcloud(query, results, req_config):
+            try:
+                extra = sc_f.result(timeout=SOUNDCLOUD_WAIT)
+                results = _search_service._rank_by_relevance(
+                    list(results) + list(extra), query)
+            except Exception:
+                pass                     # too slow: what is here ships
+        if lyric_f is not None and not _answers(query, results):
             results = _with_lyric_song(query, results, lyric_f, req_config)
         results = _without_previews(results)
+        print(f"[search] {int((time.monotonic() - t0) * 1000)}ms | {query[:40]}")
 
         from components import search_rank as sr
         out = []
@@ -710,7 +720,9 @@ def search_tracks():
 # its results were remixes, edits, slowed versions or re-uploads, and it made a
 # third of every result list. JioSaavn and YouTube go first; SoundCloud joins
 # when they find little, or when the search asks for a version.
-SOUNDCLOUD_WHEN_FEWER_THAN = 4
+SOUNDCLOUD_WHEN_FEWER_THAN = 2
+# How long past the others SoundCloud is waited for, when it is needed.
+SOUNDCLOUD_WAIT = 2.0
 
 
 def _asks_for_version(query: str) -> bool:
@@ -735,7 +747,7 @@ def _needs_soundcloud(query: str, results, config) -> bool:
     return len(songs) < SOUNDCLOUD_WHEN_FEWER_THAN
 
 
-def _without_previews(results, top: int = 8, wait: float = 5.0):
+def _without_previews(results, top: int = 8, wait: float = 2.0):
     """The leading rows that would play from SoundCloud, checked first.
 
     Most official songs there are a 30-second preview, which the player
@@ -749,7 +761,7 @@ def _without_previews(results, top: int = 8, wait: float = 5.0):
         src = t.sources.get(SourceType.SOUNDCLOUD)
         url = getattr(src, "url", None)
         if url:
-            checks[id(t)] = _suggest_pool.submit(
+            checks[id(t)] = _search_pool.submit(
                 _resolve_stream_url_cached, url, "soundcloud")
     if not checks:
         return results
@@ -785,12 +797,21 @@ def _lyric_song(q: str):
     return hit if hit and hit.get("title") else None
 
 
+def _answers(query, results) -> bool:
+    """The first result is plainly what was typed: its title, or its title and
+    artist. A line of lyrics names neither, so the lyric lookup is for the
+    rest; asked for every long title, it added a second search."""
+    from components import search_rank as sr
+    return bool(results) and sr.relevance(
+        query, results[0].title or "", results[0].artist or "") >= 90
+
+
 def _with_lyric_song(query, results, lyric_f, config):
     """`results` with the song the lyrics are from first, found on the
     sources by its name, unless it is already near the top."""
     from components import search_rank as sr
     try:
-        hit = lyric_f.result(timeout=4)
+        hit = lyric_f.result(timeout=2.5)
     except Exception:
         return results
     if not hit:
@@ -803,6 +824,11 @@ def _with_lyric_song(query, results, lyric_f, config):
     if song is None:
         return results
     return [song] + [t for t in results if not sr.same_song(title, artist, t.title, t.artist)]
+
+
+# A search's side work: SoundCloud, the lyric lookup and the preview checks.
+# Its own threads, so a search never queues the typing suggestions behind it.
+_search_pool = ThreadPoolExecutor(max_workers=8)
 
 
 # Autocomplete's artist lookup runs beside the song search. Shared, not one
