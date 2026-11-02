@@ -50,6 +50,7 @@ import {
   markEngineSeek,
   peekAdjacentTrack,
   playTrack,
+  onSkipNext,
   onUserSeek,
   playbackRate,
   sourceTrackFor,
@@ -57,6 +58,7 @@ import {
   warmTrack,
 } from './player';
 import {rememberedArtwork} from './downloads';
+import {movedKey} from './jamQueue';
 import {getTrackId} from './tracks';
 import {logEvent} from './analytics';
 import {toast} from './toast';
@@ -140,6 +142,10 @@ export function useJam(): JamView | null {
 }
 export function inJam(): boolean {
   return !!view;
+}
+/** In a Jam or not, as a hook that re-renders only when that changes. */
+export function useInJam(): boolean {
+  return useSyncExternalStore(changes.subscribe, () => !!view);
 }
 
 let myId = '';
@@ -616,14 +622,7 @@ function watchLocal(code: string): void {
         return;
       }
       // The song I chose ended: the Jam queue goes first.
-      const head = view.queue[0];
-      if (head) {
-        try {
-          echoUntil = Date.now() + ECHO_MS;
-          await playTrack(await playable(head.track), [head.track], '', true);
-          await call(`jams/${code}/queue/${head.key}`, 'DELETE');
-        } catch {}
-      }
+      await playHead(code);
       await publish(code);
     },
   );
@@ -716,11 +715,39 @@ async function takeOverIfStuck(code: string): Promise<void> {
   }
 }
 
+/** Play the Jam queue's first song and take it off the queue. False when
+ *  the queue is empty. */
+async function playHead(code: string): Promise<boolean> {
+  const head = view?.queue[0];
+  if (!head) {
+    return false;
+  }
+  try {
+    echoUntil = Date.now() + ECHO_MS;
+    await playTrack(await playable(head.track), [head.track], '', true);
+    await call(`jams/${code}/queue/${encodeURIComponent(head.key)}`, 'DELETE');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function begin(code: string, host: boolean): void {
   view = {code, me: myId, host, members: [], now: null, queue: []};
   appliedSeq = -1;
   emit();
   watchLocal(code);
+  // Next, here or on headphones, plays the Jam's queue before this phone's.
+  unsubs.push(
+    onSkipNext(async () => {
+      if (!(await playHead(code))) {
+        return false;
+      }
+      echoUntil = 0;
+      await publish(code);
+      return true;
+    }),
+  );
   lastStream = 0;
   poll = setInterval(tick, POLL_MS);
   listen(code);
@@ -798,6 +825,59 @@ export async function leaveJam(): Promise<void> {
       await call(`jams/${v.code}/members/${v.me}`, 'DELETE').catch(() => {});
     }
   }
+}
+
+/** The name a member goes by, for "picked by" and "added by". */
+export function memberName(id: string | undefined): string {
+  const v = view;
+  if (!v || !id) {
+    return '';
+  }
+  if (id === v.me) {
+    return 'you';
+  }
+  return v.members.find(m => m.id === id)?.name ?? 'a friend';
+}
+
+/**
+ * Move a song in the Jam queue. It takes a new key between its new
+ * neighbours (jamQueue.ts), in one write that removes the old one, so no
+ * phone sees it twice. This phone's list moves at once.
+ */
+export async function moveInJam(from: number, to: number): Promise<void> {
+  const v = view;
+  const item = v?.queue[from];
+  if (!v || !item || from === to) {
+    return;
+  }
+  const key = movedKey(
+    v.queue.map(q => q.key),
+    from,
+    to,
+  );
+  const queue = v.queue.filter((_, i) => i !== from);
+  queue.splice(to, 0, {...item, key});
+  view = {...v, queue};
+  emit();
+  await call(`jams/${v.code}/queue`, 'PATCH', {
+    [item.key]: null,
+    [key]: {track: item.track, by: item.by},
+  }).catch(() => toast("Couldn't move that song. Check your connection."));
+  sync().catch(() => {});
+}
+
+/** Take a song off the Jam queue, for everyone. */
+export async function removeFromJam(key: string): Promise<void> {
+  const v = view;
+  if (!v) {
+    return;
+  }
+  view = {...v, queue: v.queue.filter(q => q.key !== key)};
+  emit();
+  await call(`jams/${v.code}/queue/${encodeURIComponent(key)}`, 'DELETE').catch(
+    () => {},
+  );
+  sync().catch(() => {});
 }
 
 /** Add a song to the Jam's shared queue (instead of this phone's queue). */

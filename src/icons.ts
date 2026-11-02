@@ -31,6 +31,7 @@ export {default as Gauge} from 'lucide-react-native/dist/esm/icons/gauge';
 export {default as Guitar} from 'lucide-react-native/dist/esm/icons/guitar';
 export {default as HardDrive} from 'lucide-react-native/dist/esm/icons/hard-drive';
 export {default as Headphones} from 'lucide-react-native/dist/esm/icons/headphones';
+export {default as GripVertical} from 'lucide-react-native/dist/esm/icons/grip-vertical';
 export {default as Heart} from 'lucide-react-native/dist/esm/icons/heart';
 export {default as Home} from 'lucide-react-native/dist/esm/icons/house';
 export {default as ImagePlus} from 'lucide-react-native/dist/esm/icons/image-plus';

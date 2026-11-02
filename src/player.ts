@@ -1260,7 +1260,24 @@ export function useActiveTrack(): RNTPTrack | null {
 
 /** Skips always resume playback: changing song while paused and getting
  *  silence reads as the skip having failed. */
+/**
+ * Something that may take Next over: a Jam plays its shared queue first. It
+ * answers whether it did; if not, Next is this phone's own.
+ */
+let nextHook: (() => Promise<boolean>) | null = null;
+export function onSkipNext(fn: () => Promise<boolean>): () => void {
+  nextHook = fn;
+  return () => {
+    if (nextHook === fn) {
+      nextHook = null;
+    }
+  };
+}
+
 export async function skipNext(): Promise<void> {
+  if (nextHook && (await nextHook().catch(() => false))) {
+    return;
+  }
   cancelCrossfade(); // a manual skip isn't a crossfade — kill any overlap
   markManualTrackChange();
   skipAt = Date.now();

@@ -51,6 +51,7 @@ import {
   WrongSongSheet,
   useWrongSongHost,
 } from './src/components/WrongSongSheet';
+import {JamBar} from './src/components/JamBar';
 import {UpdateModal} from './src/components/UpdateModal';
 import {
   checkUpdateOnLaunch,
@@ -1048,6 +1049,7 @@ function Shell() {
       )}
 
       <UpdateModal hidden={!!activity} />
+      <JamBar hidden={!!activity || jamOpen} onOpen={openJam} />
 
       {/* Above everything, and the real UI is already mounted and painted
           underneath — so lifting this reveals a finished screen rather than
