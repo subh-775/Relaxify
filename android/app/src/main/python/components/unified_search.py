@@ -12,6 +12,7 @@ Features:
 - Caching support
 """
 
+import re
 import time
 from typing import List, Dict, Any, Set
 from dataclasses import dataclass, field
@@ -373,88 +374,100 @@ class UnifiedSearchService:
         return merged
 
     def _rank_by_relevance(self, tracks: List, query: str) -> List:
-        """Order results by a composite of: query relevance (primary) → source
-        quality (JioSaavn 320k + cross-source corroboration preferred) → a
-        query-aware junk penalty (derivative fan uploads sink). All CPU-only —
-        no extra network — so the cleanest, most-correct result leads for free.
-        """
+        """Most relevant first, then one row per song (search_rank.py says how
+        and why). Ties keep the sources' own order, which is their popularity.
+        CPU only: no extra network."""
         if not tracks or not query:
             return tracks
 
-        # fuzz is rapidfuzz on desktop and a pure-Python equivalent on Android
-        # (rapidfuzz is a C++ extension with no Android wheel). This used to bail
-        # out on ImportError, which meant the APK returned results in raw source
-        # order — unranked, and with the junk penalty below never applied.
-        from components.fuzz_compat import fuzz
+        from components import search_rank as sr
 
-        import re as _re
+        qd = sr.fold(query).replace(" ", "")
 
-        def norm(s: str) -> str:
-            s = (s or "").lower()
-            s = _re.sub(r"[^\w\s]", " ", s)
-            return _re.sub(r"\s+", " ", s).strip()
-
-        q = norm(query)
-        qd = q.replace(" ", "")
-        qtokens = set(q.split())
-
-        # Markers of a derivative / low-fidelity fan upload. Penalized ONLY when
-        # the user didn't ask for them (query lacks the word), so "clocks" ranks
-        # the studio cut above "Clocks (slowed+reverb 8d)" while "clocks slowed"
-        # still finds it.
-        NOISE = {"slowed", "reverb", "reverbed", "sped", "lofi", "mashup", "megamix",
-                 "nonstop", "karaoke", "8d", "boosted", "ringtone", "flip",
-                 "refix", "bootleg", "remake", "instrumental", "remix", "remixed",
-                 "nightcore", "chopped", "screwed"}
-        HARD_JUNK = ("free download", "full album", "all songs", "jukebox",
-                     "audio jukebox", "back to back")
-
-        def relevance(title: str, artist: str, src_vals: set) -> float:
-            if not title:
-                return 0.0
-            # Query IS an artist's name (space-insensitive) AND we trust the
-            # artist (JioSaavn only — SC/YT artists are title-parsed/unreliable):
-            # strongly prefer that artist's songs.
-            if qd and len(qd) >= 4 and "jiosaavn" in src_vals:
-                for part in _re.split(r"[,&/]|feat|ft| x ", artist):
-                    if part.replace(" ", "").strip() == qd:
+        def base_of(t) -> float:
+            title = getattr(t, "title", "") or ""
+            artist = getattr(t, "artist", "") or ""
+            src_vals = {getattr(k, "value", k) for k in getattr(t, "sources", {})}
+            # The query IS an artist's name, and the artist is one we trust
+            # (JioSaavn's; SoundCloud and YouTube give the uploader): that
+            # artist's songs first.
+            if len(qd) >= 4 and "jiosaavn" in src_vals:
+                for part in re.split(r"[,&/]|feat|ft| x ", artist.lower()):
+                    if sr.fold(part).replace(" ", "") == qd:
                         return 110.0
-            s_title = fuzz.token_set_ratio(q, title)
-            s_both = fuzz.token_set_ratio(q, f"{title} {artist}".strip())
-            s_partial = fuzz.partial_ratio(q, title)
-            return max(s_title, s_both, s_partial * 0.97)
+            return sr.relevance(query, title, artist)
+
+        # The query's words that name an artist: in a JioSaavn credit (an
+        # uploader's name proves nothing), or before the dash of an upload
+        # ("Radiohead - Karma Police") when no JioSaavn title has the word,
+        # since "Kesariya - Brahmastra" is the song first.
+        q_words = set(sr.words(query))
+        trusted_rows = [t for t in tracks
+                        if SourceType.JIOSAAVN in getattr(t, "sources", {})]
+        in_titles = set()
+        for t in trusted_rows:
+            in_titles |= set(sr.core_title(t.title or "").split())
+        artist_words = set()
+        for t in tracks:
+            if t in trusted_rows:
+                artist_words |= q_words & set(sr.words(t.artist or ""))
+            else:
+                parts = sr.title_parts(t.title or "")
+                if len(parts) >= 2:
+                    artist_words |= (q_words & set(sr.words(parts[0]))) - in_titles
+
+        bases = {id(t): base_of(t) for t in tracks}
+        relevant = [t for t in tracks if bases[id(t)] >= sr.RELEVANT]
+        if len(relevant) >= sr.MIN_KEPT:
+            tracks = relevant
 
         def composite(t) -> float:
-            title = norm(getattr(t, "title", ""))
-            artist = norm(getattr(t, "artist", ""))
+            title = getattr(t, "title", "") or ""
+            # A cover act goes with the versions, behind "More versions".
+            # The borrowed-name test is for real credits only: an upload
+            # always carries the artist in its title.
+            t.is_cover = sr.cover_act(query, title, getattr(t, "artist", "") or "",
+                                      artist_words if t in trusted_rows else frozenset())
             src_vals = {getattr(k, "value", k) for k in getattr(t, "sources", {})}
-            base = relevance(title, artist, src_vals)
+            base = bases[id(t)]
+            if base >= 110.0:
+                return base
             if base <= 0:
                 return -1.0
-            # Source quality: JioSaavn (clean 320k catalog) >> SC/YT fan uploads;
-            # a song corroborated across sources is more likely the real one.
-            # Bonuses track RELIABILITY/cleanliness: JioSaavn > SoundCloud >
-            # YouTube (heavier, more fan uploads), so a working clean source
-            # leads — but YouTube is no longer hard-demoted (it plays fine now
-            # that the EJS JS-challenge runtime is wired in, §28c).
+            # Clean catalogue first: JioSaavn's own releases over uploads.
             sb = 0.0
             if "jiosaavn" in src_vals:
                 sb += 8.0
-            if "soundcloud" in src_vals:
-                sb += 4.0
             if "youtube" in src_vals or "youtube_music" in src_vals:
-                sb += 1.0
+                sb += 2.0
             if len(src_vals) >= 2:
                 sb += 4.0
-            # Query-aware junk penalty.
-            pen = 6.0 * len((set(title.split()) & NOISE) - qtokens)
-            if any(h in title for h in HARD_JUNK):
-                pen += 25.0
-            return base + sb - pen
+            return base + sb - sr.penalty(
+                query, title, getattr(t, "artist", "") or "", artist_words)
 
-        scored = [(composite(t), getattr(t, "search_score", 0.0), t) for t in tracks]
-        scored.sort(key=lambda x: (-x[0], -x[1]))
-        return [t for _, _, t in scored]
+        order = {id(t): i for i, t in enumerate(tracks)}
+        ranked = sorted(tracks, key=lambda t: (-composite(t), order[id(t)]))
+
+        def absorb(kept, copy):
+            # The copy's source stays on the row, so "Wrong song?" and a dead
+            # stream can still reach it.
+            for source, audio in getattr(copy, "sources", {}).items():
+                kept.sources.setdefault(source, audio)
+
+        # Whose artist credit is real (JioSaavn's), fixed before any row
+        # absorbs another's sources.
+        trusted = {id(t) for t in ranked
+                   if SourceType.JIOSAAVN in getattr(t, "sources", {})}
+        kept = sr.collapse(ranked, absorb=absorb, trusted=lambda t: id(t) in trusted)
+        # A row that took in other copies plays the best of them: SoundCloud
+        # offers only a 30-second preview of most official songs.
+        for t in kept:
+            full = [(k, v) for k, v in t.sources.items()
+                    if v.url and v.is_playable and not v.requires_auth]
+            if full:
+                t.primary_source = max(
+                    full, key=lambda kv: self.source_merger.priorities.get(kv[0], 0))[0]
+        return kept
 
     def _merge_results(self, all_results: Dict[SourceType, List[Dict]]) -> List:
         """Merge ALL sources into unified tracks so each song carries EVERY

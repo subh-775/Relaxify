@@ -652,7 +652,7 @@ def search_tracks():
         req_config = replace(
             _search_service.config,
             max_total_results=limit,
-            enabled_sources=PLAYABLE_SEARCH_SOURCES,
+            enabled_sources=_first_sources(query),
             # 12 -> 8. This number used to be decorative: the search blocked on
             # the slowest source no matter what it said (see the executor in
             # unified_search.search). Now it is a real wall-clock cap on how long
@@ -660,8 +660,23 @@ def search_tracks():
             # would actually wait — whatever has arrived by then ships.
             timeout_seconds=8.0,
         )
+        # A line of lyrics names a song without its title, and the sources
+        # match titles. Asked of YouTube Music alongside the search (four
+        # words or more), and its song leads when the results lack it.
+        lyric_f = (_suggest_pool.submit(_lyric_song, query)
+                   if len(query.split()) >= 4 else None)
         results = _search_service.search(query, req_config)
+        if _needs_soundcloud(query, results, req_config):
+            # Only SoundCloud, added to what is here: asking every source
+            # again cost five to eight seconds.
+            extra = _search_service.search(
+                query, replace(req_config, enabled_sources={SourceType.SOUNDCLOUD}))
+            results = _search_service._rank_by_relevance(list(results) + list(extra), query)
+        if lyric_f is not None:
+            results = _with_lyric_song(query, results, lyric_f, req_config)
+        results = _without_previews(results)
 
+        from components import search_rank as sr
         out = []
         for track in results:
             playable_source = _playable_source_name(track)
@@ -680,11 +695,114 @@ def search_tracks():
                 "artwork_urls": _clean_artwork_urls(getattr(track, "artwork_urls", {})),
                 "is_playable": True,
                 "playable_source": playable_source,
+                # A remix, slowed, live... nobody typed: the app keeps these
+                # behind "More versions".
+                "is_version": (sr.penalty(query, track.title or "") >= sr.VERSION_PENALTY
+                               or getattr(track, "is_cover", False)),
             })
 
         return jsonify({"results": out, "total": len(out), "query": query})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# SoundCloud is asked only when it can help. Measured on 30 searches, 61% of
+# its results were remixes, edits, slowed versions or re-uploads, and it made a
+# third of every result list. JioSaavn and YouTube go first; SoundCloud joins
+# when they find little, or when the search asks for a version.
+SOUNDCLOUD_WHEN_FEWER_THAN = 4
+
+
+def _asks_for_version(query: str) -> bool:
+    from components import search_rank as sr
+    return bool(set(sr.words(query)) & sr.VERSION_WORDS)
+
+
+def _first_sources(query: str) -> set:
+    sources = set(PLAYABLE_SEARCH_SOURCES)
+    rest = sources - {SourceType.SOUNDCLOUD}
+    return sources if _asks_for_version(query) or not rest else rest
+
+
+def _needs_soundcloud(query: str, results, config) -> bool:
+    """Too few real songs without it, and it was left out."""
+    from components import search_rank as sr
+    if (SourceType.SOUNDCLOUD in config.enabled_sources
+            or SourceType.SOUNDCLOUD not in PLAYABLE_SEARCH_SOURCES):
+        return False
+    songs = [t for t in results
+             if sr.penalty(query, t.title or "") < sr.VERSION_PENALTY]
+    return len(songs) < SOUNDCLOUD_WHEN_FEWER_THAN
+
+
+def _without_previews(results, top: int = 8, wait: float = 5.0):
+    """The leading rows that would play from SoundCloud, checked first.
+
+    Most official songs there are a 30-second preview, which the player
+    refuses, so such a row did nothing when tapped. Checked together, under
+    one time limit; the resolved address is cached, so a tap plays sooner.
+    A row with another source plays that instead; one with none is dropped."""
+    checks = {}
+    for t in results[:top]:
+        if _playable_source_name(t) != "soundcloud":
+            continue
+        src = t.sources.get(SourceType.SOUNDCLOUD)
+        url = getattr(src, "url", None)
+        if url:
+            checks[id(t)] = _suggest_pool.submit(
+                _resolve_stream_url_cached, url, "soundcloud")
+    if not checks:
+        return results
+    deadline = time.monotonic() + wait
+    out = []
+    for t in results:
+        f = checks.get(id(t))
+        if f is None:
+            out.append(t)
+            continue
+        try:
+            ok = f.result(timeout=max(0.0, deadline - time.monotonic())) is not None
+        except Exception:
+            ok = True   # not answered in time: keep it, as before
+        if ok:
+            out.append(t)
+            continue
+        t.sources.pop(SourceType.SOUNDCLOUD, None)
+        t.primary_source = None
+        if _playable_source_name(t):
+            out.append(t)
+    return out
+
+
+def _lyric_song(q: str):
+    """The song a typed line of lyrics is from: {title, artist}, or None."""
+    try:
+        import newpipe_yt
+        hits = newpipe_yt.search(q, 1, music=True)
+    except Exception:
+        return None
+    hit = hits[0] if hits else None
+    return hit if hit and hit.get("title") else None
+
+
+def _with_lyric_song(query, results, lyric_f, config):
+    """`results` with the song the lyrics are from first, found on the
+    sources by its name, unless it is already near the top."""
+    from components import search_rank as sr
+    try:
+        hit = lyric_f.result(timeout=4)
+    except Exception:
+        return results
+    if not hit:
+        return results
+    title, artist = hit["title"], hit.get("artist") or ""
+    if any(sr.same_song(title, artist, t.title, t.artist) for t in results[:3]):
+        return results
+    found = _search_service.search(f"{title} {artist}".strip(), config)
+    song = next((t for t in found if sr.same_song(title, artist, t.title, t.artist)), None)
+    if song is None:
+        return results
+    return [song] + [t for t in results if not sr.same_song(title, artist, t.title, t.artist)]
 
 
 # Autocomplete's artist lookup runs beside the song search. Shared, not one
@@ -731,9 +849,13 @@ def search_suggestions():
                 "artwork_url": artist["image"] or None,
             })
 
+        # One per song: JioSaavn lists a release under several albums, and
+        # its credits come in either order ("Arijit Singh, Mithoon").
+        from components import search_rank as sr
         seen = set()
         for track in songs:
-            key = f"{(track.title or '').lower()}|{(track.artist or '').lower()}"
+            key = (sr.song_key(track.title or "", track.artist or ""),
+                   frozenset(sr._artists(track.title or "", track.artist or "")))
             if key in seen:
                 continue
             seen.add(key)

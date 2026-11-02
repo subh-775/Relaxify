@@ -10,7 +10,7 @@
  * A Spotify playlist/album link pasted into the field is detected and offered
  * as an import rather than searched for as text.
  */
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -165,6 +165,13 @@ export const SearchScreen = React.memo(function SearchScreen({
   // Guards against a slow response for an old query overwriting a newer one.
   const latest = useRef(0);
   const inputRef = useRef<TextInput>(null);
+  /**
+   * The text last searched for. Putting a picked suggestion in the field
+   * changes `query` like typing does, so the suggestions came back and covered
+   * the results it had just asked for: the same list, a tap later. Text that
+   * was searched is not asked to suggest; editing it again is.
+   */
+  const submitted = useRef('');
 
   const runSearch = useCallback(async (q: string) => {
     const text = q.trim();
@@ -172,6 +179,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       return;
     }
     Keyboard.dismiss();
+    submitted.current = text;
     logEvent('search', {search_term: text});
     setBusy(true);
     setError('');
@@ -245,6 +253,7 @@ export const SearchScreen = React.memo(function SearchScreen({
    */
   const resetSearch = useCallback((refocus: boolean) => {
     latest.current++; // any in-flight response is now stale
+    submitted.current = '';
     setQuery('');
     setResults([]);
     setArtists([]);
@@ -264,7 +273,12 @@ export const SearchScreen = React.memo(function SearchScreen({
   // words or more, the song those lyrics are from when YouTube Music answers.
   useEffect(() => {
     const text = query.trim();
-    if (text.length < 2 || isImportUrl(text) || codeIn(text)) {
+    if (
+      text.length < 2 ||
+      isImportUrl(text) ||
+      codeIn(text) ||
+      text === submitted.current
+    ) {
       setSuggestions([]);
       return;
     }
@@ -299,14 +313,14 @@ export const SearchScreen = React.memo(function SearchScreen({
           : null;
       try {
         const list = await getSuggestions(text);
-        if (!gone) {
+        if (!gone && submitted.current !== text) {
           setSuggestions(withOwn(list));
         }
       } catch {
         // Suggestions are a convenience — a failure must stay silent.
       }
       const hit = await lyric;
-      if (hit && !gone) {
+      if (hit && !gone && submitted.current !== text) {
         setSuggestions(prev => withLyric(prev, hit));
       }
     }, DEBOUNCE_MS);
@@ -374,6 +388,14 @@ export const SearchScreen = React.memo(function SearchScreen({
   };
   const idle = !query.trim() && !results.length;
   const showSuggestions = !!suggestions.length && !busy;
+  // The songs first; remixes, slowed, live and the like nobody typed wait
+  // behind a button. A list of nothing but versions shows them anyway.
+  const [showVersions, setShowVersions] = useState(false);
+  const versions = useMemo(() => results.filter(t => t.is_version), [results]);
+  const songsOnly = useMemo(() => results.filter(t => !t.is_version), [results]);
+  const shownResults =
+    showVersions || !songsOnly.length ? results : songsOnly;
+  useEffect(() => setShowVersions(false), [results]);
   /**
    * Recent searches, whenever the field has focus and there is nothing more
    * specific to show.
@@ -648,7 +670,7 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       {!busy && !showHistory && !showSuggestions && !showBrowse && (
         <FlatList
-          data={results}
+          data={shownResults}
           keyExtractor={t => getTrackId(t)}
           keyboardShouldPersistTaps="handled"
           {...listWindowing}
@@ -704,6 +726,22 @@ export const SearchScreen = React.memo(function SearchScreen({
               showDuration={false}
             />
           )}
+          ListFooterComponent={
+            !showVersions && versions.length && songsOnly.length ? (
+              <TouchableOpacity
+                style={styles.moreVersions}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                onPress={() => setShowVersions(true)}>
+                <Text style={styles.moreVersionsText}>
+                  {`More versions (${versions.length})`}
+                </Text>
+                <Text style={styles.moreVersionsSub}>
+                  Remixes, slowed, live, covers and more
+                </Text>
+              </TouchableOpacity>
+            ) : null
+          }
         />
       )}
     </View>
@@ -713,6 +751,18 @@ export const SearchScreen = React.memo(function SearchScreen({
 const styles = StyleSheet.create({
   // Transparent: the window's black is the background (see styles.xml).
   wrap: {flex: 1},
+  moreVersions: {
+    marginTop: 14,
+    marginHorizontal: S.gutter,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    gap: 2,
+  },
+  moreVersionsText: {color: C.text, fontSize: 15, fontWeight: '700'},
+  moreVersionsSub: {color: C.faint, fontSize: 12.5},
   // The same row as Library's bar: mark, then the title.
   head: {
     flexDirection: 'row',

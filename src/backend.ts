@@ -225,6 +225,9 @@ export type Track = {
    */
   has_embedded_art?: boolean;
   file_size?: number;
+  /** Search: a version nobody typed (remix, slowed, live...), shown under
+   *  More versions. */
+  is_version?: boolean;
   /** Music of the person's own, found on the phone: see localMusic.ts. */
   on_device?: boolean;
   isrc?: string;
