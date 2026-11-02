@@ -71,4 +71,10 @@ if __name__ == "__main__":
     assert _yt_song("Pal", "Javed - Mohsin - Topic") == ("Pal", "Javed - Mohsin")
     # _deal: one from each source in turn.
     assert _deal([1, 2, 3], ["a"]) == [1, "a", 2, 3]
+    # Radio after a song leaves out its remixes, lofi and covers, unless the
+    # song playing is one.
+    assert _other_version("Kesariya", {"title": "Kesariya (Lofi Flip)", "artist": "VIBIE"})
+    assert _other_version("Karma Police", {"title": "Karma Police", "artist": "Piano Tribute Players"})
+    assert not _other_version("Kesariya", {"title": "Heeriye", "artist": "Arijit Singh"})
+    assert not _other_version("Kesariya (Lofi Flip)", {"title": "Heeriye (Lofi)", "artist": "VIBIE"})
     print("youtube radio helpers self-check OK")
