@@ -57,6 +57,7 @@ import type {Track} from '../backend';
 import {useSettings} from '../store';
 import {useRecentlyPlayed} from '../recentlyPlayed';
 import {HOME_CARD, HOME_CARD_RADIUS} from '../layout';
+import {openTrackMenu} from './TrackActionSheet';
 
 const COLUMNS = 3;
 const MAX_TILES = 9;
@@ -277,6 +278,8 @@ const SongCard = React.memo(function SongCard({
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={onPress}
+      onLongPress={() => openTrackMenu(track)}
+      delayLongPress={350}
       style={styles.card}
       accessibilityRole="button"
       accessibilityLabel={`Play ${cleanText(track.title)}`}>
@@ -447,6 +450,7 @@ function LastSongs({
             key={getTrackId(t)}
             track={t}
             onPress={() => onPlay(t)}
+            onLongPress={() => openTrackMenu(t)}
             showActions={false}
           />
         ))}
@@ -470,6 +474,8 @@ const Tile = React.memo(function Tile({
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={onPress}
+      onLongPress={() => openTrackMenu(track)}
+      delayLongPress={350}
       style={[styles.tile, {width: size, height: size}]}
       accessibilityRole="button"
       accessibilityLabel={`Play ${cleanText(track.title)}`}>

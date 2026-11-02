@@ -40,7 +40,7 @@ import {
   usePlaylists,
 } from '../playlists';
 import {PlaylistSourceBadge} from '../components/Badges';
-import {useLocalMusic} from '../localMusic';
+import {usePhoneMusic} from '../localMusic';
 import {shareCodeOf} from '../sharedPlaylists';
 import {
   MAX_PINS,
@@ -168,7 +168,7 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const likes = useLikes();
   const pins = usePins();
   const artists = useFollowedArtists();
-  const local = useLocalMusic();
+  const local = usePhoneMusic();
   const library = useLibrary(likes, downloads, local);
 
   /**

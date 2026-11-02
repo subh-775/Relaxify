@@ -116,7 +116,7 @@ import {Seekbar} from '../components/Seekbar';
 import {SeekPeek} from '../components/SeekPeek';
 import {QueuePane} from './QueueScreen';
 import {Sheet} from '../components/Sheet';
-import {AddButton} from '../components/AddButton';
+import {LikeButton} from '../components/LikeButton';
 import {SleepSheet} from '../components/SleepSheet';
 import {SpeedSheet} from '../components/SpeedSheet';
 import {clampRate, isRate, rateLabel} from '../playbackRate';
@@ -319,7 +319,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
   // The engine's queue item is a reduced shape; the badges and the download
   // both need the real backend Track behind it.
   const track = useMemo(() => sourceTrackFor(active), [active]);
-  // No useLike here any more: the liked state lives inside <AddButton>, which
+  // No useLike here any more: the liked state lives inside <LikeButton>, which
   // is the only thing on this screen that reads it. One subscription fewer on
   // a screen that already has several.
 
@@ -1237,7 +1237,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   )}
                 </TouchableOpacity>
 
-                <AddButton
+                <LikeButton
                   track={track}
                   onOpenSheet={onAddToPlaylist}
                   size={ACTION}

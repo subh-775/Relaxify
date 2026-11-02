@@ -70,7 +70,7 @@ import {
   spanBetween,
 } from '../playerSheet';
 import type {Track} from '../backend';
-import {AddButton} from './AddButton';
+import {LikeButton} from './LikeButton';
 import {surfaceTint, useArtworkColor} from '../artworkColor';
 import {useSongSwipe, type Neighbour} from '../songSwipe';
 
@@ -517,7 +517,7 @@ export const PlayerBar = React.memo(function PlayerBar({
 
             {/* The same control as the full player, so the two can never
                 disagree about what a press does. */}
-            <AddButton
+            <LikeButton
               track={track}
               onOpenSheet={onAddToPlaylist}
               size={26}

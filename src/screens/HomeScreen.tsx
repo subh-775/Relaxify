@@ -39,6 +39,7 @@ import {checkOnline, useOffline} from '../offline';
 import {OfflineScreen} from '../components/OfflineScreen';
 import {LanguageDial} from '../components/LanguageDial';
 import {FollowedShelf} from '../components/FollowedShelf';
+import {openTrackMenu} from '../components/TrackActionSheet';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -438,7 +439,9 @@ function Card({item, onPick}: {item: HomeItem; onPick: (i: HomeItem) => void}) {
     <TouchableOpacity
       style={styles.card}
       activeOpacity={0.7}
-      onPress={() => onPick(item)}>
+      onPress={() => onPick(item)}
+      onLongPress={() => item.track && openTrackMenu(item.track)}
+      delayLongPress={350}>
       <View style={styles.artWrap}>
         {item.image ? (
           <Image

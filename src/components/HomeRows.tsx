@@ -36,6 +36,7 @@ import {upgradeArtwork} from '../tracks';
 import {HOME_CARD_RADIUS} from '../layout';
 import {surfaceTint, useArtworkColor} from '../artworkColor';
 import type {HomeItem, HomeRow} from '../backend';
+import {openTrackMenu} from './TrackActionSheet';
 
 type Props = {row: HomeRow; onPick: (i: HomeItem) => void};
 
@@ -95,6 +96,8 @@ function RankedRow({row, onPick}: Props) {
             style={styles.rank}
             activeOpacity={0.75}
             onPress={() => onPick(item)}
+            onLongPress={() => item.track && openTrackMenu(item.track)}
+            delayLongPress={350}
             accessibilityLabel={`Number ${index + 1}, ${label(item)}`}>
             <Svg width={index >= 9 ? 104 : 64} height={RANK_COVER} style={styles.num}>
               <SvgText
@@ -132,6 +135,8 @@ function HeroCard({item, width, onPick}: {item: HomeItem; width: number; onPick:
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={() => onPick(item)}
+      onLongPress={() => item.track && openTrackMenu(item.track)}
+      delayLongPress={350}
       style={[styles.hero, {width}]}
       accessibilityLabel={label(item)}>
       <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -192,6 +197,8 @@ function ColourCard({item, onPick}: {item: HomeItem; onPick: Props['onPick']}) {
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={() => onPick(item)}
+      onLongPress={() => item.track && openTrackMenu(item.track)}
+      delayLongPress={350}
       style={styles.tall}
       accessibilityLabel={label(item)}>
       <Cover item={item} size={TALL_W} radius={0} />
@@ -248,6 +255,8 @@ function ShelfRow({row, onPick}: Props) {
                 key={key(item)}
                 activeOpacity={0.75}
                 onPress={() => onPick(item)}
+                onLongPress={() => item.track && openTrackMenu(item.track)}
+                delayLongPress={350}
                 style={styles.shelfItem}
                 accessibilityLabel={label(item)}>
                 <Cover item={item} size={SHELF} />

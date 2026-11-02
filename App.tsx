@@ -64,6 +64,7 @@ import {watchCacheLimit} from './src/cacheLimit';
 import {repairCovers} from './src/coverRepair';
 import {
   TrackActionSheet,
+  useTrackMenuHost,
   type SheetContext,
 } from './src/components/TrackActionSheet';
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
@@ -723,6 +724,7 @@ function Shell() {
     setSheetTrack(track);
     setSheetFrom(from ?? null);
   }, []);
+  useTrackMenuHost(openSheet);
 
   /**
    * Stable identities for the memoised children below.
@@ -1000,7 +1002,11 @@ function Shell() {
         // Out of the way while typing: the window shrinks to above the
         // keyboard, the bars ride up with it, and in the Jam they sat right
         // on the search box and the results under it.
-        style={[styles.bottomStack, barsBehindPlayer, keyboardUp && styles.gone]}
+        style={[
+          styles.bottomStack,
+          barsBehindPlayer,
+          keyboardUp && styles.gone,
+        ]}
         pointerEvents="box-none">
         <BodyFade />
         {engine && (

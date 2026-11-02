@@ -65,7 +65,7 @@ import {
   useDownloads,
   useDownloadJobs,
 } from '../downloads';
-import {useLocalMusic} from '../localMusic';
+import {usePhoneMusic} from '../localMusic';
 import {DownloadRow} from '../components/DownloadRow';
 import {
   setShuffle,
@@ -169,7 +169,7 @@ export function CollectionScreen({
   const listEnd = useListEnd();
   const playlists = usePlaylists();
   const localTracks = useDownloads();
-  const phoneMusic = useLocalMusic();
+  const phoneMusic = usePhoneMusic();
   const jobs = useDownloadJobs();
 
   const tracks = useMemo(() => {
