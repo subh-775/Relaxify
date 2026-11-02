@@ -33,7 +33,7 @@ import {getArtist, type ArtistProfile, type Track} from '../backend';
 import {normalizeTracks} from '../tracks';
 import {TrackRow} from '../components/TrackRow';
 import {useFollowedArtists} from '../artists';
-import {isRunning, State, togglePlay, useActiveTrack, usePlaybackState} from '../player';
+import {togglePlay, useActiveTrack, useIsPlaying} from '../player';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {rememberArtistPhoto} from '../artistPhotos';
@@ -115,7 +115,7 @@ export function ArtistScreen({
   // songs is what's playing, and tapping it pauses/resumes instead of
   // restarting from the top.
   const activeEngine = useActiveTrack();
-  const {state: playState} = usePlaybackState() as {state?: State};
+  const isPlaying = useIsPlaying();
   const playingHere = (() => {
     if (!activeEngine) {
       return false;
@@ -128,7 +128,6 @@ export function ArtistScreen({
         (t.artist || '').toLowerCase() === aa,
     );
   })();
-  const isPlaying = isRunning(playState);
 
   const [allSongs, setAllSongs] = useState(false);
   const {width} = useWindowDimensions();

@@ -68,6 +68,14 @@ with open(path, "ab") as f:
 dm.scan_downloads(folder, cache)
 assert reads, "a changed file kept its old answer"
 
+# A title holding a dash, with no tags to read (a YouTube .webm): the artist
+# is after the LAST dash.
+os.remove(path)
+tags.clear()
+song("Cold Blue - In Peace - Black Hole Recordings")
+t = dm.scan_downloads(folder, {})[0]
+assert (t["title"], t["artist"]) == ("Cold Blue - In Peace", "Black Hole Recordings"), t
+
 # Long names stay inside Android's limit, and are not cut mid-character.
 long = dm.safe_stem("तुम" * 200, "x" * 500)
 assert len(long.encode("utf-8")) <= 223

@@ -52,6 +52,8 @@ export type Settings = {
   homeLanguages: string[];
   /** Stream at DATA_SAVER_KBPS while on mobile data. */
   dataSaver: boolean;
+  /** New likes download by themselves, off mobile data. */
+  keepLikedOffline: boolean;
   /** "Home style as Speed Dial": Home's Discover and Recents as two 3x3
    *  grids of covers. Off, each is a row of covers you scroll sideways, like
    *  the rest of Home. */
@@ -69,6 +71,7 @@ export function setOnCellular(v: boolean): void {
 
 /** Data saver is on AND the phone is on mobile data: hold background fetches. */
 export const savingData = () => settingsStore.get().dataSaver && cellular;
+export const onMobileData = () => cellular;
 
 const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
@@ -91,6 +94,7 @@ const DEFAULT_SETTINGS: Settings = {
   resumeOnConnect: false,
   homeLanguages: ['hindi', 'english'],
   dataSaver: true,
+  keepLikedOffline: true,
   // A row of covers, the way every other part of Home reads. The grid is the
   // speed dial for anyone who wants nine songs one tap away.
   homeGrid: false,
@@ -160,6 +164,7 @@ export function toggleLike(t: Track): boolean {
 }
 
 export const readLikes = likesStore.get;
+export const onLikesChange = likesStore.subscribe;
 
 /** Rewrite liked songs in place (coverRepair.ts); order and ids unchanged. */
 export function mapLikes(fn: (t: Track) => Track): void {

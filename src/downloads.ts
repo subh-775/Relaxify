@@ -10,6 +10,7 @@
  * closed is finished by the backend regardless, and the file appears on the
  * next disk scan — so persisting a stale "in progress" row would be a lie.
  */
+import {stallContext} from './stallWatch';
 import {useMemo, useSyncExternalStore} from 'react';
 import {AppState, PermissionsAndroid, Platform} from 'react-native';
 import {
@@ -28,7 +29,9 @@ import {
   useLocalTracks,
   withLocalFile,
 } from './localFiles';
+import {refreshLocalMusic} from './localMusic';
 import {isOffline} from './offline';
+import {onLikesChange, onMobileData, readLikes, readSettings} from './store';
 import {getBestArtworkUrl, getDownloadKey} from './tracks';
 import {createStore, asArray} from './storage';
 import {toast} from './toast';
@@ -108,7 +111,8 @@ function overlayDownloadArtwork(tracks: Track[]): Track[] {
 // ─── What's already on disk ─────────────────────────────────────────────────
 
 const accessAsked = createStore<boolean>(
-  'mp.musicAccessAsked.v1',
+  // v2: asked again for On this phone. An update can also drop the permission.
+  'mp.musicAccessAsked.v2',
   false,
   raw => raw === true,
 );
@@ -144,11 +148,13 @@ export function refreshDownloads(): Promise<void> {
     scanAgain = true;
     return scanning;
   }
+  refreshLocalMusic();
   scanning = (async () => {
     do {
       scanAgain = false;
       try {
         const {tracks} = await getLocalLibrary();
+        stallContext('downloads scan');
         setLocalFiles(tracks);
         // Anything finishing during that scan may have landed behind it.
         jobs
@@ -161,20 +167,50 @@ export function refreshDownloads(): Promise<void> {
   return scanning;
 }
 
+/** Enough at once to make headway, few enough to leave the music its network. */
+const MAX_AUTO_JOBS = 3;
+
+/**
+ * "Keep Liked Songs offline": fetch the likes not yet on the phone, a few at a
+ * time. Each one finishing calls this again, which is what works through a
+ * long list. Never on mobile data, where nobody asked to spend it.
+ */
+export function downloadLikes(): void {
+  if (!readSettings().keepLikedOffline || isOffline() || onMobileData()) {
+    return;
+  }
+  const running = jobs.filter(
+    j => j.status === 'queued' || j.status === 'downloading',
+  ).length;
+  readLikes()
+    .filter(
+      t =>
+        !withLocalFile(t).file_path &&
+        !jobs.some(j => getDownloadKey(j.track) === getDownloadKey(t)),
+    )
+    .slice(0, Math.max(0, MAX_AUTO_JOBS - running))
+    .forEach(t => enqueueDownload(t).catch(() => {}));
+}
+
 /** The first scan once the engine is up, then every return to the app, which
  *  is when a file may have been removed outside it. */
 export function watchDownloads(): () => void {
-  waitForBackend().then(ok => {
+  waitForBackend().then(async ok => {
     if (ok) {
-      refreshDownloads();
+      await refreshDownloads();
+      downloadLikes();
     }
   });
   const sub = AppState.addEventListener('change', s => {
     if (s === 'active') {
-      refreshDownloads();
+      refreshDownloads().then(downloadLikes);
     }
   });
-  return () => sub.remove();
+  const stopLikes = onLikesChange(downloadLikes);
+  return () => {
+    sub.remove();
+    stopLikes();
+  };
 }
 
 /** The downloaded songs, covers included. Every list of them is this one. */
@@ -250,6 +286,7 @@ function ensurePolling() {
             // stale until you happened to open the tab.
             refreshDownloads();
             logEvent('song_downloaded', songParams(job.track));
+            downloadLikes();
             // Fetched now while there is internet: the engine keeps them on
             // disk, so they are there when this song plays without it.
             getLyrics(

@@ -1,3 +1,4 @@
+import {stallContext} from '../stallWatch';
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   Animated,
@@ -18,7 +19,6 @@ import {
   type Track,
 } from '../backend';
 import {Doodle} from '../components/Doodle';
-import {useRecentlyPlayed} from '../recentlyPlayed';
 import {upgradeArtwork} from '../tracks';
 import {createStore, asArray, useStoreValue} from '../storage';
 import {MenuMark} from '../components/MenuMark';
@@ -39,6 +39,7 @@ import {checkOnline, useOffline} from '../offline';
 import {OfflineScreen} from '../components/OfflineScreen';
 import {LanguageDial} from '../components/LanguageDial';
 import {FollowedShelf} from '../components/FollowedShelf';
+import {openTrackMenu} from '../components/TrackActionSheet';
 
 /**
  * Last Home rows, persisted. Showing these instantly on the next launch is
@@ -157,7 +158,6 @@ export const HomeScreen = React.memo(function HomeScreen({
   onOpenAlbum,
   visible,
 }: Props) {
-  const recent = useRecentlyPlayed();
   const discover = useDiscover();
   // Room for the update strip too, while it is up.
   const listEnd = useListEnd();
@@ -209,6 +209,7 @@ export const HomeScreen = React.memo(function HomeScreen({
         if (n !== lastLoad.current) {
           return;
         }
+        stallContext('home rows');
         setFresh(data);
         homeCache.set(trimForCache(data)); // seed the next launch
       }
@@ -339,7 +340,6 @@ export const HomeScreen = React.memo(function HomeScreen({
       {/* Discover, then Recents: nine songs each, swiped, with dots. */}
       <HomeGrids
         discover={discover.length ? discover : trending}
-        recent={recent}
         onPlay={onPlayTrack}
       />
     </>
@@ -439,7 +439,9 @@ function Card({item, onPick}: {item: HomeItem; onPick: (i: HomeItem) => void}) {
     <TouchableOpacity
       style={styles.card}
       activeOpacity={0.7}
-      onPress={() => onPick(item)}>
+      onPress={() => onPick(item)}
+      onLongPress={() => item.track && openTrackMenu(item.track)}
+      delayLongPress={350}>
       <View style={styles.artWrap}>
         {item.image ? (
           <Image

@@ -146,10 +146,11 @@ function TabButton({
 }
 
 /** How small a tab gets under the finger, and how fast. */
-const PRESSED = 0.86;
+const PRESSED = 0.92;
 const SHRINK_MS = 90;
-/** Back to full size with a small overshoot. */
-const SPRING = {damping: 14, stiffness: 420, mass: 0.6};
+/** Back to full size with a hint of overshoot: at 14 damping a tab wobbled
+ *  on every tap, which read as more motion than a tap is worth. */
+const SPRING = {damping: 18, stiffness: 420, mass: 0.6};
 
 // Spotify's size. The label under it carries the rest of the weight that the
 // 29px icon used to carry alone.

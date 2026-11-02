@@ -186,7 +186,9 @@ class SourceMerger:
     # Default source priorities (higher = preferred for audio)
     DEFAULT_PRIORITIES = {
         SourceType.JIOSAAVN: 100,  # 320kbps AAC, direct download
-        SourceType.SOUNDCLOUD: 80,  # 256kbps MP3
+        # Below YouTube: most official songs on SoundCloud are a 30-second
+        # preview now, so it plays what the others do not have.
+        SourceType.SOUNDCLOUD: 55,
         SourceType.YOUTUBE_MUSIC: 70,  # High quality, but requires PO tokens
         SourceType.YOUTUBE: 60,  # Variable quality
         SourceType.DEEZER: 50,  # 30s preview only
@@ -271,14 +273,30 @@ class SourceMerger:
         if isrc:
             return f"isrc:{str(isrc).lower()}"
 
+        from components import search_rank as sr
+
         artist = self._normalize_text(track.get("artist", ""))
         title = self._key_title(track.get("title", ""), artist)
         trusted = source_type in self.TRUSTED_ARTIST_SOURCES
         duration = self._duration_sec(track)
+        raw = (track.get("title", "") or "", track.get("artist", "") or "")
+        versions = sr.version_words(raw[0])
 
         for b in buckets:
             if fuzz.token_set_ratio(title, b["title"]) < self.TITLE_MATCH_THRESHOLD:
                 continue
+            # token_set_ratio ignores extra words, so "Believer (Kaskade Remix)"
+            # scored 100 against "Believer" and the remix took the song's place.
+            # A version only joins the same version.
+            if versions != b["versions"]:
+                continue
+            # An upload joining a real credit, or the other way round, must be
+            # that artist's song: tribute acts' "Karma Police" rows took in the
+            # real Radiohead upload this way.
+            if trusted != b["trusted"]:
+                known, upload = (raw, b["raw"]) if trusted else (b["raw"], raw)
+                if not sr.same_song(*known, *upload, True, False):
+                    continue
 
             # Same title — but is it the same recording? Duration is the cheapest
             # honest signal, and it's what stops a 3-minute single from absorbing
@@ -300,7 +318,7 @@ class SourceMerger:
             # A trusted source joining an uploader-named bucket upgrades it: the
             # real artist credit wins for any later comparison.
             if trusted and not b["trusted"]:
-                b["artist"], b["trusted"] = artist, True
+                b["artist"], b["trusted"], b["raw"] = artist, True, raw
             if duration and not b["duration"]:
                 b["duration"] = duration
             return b["key"]
@@ -313,6 +331,8 @@ class SourceMerger:
                 "artist": artist,
                 "trusted": trusted,
                 "duration": duration,
+                "raw": raw,
+                "versions": versions,
             }
         )
         return key

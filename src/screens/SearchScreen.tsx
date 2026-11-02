@@ -10,13 +10,13 @@
  * A Spotify playlist/album link pasted into the field is detected and offered
  * as an import rather than searched for as text.
  */
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {stallContext} from '../stallWatch';
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Keyboard,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -61,6 +61,7 @@ import {SearchHints} from '../components/SearchHints';
 import {OfflineScreen} from '../components/OfflineScreen';
 import {checkOnline, useOffline} from '../offline';
 import {importSourceName, isImportUrl} from '../spotifyImport';
+import {readLocalMusic} from '../localMusic';
 import {codeIn, openShared} from '../sharedPlaylists';
 import {type Collection} from '../collections';
 import {toast} from '../toast';
@@ -164,6 +165,13 @@ export const SearchScreen = React.memo(function SearchScreen({
   // Guards against a slow response for an old query overwriting a newer one.
   const latest = useRef(0);
   const inputRef = useRef<TextInput>(null);
+  /**
+   * The text last searched for. Putting a picked suggestion in the field
+   * changes `query` like typing does, so the suggestions came back and covered
+   * the results it had just asked for: the same list, a tap later. Text that
+   * was searched is not asked to suggest; editing it again is.
+   */
+  const submitted = useRef('');
 
   const runSearch = useCallback(async (q: string) => {
     const text = q.trim();
@@ -171,6 +179,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       return;
     }
     Keyboard.dismiss();
+    submitted.current = text;
     logEvent('search', {search_term: text});
     setBusy(true);
     setError('');
@@ -190,6 +199,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       if (ticket !== latest.current) {
         return;
       }
+      stallContext('search results');
       setResults(found);
       if (!found.length) {
         checkOnline().catch(() => {});
@@ -218,7 +228,11 @@ export const SearchScreen = React.memo(function SearchScreen({
     } catch (e) {
       checkOnline().catch(() => {});
       if (ticket === latest.current) {
-        setError(e instanceof Error ? e.message : String(e));
+        // A slow connection timing every source out read as "No songs
+        // matched that", which sent people looking for a song that exists.
+        setError(
+          "Couldn't reach the music sources. Check your connection and try again.",
+        );
         setResults([]);
       }
     } finally {
@@ -244,6 +258,7 @@ export const SearchScreen = React.memo(function SearchScreen({
    */
   const resetSearch = useCallback((refocus: boolean) => {
     latest.current++; // any in-flight response is now stale
+    submitted.current = '';
     setQuery('');
     setResults([]);
     setArtists([]);
@@ -263,11 +278,17 @@ export const SearchScreen = React.memo(function SearchScreen({
   // words or more, the song those lyrics are from when YouTube Music answers.
   useEffect(() => {
     const text = query.trim();
-    if (text.length < 2 || isImportUrl(text) || codeIn(text)) {
+    if (
+      text.length < 2 ||
+      isImportUrl(text) ||
+      codeIn(text) ||
+      text === submitted.current
+    ) {
       setSuggestions([]);
       return;
     }
     const own: Suggestion[] = ownSongMatches(text, [
+      readLocalMusic(),
       readRecentlyPlayed(),
       readLikes(),
       ...readPlaylists().map(p => p.tracks),
@@ -297,14 +318,14 @@ export const SearchScreen = React.memo(function SearchScreen({
           : null;
       try {
         const list = await getSuggestions(text);
-        if (!gone) {
+        if (!gone && submitted.current !== text) {
           setSuggestions(withOwn(list));
         }
       } catch {
         // Suggestions are a convenience — a failure must stay silent.
       }
       const hit = await lyric;
-      if (hit && !gone) {
+      if (hit && !gone && submitted.current !== text) {
         setSuggestions(prev => withLyric(prev, hit));
       }
     }, DEBOUNCE_MS);
@@ -372,6 +393,14 @@ export const SearchScreen = React.memo(function SearchScreen({
   };
   const idle = !query.trim() && !results.length;
   const showSuggestions = !!suggestions.length && !busy;
+  // The songs first; remixes, slowed, live and the like nobody typed wait
+  // behind a button. A list of nothing but versions shows them anyway.
+  const [showVersions, setShowVersions] = useState(false);
+  const versions = useMemo(() => results.filter(t => t.is_version), [results]);
+  const songsOnly = useMemo(() => results.filter(t => !t.is_version), [results]);
+  const shownResults =
+    showVersions || !songsOnly.length ? results : songsOnly;
+  useEffect(() => setShowVersions(false), [results]);
   /**
    * Recent searches, whenever the field has focus and there is nothing more
    * specific to show.
@@ -472,7 +501,18 @@ export const SearchScreen = React.memo(function SearchScreen({
         </View>
       )}
 
-      {!!error && !busy && <Text style={styles.error}>{error}</Text>}
+      {!!error && !busy && (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retry}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            onPress={() => runSearch(query)}>
+            <Text style={styles.retryText}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Over the lists below, not under the field: the import card sits
           right under the field and would be dimmed. */}
@@ -603,50 +643,33 @@ export const SearchScreen = React.memo(function SearchScreen({
         />
       )}
 
-      {showBrowse && (
-        <ScrollView
-          contentContainerStyle={[styles.list, listEnd]}
+      {/* Kept mounted, only hidden while something else shows, and
+          virtualised: as a ScrollView it built all fifty tiles at once (a
+          card, a drawing, a cover and a name each) every time the field was
+          cleared or results were left, and the whole app paused for it. */}
+      <View style={[styles.browse, !showBrowse && styles.hidden]}>
+        <FlatList
+          data={genres}
+          numColumns={2}
+          keyExtractor={(g, i) => `${g.perma_url || g.name}-${i}`}
+          contentContainerStyle={[styles.list, styles.grid, listEnd]}
+          columnWrapperStyle={styles.gridRow}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          overScrollMode="never">
-          {genres.length > 0 && (
-            <>
-              <View style={styles.grid}>
-                {genres.map((g, i) => (
-                  <TouchableOpacity
-                    key={`${g.perma_url || g.name}-${i}`}
-                    style={[styles.tile, {backgroundColor: tilePal(i).bg}]}
-                    activeOpacity={0.8}
-                    onPress={() => onOpenBrowse(g)}>
-                    <Svg
-                      width={110}
-                      height={110}
-                      style={styles.tileBlob}
-                      pointerEvents="none">
-                      <Path
-                        d={TILE_BLOBS[i % TILE_BLOBS.length]}
-                        fill={tilePal(i).a}
-                      />
-                    </Svg>
-                    <Text
-                      style={[styles.tileText, {color: tilePal(i).ink}]}
-                      numberOfLines={2}>
-                      {g.name || g.title}
-                    </Text>
-                    {!!g.image && (
-                      <Image source={{uri: g.image}} style={styles.tileArt} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
+          overScrollMode="never"
+          initialNumToRender={10}
+          maxToRenderPerBatch={6}
+          windowSize={5}
+          removeClippedSubviews
+          renderItem={({item: g, index: i}) => (
+            <BrowseTile genre={g} index={i} onOpen={onOpenBrowse} />
           )}
-        </ScrollView>
-      )}
+        />
+      </View>
 
       {!busy && !showHistory && !showSuggestions && !showBrowse && (
         <FlatList
-          data={results}
+          data={shownResults}
           keyExtractor={t => getTrackId(t)}
           keyboardShouldPersistTaps="handled"
           {...listWindowing}
@@ -702,15 +725,70 @@ export const SearchScreen = React.memo(function SearchScreen({
               showDuration={false}
             />
           )}
+          ListFooterComponent={
+            !showVersions && versions.length && songsOnly.length ? (
+              <TouchableOpacity
+                style={styles.moreVersions}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                onPress={() => setShowVersions(true)}>
+                <Text style={styles.moreVersionsText}>
+                  {`More versions (${versions.length})`}
+                </Text>
+                <Text style={styles.moreVersionsSub}>
+                  Remixes, slowed, live, covers and more
+                </Text>
+              </TouchableOpacity>
+            ) : null
+          }
         />
       )}
     </View>
   );
 });
 
+/** One Browse tile. Memoised: the grid stays mounted while the screen above
+ *  it changes, and a tile has nothing to redraw for that. */
+const BrowseTile = React.memo(function BrowseTile({
+  genre: g,
+  index: i,
+  onOpen,
+}: {
+  genre: HomeItem;
+  index: number;
+  onOpen: (g: HomeItem) => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.tile, {backgroundColor: tilePal(i).bg}]}
+      activeOpacity={0.8}
+      onPress={() => onOpen(g)}>
+      <Svg width={110} height={110} style={styles.tileBlob} pointerEvents="none">
+        <Path d={TILE_BLOBS[i % TILE_BLOBS.length]} fill={tilePal(i).a} />
+      </Svg>
+      <Text style={[styles.tileText, {color: tilePal(i).ink}]} numberOfLines={2}>
+        {g.name || g.title}
+      </Text>
+      {!!g.image && <Image source={{uri: g.image}} style={styles.tileArt} />}
+    </TouchableOpacity>
+  );
+});
+
 const styles = StyleSheet.create({
   // Transparent: the window's black is the background (see styles.xml).
   wrap: {flex: 1},
+  moreVersions: {
+    marginTop: 14,
+    marginHorizontal: S.gutter,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    gap: 2,
+  },
+  moreVersionsText: {color: C.text, fontSize: 15, fontWeight: '700'},
+  moreVersionsSub: {color: C.faint, fontSize: 12.5},
   // The same row as Library's bar: mark, then the title.
   head: {
     flexDirection: 'row',
@@ -753,12 +831,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: BOTTOM_INSET,
   },
-  error: {
-    color: C.danger,
-    paddingHorizontal: S.gutter,
-    paddingVertical: 20,
-    fontSize: 13,
+  errorBox: {
+    alignItems: 'center',
+    paddingHorizontal: S.gutter * 2,
+    paddingTop: 48,
+    gap: 16,
   },
+  error: {color: C.sub, fontSize: 15, lineHeight: 21, textAlign: 'center'},
+  retry: {
+    backgroundColor: C.text,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+  },
+  retryText: {color: C.bg, fontSize: 15, fontWeight: '700'},
   // The bars at the foot of the app float OVER the page now, so a list has to
   // end above them or its last row is permanently behind one. See src/layout.ts.
   list: {paddingTop: TOP_FADE, paddingBottom: BOTTOM_INSET},
@@ -774,13 +860,10 @@ const styles = StyleSheet.create({
   },
   // No heading over the tiles: the coloured tiles are all Search shows when
   // the field is empty, and say what they are themselves.
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: S.gutter,
-    paddingTop: 12,
-    gap: 10,
-  },
+  browse: {flex: 1},
+  hidden: {display: 'none'},
+  grid: {paddingHorizontal: S.gutter, paddingTop: 12 + TOP_FADE, gap: 10},
+  gridRow: {gap: 10},
   // Spotify's Browse tile: 100 tall, a small corner, the name bold.
   tile: {
     flexBasis: '47%',

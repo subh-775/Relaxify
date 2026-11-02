@@ -65,16 +65,15 @@ import {
   useDownloads,
   useDownloadJobs,
 } from '../downloads';
+import {usePhoneMusic} from '../localMusic';
 import {DownloadRow} from '../components/DownloadRow';
 import {
-  isRunning,
-  State,
   setShuffle,
   shuffleInAfterCurrent,
   togglePlay,
   useActiveTrack,
   usePlaybackOrigin,
-  usePlaybackState,
+  useIsPlaying,
   useShuffle,
 } from '../player';
 import {useLikes} from '../store';
@@ -109,6 +108,8 @@ function kindLabel(kind: Collection['kind']): string {
       return 'Album';
     case 'downloads':
       return 'On this phone';
+    case 'local':
+      return 'Your files';
     case 'liked':
       return 'Your likes';
     default:
@@ -168,6 +169,7 @@ export function CollectionScreen({
   const listEnd = useListEnd();
   const playlists = usePlaylists();
   const localTracks = useDownloads();
+  const phoneMusic = usePhoneMusic();
   const jobs = useDownloadJobs();
 
   const tracks = useMemo(() => {
@@ -180,10 +182,12 @@ export function CollectionScreen({
       }
       case 'downloads':
         return localTracks;
+      case 'local':
+        return phoneMusic;
       default:
         return collection.tracks;
     }
-  }, [collection, likes, playlists, localTracks]);
+  }, [collection, likes, playlists, localTracks, phoneMusic]);
   const runtime = useMemo(() => formatTotalDuration(tracks), [tracks]);
 
   // Sort and find, for this visit only. "Order" is the list's own: the
@@ -311,7 +315,7 @@ export function CollectionScreen({
   // Whether THIS collection is what's sounding right now — that's what decides
   // if the big green button means pause/resume or "start from the top".
   const activeEngine = useActiveTrack();
-  const {state: playState} = usePlaybackState() as {state?: State};
+  const isPlaying = useIsPlaying();
   const origin = usePlaybackOrigin();
   const playingHere = useMemo(() => {
     if (!activeEngine) {
@@ -325,7 +329,6 @@ export function CollectionScreen({
         (t.artist || '').toLowerCase() === aa,
     );
   }, [activeEngine, tracks]);
-  const isPlaying = isRunning(playState);
 
   // The header art shrinks as the list scrolls up and comes back full-size on
   // the way down — the Spotify header feel.
@@ -642,7 +645,11 @@ export function CollectionScreen({
 
       <Animated.FlatList
         data={shown}
-        keyExtractor={t => getTrackId(t)}
+        // The file, for a song on the phone: two files can carry the same
+        // title and artist ("Yellow.m4a" tagged as another song), and rows
+        // sharing a key were drawn again and again as the list scrolled. A
+        // playlist holding one song twice gets the place as well.
+        keyExtractor={(t, i) => t.file_path || `${getTrackId(t)}#${i}`}
         {...listWindowing}
         contentContainerStyle={[styles.list, listEnd]}
         showsVerticalScrollIndicator={false}

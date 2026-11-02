@@ -44,7 +44,7 @@ import {
 } from '../store';
 import {createStore, storedBytes, useStoreValue} from '../storage';
 import {formatStorage, StorageBreakdown} from '../components/StorageBreakdown';
-import {forgetDownloads} from '../downloads';
+import {downloadLikes, forgetDownloads} from '../downloads';
 import {DOCS_URL, LICENCE_URL, reportUrl} from '../links';
 import {LICENCES} from '../licences';
 import {CREDITS, PRIVACY, TERMS} from '../legal';
@@ -528,6 +528,15 @@ export function SettingsScreen({
           <StorageBreakdown info={storage} savedBytes={storedBytes()} />
         )}
         <Section title="Downloads">
+          <ToggleRow
+            label="Keep Liked Songs offline"
+            hint="Download songs you like by themselves, on Wi-Fi"
+            value={settings.keepLikedOffline}
+            onChange={v => {
+              writeSetting('keepLikedOffline', v);
+              downloadLikes();
+            }}
+          />
           <TouchableOpacity
             style={rowStyles.row}
             onPress={pickDownloadFolder}

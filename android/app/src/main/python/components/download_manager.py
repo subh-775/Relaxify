@@ -924,7 +924,10 @@ def scan_downloads(directory: str, cache: Optional[Dict[str, Any]] = None) -> Li
         if tag_title and tag_artist and stem == safe_stem(tag_title, tag_artist):
             title, artist = tag_title, tag_artist
         elif " - " in stem:
-            f_title, f_artist = stem.split(" - ", 1)
+            # The LAST dash: titles carry dashes ("Cold Blue - In Peace"),
+            # artists hardly ever, and split at the first one the file read
+            # as "Cold Blue" by "In Peace - Black Hole Recordings".
+            f_title, f_artist = stem.rsplit(" - ", 1)
             title, artist = f_title.strip(), f_artist.strip()
             # The download name is capped in bytes, so a long title or artist
             # can be cut short there; the tag holds the whole of it.

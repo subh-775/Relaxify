@@ -399,6 +399,15 @@ def _deal(*lists):
     return out
 
 
+def _other_version(seed_title, r):
+    """A remix, lofi, slowed or live copy the seed is not, or a cover act.
+    The stations hand these out ("Kesariya (Lofi Flip)" after "Kesariya"),
+    and in a queue of similar songs they sound like the wrong song."""
+    from components import search_rank as sr
+    title = r.get("title") or ""
+    return bool(sr.version_words(title) - sr.version_words(seed_title or ""))         or sr.cover_act(seed_title or "", title, r.get("artist") or "")
+
+
 def resolve_radio(title, artist, limit=12, shuffle=True):
     """Return up to `limit` playable similar tracks as plain dicts
     (UnifiedTrack.to_dict shape, ready for the frontend to queue)."""
@@ -411,12 +420,13 @@ def resolve_radio(title, artist, limit=12, shuffle=True):
     seen, picks = {seed_key}, []
     for r in raw:
         key = ((r.get("title") or "").lower().strip(), _primary_artist(r.get("artist", "")).lower())
-        if key not in seen:
+        if key not in seen and not _other_version(title, r):
             seen.add(key)
             picks.append(r)
     raw = picks
     if len(raw) < limit // 2:
-        raw += _lastfm_radio(title, artist, limit, shuffle)
+        raw += [r for r in _lastfm_radio(title, artist, limit, shuffle)
+                if not _other_version(title, r)]
 
     if not raw:
         return []

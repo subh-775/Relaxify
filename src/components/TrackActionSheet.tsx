@@ -18,15 +18,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {ArrowLeftRight, Disc3, Download, ListX, Loader} from '../icons';
-import {
-  AddCircle,
-  AddToPlaylist,
-  AddToQueue,
-  Artist,
-  SavedCircle,
-  Trash,
-} from '../glyphs';
+import {ArrowLeftRight, Disc3, Download, Heart, ListX, Loader} from '../icons';
+import {AddToPlaylist, AddToQueue, Artist, Trash} from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
 import {enqueueDownload, forgetDownloads} from '../downloads';
@@ -46,6 +39,31 @@ export type SheetContext = {
   /** Opened from the player, for the song playing now: offers "Wrong song?". */
   playing?: boolean;
 } | null;
+
+/** Open the menu from anywhere: a Home tile held down has no list to pass
+ *  a callback through. App owns the sheet and registers itself here, as
+ *  WrongSongSheet does. */
+let opener: ((t: Track) => void) | null = null;
+
+export function openTrackMenu(t: Track): void {
+  opener?.(t);
+}
+
+export function useTrackMenuHost(open: (t: Track) => void): void {
+  useEffect(() => {
+    opener = open;
+    return () => {
+      if (opener === open) {
+        opener = null;
+      }
+    };
+  }, [open]);
+}
+
+/** The heart the like button wears once a song is liked. */
+function LikedHeart({size, color}: {size?: number | string; color?: string}) {
+  return <Heart size={size} color={color} fill={color} />;
+}
 
 function TrackActionSheetView({
   track,
@@ -131,7 +149,7 @@ function TrackActionSheetView({
 
   const items: Array<{
     key: string;
-    Icon: typeof Download | typeof AddCircle;
+    Icon: typeof Download | typeof Trash | typeof LikedHeart;
     label: string;
     onPress: () => void;
     tint?: string;
@@ -152,7 +170,7 @@ function TrackActionSheetView({
       : []),
     {
       key: 'like',
-      Icon: liked ? SavedCircle : AddCircle,
+      Icon: liked ? LikedHeart : Heart,
       label: liked ? 'Remove from Liked Songs' : 'Add to Liked Songs',
       tint: liked ? C.accent : undefined,
       stay: true,
@@ -161,19 +179,24 @@ function TrackActionSheetView({
         setLiked(v => !v);
       },
     },
-    downloaded
-      ? {
-          key: 'undownload',
-          Icon: Trash,
-          label: 'Remove download',
-          onPress: removeDownload,
-        }
-      : {
-          key: 'download',
-          Icon: busy ? Loader : Download,
-          label: busy ? 'Starting…' : 'Download',
-          onPress: download,
-        },
+    // A song of the person's own: nothing to fetch, and not ours to delete.
+    ...(t.on_device
+      ? []
+      : [
+          downloaded
+            ? {
+                key: 'undownload',
+                Icon: Trash,
+                label: 'Remove download',
+                onPress: removeDownload,
+              }
+            : {
+                key: 'download',
+                Icon: busy ? Loader : Download,
+                label: busy ? 'Starting…' : 'Download',
+                onPress: download,
+              },
+        ]),
     {
       key: 'queue',
       Icon: AddToQueue,

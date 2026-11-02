@@ -28,7 +28,7 @@ import {CARD_ART, FeatureCard} from './FeatureCard';
 import {RecapTeaser} from './RecapTeaser';
 import {recapCardDue} from '../recap';
 import {useStatsState} from '../stats';
-import {useJam} from '../jam';
+import {useJamSelect} from '../jam';
 import {
   BAD_LINK,
   cancelImport,
@@ -59,9 +59,11 @@ const M = CARD_ART / 2;
 type W = {width?: number};
 
 function JamCard({onOpen, width}: {onOpen: () => void} & W) {
-  const jam = useJam();
+  // Two strings, not the Jam: a card re-rendered on every Jam update.
+  const code = useJamSelect(v => v?.code ?? '');
+  const listening = useJamSelect(v => (v ? Math.max(1, v.members.length) : 0));
+  const jam = code ? {code} : null;
   const p = JAM_PAL;
-  const listening = jam ? Math.max(1, jam.members.length) : 0;
   return (
     <FeatureCard
       pal={p}

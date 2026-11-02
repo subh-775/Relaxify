@@ -25,7 +25,7 @@ import {
   getBestArtworkUrl,
   thumbArtwork,
 } from '../tracks';
-import {AddButton} from './AddButton';
+import {LikeButton} from './LikeButton';
 import {openAddToPlaylist} from './AddToPlaylistSheet';
 import {addToJam} from '../jam';
 import {useIsActiveTrack} from '../player';
@@ -182,7 +182,8 @@ export const TrackRow = React.memo(function TrackRow({
             style={styles.row}
             activeOpacity={0.65}
             onPress={unavailable ? notSaved : onPress}
-            onLongPress={onLongPress}
+            // A hold opens the ⋯ menu when the row has one, as in Spotify.
+            onLongPress={onLongPress ?? onMenu}
             delayLongPress={350}>
             {rank != null && (
               <Text style={[styles.rank, isActive && styles.rankActive]}>
@@ -217,9 +218,8 @@ export const TrackRow = React.memo(function TrackRow({
             )}
 
             {showActions && (
-              // The player's + and its rule: first press saves to Liked Songs,
-              // the next (or a hold) opens the playlists.
-              <AddButton
+              // The heart: a press likes or unlikes, a hold opens the playlists.
+              <LikeButton
                 track={track}
                 onOpenSheet={openAddToPlaylist}
                 size={21}

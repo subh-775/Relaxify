@@ -12,7 +12,7 @@
  * everything here is guarded and `isAvailable()` reports the truth instead of
  * the app crashing.
  */
-import {useEffect, useState, useSyncExternalStore} from 'react';
+import {useRef, useSyncExternalStore} from 'react';
 import {AppState, Image} from 'react-native';
 import TrackPlayer, {
   AppKilledPlaybackBehavior,
@@ -21,7 +21,6 @@ import TrackPlayer, {
   RepeatMode,
   State,
   TrackType,
-  usePlaybackState,
   useProgress as useProgressPolled,
   type Track as RNTPTrack,
 } from 'react-native-track-player';
@@ -58,6 +57,7 @@ import {toast} from './toast';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
 import {readResume, resumeIndex, saveResume} from './resume';
 import {DOWNLOADS_ID} from './collections';
+import {stallContext} from './stallWatch';
 import {chosenCopy} from './songChoice';
 import {embeddedArtworkUrl, refreshDownloads} from './downloads';
 import {isOffline} from './offline';
@@ -454,8 +454,20 @@ async function setupPlayerOnce(): Promise<boolean> {
     });
 
     // Every Playing re-arms the swipe-away guard (TaskGuard.kt says why it is
-    // needed).
+    // needed). The same event feeds the play state every screen reads.
+    // Only a starting value: it must not be able to fail the setup.
+    Promise.resolve()
+      .then(() => TrackPlayer.getPlaybackState())
+      .then(p => notePlayState(p.state))
+      .catch(() => {});
+    // A call or another app taking audio focus pauses ExoPlayer by turning
+    // play-when-ready off, which can come with no state event the icon
+    // reads: the music stopped and the button still said it was playing.
+    TrackPlayer.addEventListener(Event.PlaybackPlayWhenReadyChanged, e =>
+      notePlayWhenReady(e.playWhenReady),
+    );
     TrackPlayer.addEventListener(Event.PlaybackState, e => {
+      notePlayState(e.state);
       if (e.state === State.Playing) {
         guardTask();
         noteSkipToSound();
@@ -500,6 +512,7 @@ async function setupPlayerOnce(): Promise<boolean> {
     });
 
     TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async e => {
+      stallContext('track change');
       // The "play this soon" window is relative to the current song — a new song
       // starts a fresh one, so anything queued now goes right after it again.
       queuedAhead = 0;
@@ -854,6 +867,7 @@ export async function playTrack(
    *  the chooser shared, or phones on different versions drift apart. */
   asShared = false,
 ): Promise<void> {
+  stallContext('play');
   await requireEngine();
   setPlaybackOrigin(originId);
   await loopIf(originId);
@@ -1144,6 +1158,7 @@ let trackSnapshot: RNTPTrack | null = null;
 const trackChanges = createEmitter();
 
 function publishTrack(t: RNTPTrack | null): void {
+  stallContext('publish track');
   trackSnapshot = t;
   trackChanges.emit();
 }
@@ -1186,6 +1201,7 @@ function warmArtwork(index: number): void {
 
 /** Re-read the engine's queue and index so the mirror is warm before a gesture. */
 async function refreshEngineMirror(): Promise<void> {
+  stallContext('queue mirror');
   try {
     const queue = await TrackPlayer.getQueue();
     const [active, index] = await Promise.all([
@@ -1254,13 +1270,30 @@ export function useIsActiveTrack(track: Track): boolean {
 
 /** The track the UI should show: optimistic on gesture, reconciled by the
  *  engine event. Drop-in replacement for RNTP's useActiveTrack. */
-export function useActiveTrack(): RNTPTrack | null {
-  return useSyncExternalStore(trackChanges.subscribe, () => trackSnapshot);
+export function useActiveTrack(frozen = false): RNTPTrack | null {
+  return useHeld(trackChanges.subscribe, () => trackSnapshot, frozen);
 }
 
 /** Skips always resume playback: changing song while paused and getting
  *  silence reads as the skip having failed. */
+/**
+ * Something that may take Next over: a Jam plays its shared queue first. It
+ * answers whether it did; if not, Next is this phone's own.
+ */
+let nextHook: (() => Promise<boolean>) | null = null;
+export function onSkipNext(fn: () => Promise<boolean>): () => void {
+  nextHook = fn;
+  return () => {
+    if (nextHook === fn) {
+      nextHook = null;
+    }
+  };
+}
+
 export async function skipNext(): Promise<void> {
+  if (nextHook && (await nextHook().catch(() => false))) {
+    return;
+  }
   cancelCrossfade(); // a manual skip isn't a crossfade — kill any overlap
   markManualTrackChange();
   skipAt = Date.now();
@@ -2293,60 +2326,108 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
 }
 
 /**
- * Is the player playing — but STABLE across a seek.
+ * The play state, held once for every screen.
  *
- * Seeking makes ExoPlayer flash through Buffering/Loading/Ready before it
- * settles back to Playing, and reading the raw state made the play/pause icon
- * blink pause→play→pause on every scrub. Only the definite states flip this;
- * the transient ones hold the last real intent.
+ * Each screen asked RNTP's usePlaybackState on its own: a native listener
+ * and a getPlaybackState call per component, and a re-render of each on
+ * every state event, of which a song change brings several. One listener
+ * (set up with the engine) feeds this, and the hooks below re-render a
+ * component only when the answer it reads changes.
+ *
+ * `playing` is STABLE across a seek: ExoPlayer flashes through Buffering,
+ * Loading and Ready before settling back to Playing, and reading the raw state
+ * made the play/pause icon blink on every scrub. Only definite states flip it.
+ *
+ * `buffering` is a wait long enough to be a stall, not the flash every seek
+ * and track change passes through: playing holds the pause icon through
+ * Buffering, which hid a real stall completely.
  */
-export function useIsPlaying(): boolean {
-  const {state} = usePlaybackState() as {state?: State};
-  const [playing, setPlaying] = useState(false);
-  useEffect(() => {
-    if (state === State.Playing) {
-      setPlaying(true);
-    } else if (
-      state === State.Paused ||
+let playingNow = false;
+let bufferingNow = false;
+let bufferTimer: ReturnType<typeof setTimeout> | null = null;
+const playStateChanges = createEmitter();
+
+function notePlayState(state: State | undefined): void {
+  let changed = false;
+  if (state === State.Playing && !playingNow) {
+    playingNow = true;
+    changed = true;
+  } else if (
+    playingNow &&
+    (state === State.Paused ||
       state === State.Stopped ||
       state === State.Ended ||
       state === State.None ||
-      state === State.Error
-    ) {
-      setPlaying(false);
+      state === State.Error)
+  ) {
+    playingNow = false;
+    changed = true;
+  }
+  const waiting = state === State.Buffering || state === State.Loading;
+  if (!waiting) {
+    if (bufferTimer) {
+      clearTimeout(bufferTimer);
+      bufferTimer = null;
     }
-    // Buffering / Loading / Ready / Connecting: leave the icon as-is.
-  }, [state]);
-  return playing;
+    if (bufferingNow) {
+      bufferingNow = false;
+      changed = true;
+    }
+  } else if (!bufferTimer && !bufferingNow) {
+    bufferTimer = setTimeout(() => {
+      bufferTimer = null;
+      bufferingNow = true;
+      playStateChanges.emit();
+    }, 1500);
+  }
+  if (changed) {
+    playStateChanges.emit();
+  }
 }
 
+/** Whether the engine means to play: what the play/pause button shows. */
+function notePlayWhenReady(on: boolean): void {
+  if (on !== playingNow) {
+    playingNow = on;
+    playStateChanges.emit();
+  }
+}
+
+const noSubscription = () => () => {};
+
 /**
- * Is the engine waiting on the network — for long enough that it is a stall,
- * not the flash every seek and track change passes through. useIsPlaying holds
- * the pause icon through Buffering, which is right for a seek and hid a real
- * stall completely: the song went silent with nothing on screen saying so.
+ * A store read that can be held still. While `frozen`, the component keeps
+ * the value it last showed and is not re-rendered by changes; unfrozen, it
+ * reads the current one at once. For a screen that is mounted but hidden.
  */
-export function useIsBuffering(): boolean {
-  const {state} = usePlaybackState() as {state?: State};
-  const waiting = state === State.Buffering || state === State.Loading;
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    if (!waiting) {
-      setShown(false);
-      return;
-    }
-    const t = setTimeout(() => setShown(true), 1500);
-    return () => clearTimeout(t);
-  }, [waiting]);
-  return shown;
+function useHeld<T>(
+  subscribe: (fn: () => void) => () => void,
+  read: () => T,
+  frozen: boolean,
+): T {
+  const held = useRef(read());
+  if (!frozen) {
+    held.current = read();
+  }
+  return useSyncExternalStore(frozen ? noSubscription : subscribe, () =>
+    frozen ? held.current : read(),
+  );
+}
+
+export function useIsPlaying(frozen = false): boolean {
+  return useHeld(playStateChanges.subscribe, () => playingNow, frozen);
+}
+
+export function useIsBuffering(frozen = false): boolean {
+  return useHeld(playStateChanges.subscribe, () => bufferingNow, frozen);
+}
+
+/** The engine's own state, for screens that compare it: Playing, Paused... */
+export function isPlayingNow(): boolean {
+  return playingNow;
 }
 
 export {TrackPlayer, State, Event, RepeatMode};
-// Re-exported so screens import playback from one module rather than reaching
-// into the library directly — which is what lets the guards above stay honest.
-// NOTE: useActiveTrack is OURS (defined above), not RNTP's — it publishes
-// optimistically on a committed gesture instead of waiting for the engine event.
-export {usePlaybackState} from 'react-native-track-player';
 
 function onAppState(cb: () => void) {
   const sub = AppState.addEventListener('change', cb);

@@ -55,7 +55,9 @@ import {Sheet} from './Sheet';
 import {TrackRow} from './TrackRow';
 import type {Track} from '../backend';
 import {useSettings} from '../store';
+import {useRecentlyPlayed} from '../recentlyPlayed';
 import {HOME_CARD, HOME_CARD_RADIUS} from '../layout';
+import {openTrackMenu} from './TrackActionSheet';
 
 const COLUMNS = 3;
 const MAX_TILES = 9;
@@ -76,15 +78,19 @@ function tileSize(width: number) {
 type Page = 'discover' | 'recents';
 const TITLES: Record<Page, string> = {discover: 'Discover', recents: 'Recents'};
 
-export function HomeGrids({
+/**
+ * Memoised, and reads Recents for itself: every song started updates them,
+ * and passed down from Home that re-rendered all of Home, every row and
+ * carousel, once per song.
+ */
+export const HomeGrids = React.memo(function HomeGrids({
   discover,
-  recent,
   onPlay,
 }: {
   discover: Track[];
-  recent: Track[];
   onPlay: (track: Track, context?: Track[]) => void;
 }) {
+  const recent = useRecentlyPlayed();
   const {homeGrid} = useSettings();
   const {width} = useWindowDimensions();
   const size = tileSize(width);
@@ -170,7 +176,7 @@ export function HomeGrids({
       </View>
     </View>
   );
-}
+});
 
 /**
  * One page's title. Fully shown at its own page, gone halfway to the next,
@@ -272,6 +278,8 @@ const SongCard = React.memo(function SongCard({
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={onPress}
+      onLongPress={() => openTrackMenu(track)}
+      delayLongPress={350}
       style={styles.card}
       accessibilityRole="button"
       accessibilityLabel={`Play ${cleanText(track.title)}`}>
@@ -442,6 +450,7 @@ function LastSongs({
             key={getTrackId(t)}
             track={t}
             onPress={() => onPlay(t)}
+            onLongPress={() => openTrackMenu(t)}
             showActions={false}
           />
         ))}
@@ -465,6 +474,8 @@ const Tile = React.memo(function Tile({
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={onPress}
+      onLongPress={() => openTrackMenu(track)}
+      delayLongPress={350}
       style={[styles.tile, {width: size, height: size}]}
       accessibilityRole="button"
       accessibilityLabel={`Play ${cleanText(track.title)}`}>

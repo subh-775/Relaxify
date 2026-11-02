@@ -50,6 +50,7 @@ import {
   markEngineSeek,
   peekAdjacentTrack,
   playTrack,
+  onSkipNext,
   onUserSeek,
   playbackRate,
   sourceTrackFor,
@@ -57,6 +58,8 @@ import {
   warmTrack,
 } from './player';
 import {rememberedArtwork} from './downloads';
+import {stallContext} from './stallWatch';
+import {movedKey} from './jamQueue';
 import {getTrackId} from './tracks';
 import {logEvent} from './analytics';
 import {toast} from './toast';
@@ -138,8 +141,30 @@ export function useJam(): JamView | null {
     () => view,
   );
 }
+/** The same Jam as far as any screen can tell. */
+function sameView(a: JamView | null, b: JamView): boolean {
+  return (
+    !!a &&
+    a.code === b.code &&
+    a.now?.seq === b.now?.seq &&
+    a.now?.playing === b.now?.playing &&
+    a.members.map(m => `${m.id}:${m.name}`).join() ===
+      b.members.map(m => `${m.id}:${m.name}`).join() &&
+    a.queue.map(q => q.key).join() === b.queue.map(q => q.key).join()
+  );
+}
+
+/** One answer about the Jam, re-rendering only when that answer changes. */
+export function useJamSelect<T>(pick: (v: JamView | null) => T): T {
+  return useSyncExternalStore(changes.subscribe, () => pick(view));
+}
+
 export function inJam(): boolean {
   return !!view;
+}
+/** In a Jam or not, as a hook that re-renders only when that changes. */
+export function useInJam(): boolean {
+  return useSyncExternalStore(changes.subscribe, () => !!view);
 }
 
 let myId = '';
@@ -489,6 +514,7 @@ async function playable(t: Track): Promise<Track> {
 }
 
 async function follow(now: Now): Promise<void> {
+  stallContext('jam follow');
   echoUntil = Date.now() + ECHO_MS;
   // Held only while someone else is choosing; with no chooser (they left),
   // this phone plays on by itself.
@@ -535,6 +561,7 @@ async function follow(now: Now): Promise<void> {
 }
 
 async function sync(): Promise<void> {
+  stallContext('jam sync');
   const v = view;
   if (!v) {
     return;
@@ -563,8 +590,13 @@ async function sync(): Promise<void> {
   const queue = Object.entries(rec.queue ?? {})
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([key, q]) => ({key, track: q.track, by: q.by}));
-  view = {...v, members, now: rec.now ?? null, queue};
-  emit();
+  const next = {...v, members, now: rec.now ?? null, queue};
+  // A poll or a friend's heartbeat usually changes nothing anyone sees:
+  // re-rendering every Jam screen and card for it was most of a Jam's cost.
+  if (!sameView(view, next)) {
+    view = next;
+    emit();
+  }
 
   if (rec.now && rec.now.seq > appliedSeq && rec.now.by !== myId) {
     appliedSeq = rec.now.seq;
@@ -616,14 +648,7 @@ function watchLocal(code: string): void {
         return;
       }
       // The song I chose ended: the Jam queue goes first.
-      const head = view.queue[0];
-      if (head) {
-        try {
-          echoUntil = Date.now() + ECHO_MS;
-          await playTrack(await playable(head.track), [head.track], '', true);
-          await call(`jams/${code}/queue/${head.key}`, 'DELETE');
-        } catch {}
-      }
+      await playHead(code);
       await publish(code);
     },
   );
@@ -716,11 +741,39 @@ async function takeOverIfStuck(code: string): Promise<void> {
   }
 }
 
+/** Play the Jam queue's first song and take it off the queue. False when
+ *  the queue is empty. */
+async function playHead(code: string): Promise<boolean> {
+  const head = view?.queue[0];
+  if (!head) {
+    return false;
+  }
+  try {
+    echoUntil = Date.now() + ECHO_MS;
+    await playTrack(await playable(head.track), [head.track], '', true);
+    await call(`jams/${code}/queue/${encodeURIComponent(head.key)}`, 'DELETE');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function begin(code: string, host: boolean): void {
   view = {code, me: myId, host, members: [], now: null, queue: []};
   appliedSeq = -1;
   emit();
   watchLocal(code);
+  // Next, here or on headphones, plays the Jam's queue before this phone's.
+  unsubs.push(
+    onSkipNext(async () => {
+      if (!(await playHead(code))) {
+        return false;
+      }
+      echoUntil = 0;
+      await publish(code);
+      return true;
+    }),
+  );
   lastStream = 0;
   poll = setInterval(tick, POLL_MS);
   listen(code);
@@ -800,10 +853,64 @@ export async function leaveJam(): Promise<void> {
   }
 }
 
+/** The name a member goes by, for "picked by" and "added by". */
+export function memberName(id: string | undefined): string {
+  const v = view;
+  if (!v || !id) {
+    return '';
+  }
+  if (id === v.me) {
+    return 'you';
+  }
+  return v.members.find(m => m.id === id)?.name ?? 'a friend';
+}
+
+/**
+ * Move a song in the Jam queue. It takes a new key between its new
+ * neighbours (jamQueue.ts), in one write that removes the old one, so no
+ * phone sees it twice. This phone's list moves at once.
+ */
+export async function moveInJam(from: number, to: number): Promise<void> {
+  const v = view;
+  const item = v?.queue[from];
+  if (!v || !item || from === to) {
+    return;
+  }
+  const key = movedKey(
+    v.queue.map(q => q.key),
+    from,
+    to,
+  );
+  const queue = v.queue.filter((_, i) => i !== from);
+  queue.splice(to, 0, {...item, key});
+  view = {...v, queue};
+  emit();
+  await call(`jams/${v.code}/queue`, 'PATCH', {
+    [item.key]: null,
+    [key]: {track: item.track, by: item.by},
+  }).catch(() => toast("Couldn't move that song. Check your connection."));
+  sync().catch(() => {});
+}
+
+/** Take a song off the Jam queue, for everyone. */
+export async function removeFromJam(key: string): Promise<void> {
+  const v = view;
+  if (!v) {
+    return;
+  }
+  view = {...v, queue: v.queue.filter(q => q.key !== key)};
+  emit();
+  await call(`jams/${v.code}/queue/${encodeURIComponent(key)}`, 'DELETE').catch(
+    () => {},
+  );
+  sync().catch(() => {});
+}
+
 /** Add a song to the Jam's shared queue (instead of this phone's queue). */
 export async function addToJam(track: Track): Promise<void> {
   const v = view;
-  if (!v) {
+  // A song of the person's own is a file no other phone can reach.
+  if (!v || track.on_device) {
     await addToQueue(track);
     return;
   }

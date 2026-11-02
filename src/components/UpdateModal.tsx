@@ -22,10 +22,13 @@ import {
 } from '../update';
 import {formatSize} from '../updateNotes';
 import {BOTTOM_INSET} from '../layout';
+import {useInJam} from '../jam';
 
 /** The strip's height, and the room a page's list leaves for it. */
 const STRIP_H = 52;
 const STRIP_ROOM = STRIP_H + 10;
+/** The Jam bar's room, stacked above the strip (JamBar.tsx). */
+export const JAM_ROOM = 48;
 const INK = '#000000';
 /** The download's fill: the strip, a step lighter. */
 const FILL = 'rgba(255,255,255,0.3)';
@@ -44,13 +47,13 @@ function stripUp(u: ReturnType<typeof useUpdate>): boolean {
  * still be scrolled clear of it. Only the END of a list grows, so nothing on
  * screen moves when the strip comes or goes.
  */
-function useUpdateStripRoom(): number {
+export function useUpdateStripRoom(): number {
   return useUpdateSelect(stripUp) ? STRIP_ROOM : 0;
 }
 
 /** A list's end padding: clear of the bottom bars, and of the strip if up. */
 export function useListEnd(): {paddingBottom: number} {
-  const room = useUpdateStripRoom();
+  const room = useUpdateStripRoom() + (useInJam() ? JAM_ROOM : 0);
   return useMemo(() => ({paddingBottom: BOTTOM_INSET + room}), [room]);
 }
 
