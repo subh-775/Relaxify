@@ -803,7 +803,8 @@ export async function leaveJam(): Promise<void> {
 /** Add a song to the Jam's shared queue (instead of this phone's queue). */
 export async function addToJam(track: Track): Promise<void> {
   const v = view;
-  if (!v) {
+  // A song of the person's own is a file no other phone can reach.
+  if (!v || track.on_device) {
     await addToQueue(track);
     return;
   }

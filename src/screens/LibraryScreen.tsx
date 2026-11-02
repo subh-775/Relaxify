@@ -40,6 +40,7 @@ import {
   usePlaylists,
 } from '../playlists';
 import {PlaylistSourceBadge} from '../components/Badges';
+import {useLocalMusic} from '../localMusic';
 import {shareCodeOf} from '../sharedPlaylists';
 import {
   MAX_PINS,
@@ -167,7 +168,8 @@ export const LibraryScreen = React.memo(function LibraryScreen({
   const likes = useLikes();
   const pins = usePins();
   const artists = useFollowedArtists();
-  const library = useLibrary(likes, downloads);
+  const local = useLocalMusic();
+  const library = useLibrary(likes, downloads, local);
 
   /**
    * Which collection playback was STARTED from — its title renders green, so
@@ -264,9 +266,9 @@ export const LibraryScreen = React.memo(function LibraryScreen({
     // Liked Songs and Downloaded lead as ordinary rows, Spotify's way, rather
     // than as two big tiles above the list.
     const fixed = list.filter(
-      c => c.kind === 'liked' || c.kind === 'downloads',
+      c => c.kind === 'liked' || c.kind === 'downloads' || c.kind === 'local',
     );
-    const rest = list.filter(c => c.kind !== 'liked' && c.kind !== 'downloads');
+    const rest = list.filter(c => !fixed.includes(c));
     return [...fixed, ...sortPinned(rest, pins, idOf, c => c.updatedAt)];
   }, [withArtists, pins, filter, query]);
 
@@ -276,7 +278,12 @@ export const LibraryScreen = React.memo(function LibraryScreen({
 
   /** Long-press opens the options sheet; what's in it depends on the row. */
   const onLongPress = useCallback((c: Collection) => {
-    if (c.kind === 'liked' || c.kind === 'downloads' || c.kind === 'artist') {
+    if (
+      c.kind === 'liked' ||
+      c.kind === 'downloads' ||
+      c.kind === 'local' ||
+      c.kind === 'artist'
+    ) {
       return;
     }
     if (c.kind === 'album') {

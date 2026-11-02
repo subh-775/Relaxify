@@ -23,6 +23,7 @@ type CollectionKind =
   | 'userPlaylist' // one the user made — or imported from Spotify
   | 'liked'
   | 'downloads'
+  | 'local' // music already on the phone, from outside the app
   | 'artist'
   | 'shared'; // a friend's shared playlist, opened from its link, not saved
 
@@ -52,6 +53,8 @@ export function collectionSubtitle(c: Collection): string {
   switch (c.kind) {
     case 'downloads':
       return `Offline · ${count}`;
+    case 'local':
+      return `Your files · ${count}`;
     case 'album':
       return c.artist ? `Album · ${c.artist}` : `Album · ${count}`;
     case 'artist':
@@ -126,6 +129,7 @@ function useSavedCollections(): Collection[] {
 
 const LIKED_ID = '__liked__';
 export const DOWNLOADS_ID = '__downloads__';
+const LOCAL_ID = '__local__';
 
 export function playlistToCollection(p: Playlist): Collection {
   return {
@@ -150,9 +154,14 @@ function downloadsCollection(tracks: Track[]): Collection {
   return {id: DOWNLOADS_ID, kind: 'downloads', name: 'Downloads', tracks};
 }
 
+function localCollection(tracks: Track[]): Collection {
+  return {id: LOCAL_ID, kind: 'local', name: 'On this phone', tracks};
+}
+
 /**
  * Every collection in the library, in the order the library shows them:
- * Liked Songs and Downloads first (they always exist), then saved albums and
+ * Liked Songs and Downloads first (they always exist), On this phone when
+ * there is anything on it, then saved albums and
  * source playlists, then the user's own playlists.
  *
  * `likes` and `downloads` are passed in rather than read from their stores.
@@ -160,7 +169,11 @@ function downloadsCollection(tracks: Track[]): Collection {
  * stale when a file is deleted outside the app), and likes because reading it
  * here would make this module import store.ts, which imports this one back.
  */
-export function useLibrary(likes: Track[], downloads: Track[]): Collection[] {
+export function useLibrary(
+  likes: Track[],
+  downloads: Track[],
+  local: Track[],
+): Collection[] {
   const playlists = usePlaylists();
   const savedList = useSavedCollections();
 
@@ -168,9 +181,10 @@ export function useLibrary(likes: Track[], downloads: Track[]): Collection[] {
     () => [
       likedCollection(likes),
       downloadsCollection(downloads),
+      ...(local.length ? [localCollection(local)] : []),
       ...savedList,
       ...playlists.map(playlistToCollection),
     ],
-    [likes, downloads, savedList, playlists],
+    [likes, downloads, local, savedList, playlists],
   );
 }

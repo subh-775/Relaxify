@@ -8,13 +8,14 @@
  */
 import React from 'react';
 import {Image, StyleSheet, View} from 'react-native';
-import {ArrowDownToLine, Heart, Music2, User} from '../icons';
+import {ArrowDownToLine, Heart, Music2, Smartphone, User} from '../icons';
 import {C} from '../theme';
 import {getBestArtworkUrl, thumbArtwork} from '../tracks';
 import {type Collection} from '../collections';
 
 export const LIKED_TINT = '#5b3df5';
 export const DOWNLOAD_TINT = C.accent;
+const LOCAL_TINT = '#2F8F83';
 
 export function CollectionArt({
   collection,
@@ -42,6 +43,14 @@ export function CollectionArt({
     return (
       <View style={[box, styles.center, {backgroundColor: LIKED_TINT}]}>
         <Heart size={size * 0.42} color="#fff" fill="#fff" />
+      </View>
+    );
+  }
+
+  if (collection.kind === 'local') {
+    return (
+      <View style={[box, styles.center, {backgroundColor: LOCAL_TINT}]}>
+        <Smartphone size={size * 0.42} color="#fff" strokeWidth={2.4} />
       </View>
     );
   }

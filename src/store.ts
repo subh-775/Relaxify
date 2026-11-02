@@ -94,7 +94,7 @@ const DEFAULT_SETTINGS: Settings = {
   resumeOnConnect: false,
   homeLanguages: ['hindi', 'english'],
   dataSaver: true,
-  keepLikedOffline: false,
+  keepLikedOffline: true,
   // A row of covers, the way every other part of Home reads. The grid is the
   // speed dial for anyone who wants nine songs one tap away.
   homeGrid: false,

@@ -28,6 +28,7 @@ import {
   useLocalTracks,
   withLocalFile,
 } from './localFiles';
+import {refreshLocalMusic} from './localMusic';
 import {isOffline} from './offline';
 import {onLikesChange, onMobileData, readLikes, readSettings} from './store';
 import {getBestArtworkUrl, getDownloadKey} from './tracks';
@@ -109,7 +110,8 @@ function overlayDownloadArtwork(tracks: Track[]): Track[] {
 // ─── What's already on disk ─────────────────────────────────────────────────
 
 const accessAsked = createStore<boolean>(
-  'mp.musicAccessAsked.v1',
+  // v2: asked again for On this phone. An update can also drop the permission.
+  'mp.musicAccessAsked.v2',
   false,
   raw => raw === true,
 );
@@ -145,6 +147,7 @@ export function refreshDownloads(): Promise<void> {
     scanAgain = true;
     return scanning;
   }
+  refreshLocalMusic();
   scanning = (async () => {
     do {
       scanAgain = false;

@@ -161,19 +161,24 @@ function TrackActionSheetView({
         setLiked(v => !v);
       },
     },
-    downloaded
-      ? {
-          key: 'undownload',
-          Icon: Trash,
-          label: 'Remove download',
-          onPress: removeDownload,
-        }
-      : {
-          key: 'download',
-          Icon: busy ? Loader : Download,
-          label: busy ? 'Starting…' : 'Download',
-          onPress: download,
-        },
+    // A song of the person's own: nothing to fetch, and not ours to delete.
+    ...(t.on_device
+      ? []
+      : [
+          downloaded
+            ? {
+                key: 'undownload',
+                Icon: Trash,
+                label: 'Remove download',
+                onPress: removeDownload,
+              }
+            : {
+                key: 'download',
+                Icon: busy ? Loader : Download,
+                label: busy ? 'Starting…' : 'Download',
+                onPress: download,
+              },
+        ]),
     {
       key: 'queue',
       Icon: AddToQueue,

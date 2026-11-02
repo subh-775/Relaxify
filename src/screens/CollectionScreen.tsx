@@ -65,6 +65,7 @@ import {
   useDownloads,
   useDownloadJobs,
 } from '../downloads';
+import {useLocalMusic} from '../localMusic';
 import {DownloadRow} from '../components/DownloadRow';
 import {
   isRunning,
@@ -109,6 +110,8 @@ function kindLabel(kind: Collection['kind']): string {
       return 'Album';
     case 'downloads':
       return 'On this phone';
+    case 'local':
+      return 'Your files';
     case 'liked':
       return 'Your likes';
     default:
@@ -168,6 +171,7 @@ export function CollectionScreen({
   const listEnd = useListEnd();
   const playlists = usePlaylists();
   const localTracks = useDownloads();
+  const phoneMusic = useLocalMusic();
   const jobs = useDownloadJobs();
 
   const tracks = useMemo(() => {
@@ -180,10 +184,12 @@ export function CollectionScreen({
       }
       case 'downloads':
         return localTracks;
+      case 'local':
+        return phoneMusic;
       default:
         return collection.tracks;
     }
-  }, [collection, likes, playlists, localTracks]);
+  }, [collection, likes, playlists, localTracks, phoneMusic]);
   const runtime = useMemo(() => formatTotalDuration(tracks), [tracks]);
 
   // Sort and find, for this visit only. "Order" is the list's own: the

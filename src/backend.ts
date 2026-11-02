@@ -223,8 +223,10 @@ export type Track = {
    * Undefined on an older backend, which is why every read of it tests for
    * `!== false` rather than truthiness — absent means "unknown, try anyway".
    */
-  file_size?: number;
   has_embedded_art?: boolean;
+  file_size?: number;
+  /** Music of the person's own, found on the phone: see localMusic.ts. */
+  on_device?: boolean;
   isrc?: string;
   release_date?: string;
   genre?: string;

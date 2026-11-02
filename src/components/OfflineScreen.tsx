@@ -17,6 +17,7 @@ import {C, S, T} from '../theme';
 import {Play, Shuffle, WifiOff} from '../icons';
 import type {Track} from '../backend';
 import {useDownloads} from '../downloads';
+import {useLocalMusic} from '../localMusic';
 import {
   albumShelves,
   artistShelves,
@@ -110,7 +111,13 @@ export function OfflineScreen({
   onPlayTrack: OnPlay;
   query?: string;
 }) {
-  const downloads = useDownloads();
+  const saved = useDownloads();
+  const phoneMusic = useLocalMusic();
+  // Everything that plays here: what was downloaded, then the person's own.
+  const downloads = useMemo(
+    () => [...saved, ...phoneMusic],
+    [saved, phoneMusic],
+  );
   const listEnd = useListEnd();
   const recent = useRecentlyPlayed();
   const likes = useLikes();
@@ -198,7 +205,7 @@ export function OfflineScreen({
       ListHeaderComponent={
         q ? (
           <Text style={styles.heading}>
-            {`${shown.length} of your downloads`}
+            {`${shown.length} of your songs`}
           </Text>
         ) : (
           <>
@@ -236,7 +243,7 @@ export function OfflineScreen({
             <ShelfRow title="Your lists" shelves={lists} onPlay={onPlayTrack} />
             <ShelfRow title="Albums" shelves={albums} onPlay={onPlayTrack} />
             <ShelfRow title="Artists" shelves={artists} onPlay={onPlayTrack} />
-            <Text style={styles.heading}>All downloads</Text>
+            <Text style={styles.heading}>All songs</Text>
           </>
         )
       }

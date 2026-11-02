@@ -61,6 +61,7 @@ import {SearchHints} from '../components/SearchHints';
 import {OfflineScreen} from '../components/OfflineScreen';
 import {checkOnline, useOffline} from '../offline';
 import {importSourceName, isImportUrl} from '../spotifyImport';
+import {readLocalMusic} from '../localMusic';
 import {codeIn, openShared} from '../sharedPlaylists';
 import {type Collection} from '../collections';
 import {toast} from '../toast';
@@ -268,6 +269,7 @@ export const SearchScreen = React.memo(function SearchScreen({
       return;
     }
     const own: Suggestion[] = ownSongMatches(text, [
+      readLocalMusic(),
       readRecentlyPlayed(),
       readLikes(),
       ...readPlaylists().map(p => p.tracks),
