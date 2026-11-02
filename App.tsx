@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   AppState,
   BackHandler,
+  Keyboard,
   Linking,
   PermissionsAndroid,
   Platform,
@@ -760,6 +761,7 @@ function Shell() {
   const barsBehindPlayer = useAnimatedStyle(() => ({
     opacity: panelDrawn.value && sheetP.value < 0.001 ? 0 : 1,
   }));
+  const keyboardUp = useKeyboardUp();
   // The three app-level sheets, stable for the same reason as the above: they
   // are memoised, and each re-render of one re-publishes its whole tree into
   // SheetHost.
@@ -995,7 +997,10 @@ function Shell() {
         the bottom; see src/layout.ts.
       */}
       <Animated.View
-        style={[styles.bottomStack, barsBehindPlayer]}
+        // Out of the way while typing: the window shrinks to above the
+        // keyboard, the bars ride up with it, and in the Jam they sat right
+        // on the search box and the results under it.
+        style={[styles.bottomStack, barsBehindPlayer, keyboardUp && styles.gone]}
         pointerEvents="box-none">
         <BodyFade />
         {engine && (
@@ -1156,6 +1161,19 @@ export default function App(): React.JSX.Element {
  * hairline. Absolutely positioned inside the floating stack and non-interactive,
  * so it costs the content underneath nothing.
  */
+function useKeyboardUp(): boolean {
+  const [up, setUp] = useState(false);
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => setUp(true));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setUp(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
+  return up;
+}
+
 function BodyFade() {
   return (
     <Svg style={styles.bodyFade} pointerEvents="none">
@@ -1194,6 +1212,8 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
+  // display none, not unmounted: the mini player keeps its state.
+  gone: {display: 'none'},
   // Taller than the bars it sits behind, so the fade begins in open page and
   // is already at full strength by the time it reaches them.
   bodyFade: {position: 'absolute', left: 0, right: 0, bottom: 0, top: -36},

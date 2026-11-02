@@ -27,6 +27,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Image,
   StyleSheet,
   Text,
@@ -268,6 +269,13 @@ export const PlayerScreen = React.memo(function PlayerScreen({
     },
   );
   const frozen = !visible && atRest;
+  // Opening over an open keyboard squeezed the player into the space above
+  // it. The keyboard goes as the player starts to open, by tap or by pull.
+  useEffect(() => {
+    if (!frozen && Keyboard.isVisible()) {
+      Keyboard.dismiss();
+    }
+  }, [frozen]);
   const active = useActiveTrack(frozen);
   // The page behind may only stop drawing while this panel is really there —
   // see panelDrawn. Layout effect, so it flips in the same commit as the

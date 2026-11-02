@@ -9,6 +9,7 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Image,
   ScrollView,
   Share,
@@ -323,6 +324,18 @@ function AddSongs() {
           returnKeyType="search"
         />
         {busy ? <ActivityIndicator size="small" color={C.faint} /> : null}
+        {q ? (
+          <TouchableOpacity
+            onPress={() => {
+              setQ('');
+              Keyboard.dismiss();
+            }}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Clear the search">
+            <X size={18} color={C.faint} />
+          </TouchableOpacity>
+        ) : null}
       </View>
       {found.map(t => (
         <View key={`${t.title}|${t.artist}`} style={styles.found}>

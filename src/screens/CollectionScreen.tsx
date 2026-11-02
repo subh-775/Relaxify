@@ -645,7 +645,11 @@ export function CollectionScreen({
 
       <Animated.FlatList
         data={shown}
-        keyExtractor={t => getTrackId(t)}
+        // The file, for a song on the phone: two files can carry the same
+        // title and artist ("Yellow.m4a" tagged as another song), and rows
+        // sharing a key were drawn again and again as the list scrolled. A
+        // playlist holding one song twice gets the place as well.
+        keyExtractor={(t, i) => t.file_path || `${getTrackId(t)}#${i}`}
         {...listWindowing}
         contentContainerStyle={[styles.list, listEnd]}
         showsVerticalScrollIndicator={false}

@@ -460,6 +460,12 @@ async function setupPlayerOnce(): Promise<boolean> {
       .then(() => TrackPlayer.getPlaybackState())
       .then(p => notePlayState(p.state))
       .catch(() => {});
+    // A call or another app taking audio focus pauses ExoPlayer by turning
+    // play-when-ready off, which can come with no state event the icon
+    // reads: the music stopped and the button still said it was playing.
+    TrackPlayer.addEventListener(Event.PlaybackPlayWhenReadyChanged, e =>
+      notePlayWhenReady(e.playWhenReady),
+    );
     TrackPlayer.addEventListener(Event.PlaybackState, e => {
       notePlayState(e.state);
       if (e.state === State.Playing) {
@@ -2375,6 +2381,14 @@ function notePlayState(state: State | undefined): void {
     }, 1500);
   }
   if (changed) {
+    playStateChanges.emit();
+  }
+}
+
+/** Whether the engine means to play: what the play/pause button shows. */
+function notePlayWhenReady(on: boolean): void {
+  if (on !== playingNow) {
+    playingNow = on;
     playStateChanges.emit();
   }
 }
