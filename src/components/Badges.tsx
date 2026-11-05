@@ -30,18 +30,34 @@ const PLAYLIST_SOURCE: Record<string, {label: string; tint: string}> = {
   relaxify: {label: 'Relaxify', tint: C.brand},
 };
 
-export function PlaylistSourceBadge({source}: {source: string}) {
+/** `always`: the playlist's own page, which says where it came from whatever
+ *  the setting; the setting adds it to each row of the Library. */
+export function PlaylistSourceBadge({
+  source,
+  always = false,
+}: {
+  source: string;
+  always?: boolean;
+}) {
   const {showPlaylistSource} = useSettings();
   const meta = PLAYLIST_SOURCE[source];
-  if (!showPlaylistSource || !meta) {
+  if (!(always || showPlaylistSource) || !meta) {
     return null;
   }
   return <Text style={[styles.text, {color: meta.tint}]}>{meta.label}</Text>;
 }
 
-export function SourceBadge({track}: {track: Track | null}) {
+/** `always`: the player, which names the source whatever the setting; the
+ *  setting adds it to every row of a list. */
+export function SourceBadge({
+  track,
+  always = false,
+}: {
+  track: Track | null;
+  always?: boolean;
+}) {
   const {showSourceBadge} = useSettings();
-  if (!showSourceBadge || !track) {
+  if (!(always || showSourceBadge) || !track) {
     return null;
   }
   const source =

@@ -32,6 +32,9 @@ export type Settings = {
   showQualityBadge: boolean;
   /** Where a playlist came from (Spotify, YouTube, a friend's link). */
   showPlaylistSource: boolean;
+  /** Set once the two labels above took their new default (off). Settings
+   *  saved before then held `true` only because it was the old default. */
+  labelsV2: boolean;
   autoplay: boolean;
   crossfadeDuration: number; // seconds; 0 = off
   /** Playback speed, 1 = normal. ExoPlayer pitch-corrects, so a voice at 1.5x
@@ -75,9 +78,13 @@ export const onMobileData = () => cellular;
 
 const DEFAULT_SETTINGS: Settings = {
   audioQuality: 320,
-  showSourceBadge: true,
+  // Off: a coloured service name on every row reads as plumbing. The player
+  // still says where the song plays from, and a playlist's page where it
+  // came from; these only add the label to every row of a list.
+  showSourceBadge: false,
   showQualityBadge: true,
-  showPlaylistSource: true,
+  showPlaylistSource: false,
+  labelsV2: true,
   autoplay: true,
   crossfadeDuration: 0,
   playbackRate: 1,
@@ -135,7 +142,15 @@ const settingsStore = createStore<Settings>(
   'mp.settings.v1',
   DEFAULT_SETTINGS,
   raw => {
-    const s = {...DEFAULT_SETTINGS, ...(raw as Partial<Settings>)};
+    const stored = raw as Partial<Settings>;
+    const s = {...DEFAULT_SETTINGS, ...stored};
+    // Saved before the labels' default went to off: take the new default once.
+    // Turning one back on later saves labelsV2 with it, so it sticks.
+    if (stored && !stored.labelsV2) {
+      s.showSourceBadge = false;
+      s.showPlaylistSource = false;
+      s.labelsV2 = true;
+    }
     return {
       ...s,
       homeLanguages: Array.isArray(s.homeLanguages)
@@ -169,6 +184,12 @@ export const onLikesChange = likesStore.subscribe;
 /** Rewrite liked songs in place (coverRepair.ts); order and ids unchanged. */
 export function mapLikes(fn: (t: Track) => Track): void {
   likesStore.update(list => list.map(fn));
+}
+
+/** Rewrite the whole liked list (copyRepair.ts, which may also drop a
+ *  song the rewrite made a duplicate). Order kept. */
+export function mapLikeList(fn: (tracks: Track[]) => Track[]): void {
+  likesStore.update(fn);
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────

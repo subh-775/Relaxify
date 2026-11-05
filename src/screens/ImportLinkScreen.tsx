@@ -51,7 +51,7 @@ export function ImportLinkScreen({
           Spotify or YouTube first.
         </Text>
         <Text style={styles.text}>
-          Each song is then found on JioSaavn, SoundCloud or YouTube and the
+          Each song is then found on JioSaavn or YouTube and the
           playlist is saved to your Library.
         </Text>
 

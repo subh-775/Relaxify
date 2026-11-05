@@ -33,6 +33,7 @@ import {
   BAD_LINK,
   cancelImport,
   dismissImport,
+  importIsNews,
   importProblem,
   importSourceName,
   PRIVATE_LIST,
@@ -70,7 +71,9 @@ function JamCard({onOpen, width}: {onOpen: () => void} & W) {
       width={width}
       kicker={
         jam
-          ? `In a Jam, ${listening} ${listening === 1 ? 'phone' : 'phones'} listening`
+          ? `In a Jam, ${listening} ${
+              listening === 1 ? 'phone' : 'phones'
+            } listening`
           : 'Listen together'
       }
       title={jam ? jam.code : 'Play the same song with friends'}
@@ -140,14 +143,23 @@ function useImportPhase(): ImportPhase {
   if (job.url && (job.error || (job.finished && job.matched <= 0))) {
     return 'failed';
   }
-  if (last && !last.opened) {
+  // Until it is opened, closed, or six hours old (importIsNews).
+  if (importIsNews(last)) {
     return 'done';
   }
   return 'ask';
 }
 
 /** The filled pill and the outlined one, inside a card of palette `p`. */
-function Pill({p, label, onPress}: {p: Pal; label: string; onPress: () => void}) {
+function Pill({
+  p,
+  label,
+  onPress,
+}: {
+  p: Pal;
+  label: string;
+  onPress: () => void;
+}) {
   return (
     <TouchableOpacity
       style={[styles.go, {backgroundColor: p.ink}]}
@@ -158,7 +170,15 @@ function Pill({p, label, onPress}: {p: Pal; label: string; onPress: () => void})
   );
 }
 
-function Ghost({p, label, onPress}: {p: Pal; label: string; onPress: () => void}) {
+function Ghost({
+  p,
+  label,
+  onPress,
+}: {
+  p: Pal;
+  label: string;
+  onPress: () => void;
+}) {
   return (
     <TouchableOpacity
       style={[styles.ghost, {borderColor: p.ink}]}
@@ -200,7 +220,10 @@ function WarmBar() {
     loop.start();
     return () => loop.stop();
   }, [x]);
-  const translateX = x.interpolate({inputRange: [0, 1], outputRange: [-110, 330]});
+  const translateX = x.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-110, 330],
+  });
   return (
     <View style={styles.bar}>
       <Animated.View style={[styles.warmFill, {transform: [{translateX}]}]} />
@@ -243,17 +266,24 @@ function ImportCard({
         action="See progress"
         onPress={() => job.url && onOpenImport(job.url)}
         spin={false}
-        corner={<Close p={IMPORT_PAL} onPress={cancel} label="Cancel import" />}>
+        corner={
+          <Close p={IMPORT_PAL} onPress={cancel} label="Cancel import" />
+        }>
         <View>
           <View style={styles.counts}>
             {counting ? (
               <>
-                <Text style={styles.count}>{`${job.done} of ${job.total} checked`}</Text>
+                <Text
+                  style={
+                    styles.count
+                  }>{`${job.done} of ${job.total} checked`}</Text>
                 <Text style={styles.count}>{`${job.matched} found`}</Text>
               </>
             ) : (
               <Text style={styles.count}>
-                {job.total ? `Looking for ${job.total} songs` : 'Getting the song list'}
+                {job.total
+                  ? `Looking for ${job.total} songs`
+                  : 'Getting the song list'}
               </Text>
             )}
           </View>
@@ -330,7 +360,9 @@ function ImportCard({
         onPress={canRetry ? retryImport : another}
         spin={false}>
         <View style={styles.row}>
-          {canRetry && <Pill p={PROBLEM_PAL} label="Try again" onPress={retryImport} />}
+          {canRetry && (
+            <Pill p={PROBLEM_PAL} label="Try again" onPress={retryImport} />
+          )}
           <Ghost p={PROBLEM_PAL} label="Another link" onPress={another} />
           <Close p={PROBLEM_PAL} onPress={dismissImport} />
         </View>
@@ -361,7 +393,10 @@ function ImportCard({
         spin={false}>
         <View style={styles.row}>
           <Pill p={IMPORT_PAL} label="Open playlist" onPress={openIt} />
-          <Text style={styles.count}>{`${last.found} of ${last.total} songs`}</Text>
+          <Text
+            style={styles.count}>{`${last.found} of ${last.total} songs`}</Text>
+          {/* Seen it: back to asking for the next link. */}
+          <Close p={IMPORT_PAL} onPress={markImportOpened} />
         </View>
       </FeatureCard>
     );
@@ -396,7 +431,20 @@ function ContinueCard({
   starter?: HomeItem;
   onOpenStarter: (item: HomeItem) => void;
 } & W) {
-  const last = useLastCollection();
+  const remembered = useLastCollection();
+  const playlists = usePlaylists();
+  // One of your playlists is read live: deleted since, there is nothing to
+  // carry on with (it opened empty), and renamed, it goes by its new name.
+  const own =
+    remembered?.kind === 'userPlaylist'
+      ? playlists.find(x => `pl:${x.id}` === remembered.id)
+      : undefined;
+  const last =
+    remembered?.kind === 'userPlaylist'
+      ? own
+        ? {...remembered, name: own.name}
+        : null
+      : remembered;
   const p = CONTINUE_PAL;
   if (!last) {
     return (
@@ -404,7 +452,9 @@ function ContinueCard({
         pal={p}
         width={width}
         kicker="Start here, the top chart"
-        title={cleanText(starter?.name || starter?.title) || 'Loading the charts'}
+        title={
+          cleanText(starter?.name || starter?.title) || 'Loading the charts'
+        }
         action="Open playlist"
         onPress={() => starter && onOpenStarter(starter)}
         spin={false}
@@ -556,9 +606,17 @@ export function HomeCardCarousel({
         keyboardShouldPersistTaps="handled"
       />
       {keys.length > 1 && (
-        <View style={styles.dots} accessibilityLabel={`Card ${page + 1} of ${keys.length}`}>
+        <View
+          style={styles.dots}
+          accessibilityLabel={`Card ${page + 1} of ${keys.length}`}>
           {keys.map((k, i) => (
-            <View key={k} style={[styles.dot, i === Math.min(page, keys.length - 1) && styles.dotOn]} />
+            <View
+              key={k}
+              style={[
+                styles.dot,
+                i === Math.min(page, keys.length - 1) && styles.dotOn,
+              ]}
+            />
           ))}
         </View>
       )}
@@ -592,8 +650,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 6.5,
   },
-  warmFill: {width: 110, height: '100%', borderRadius: 3, backgroundColor: '#111014'},
-  counts: {flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6},
+  warmFill: {
+    width: 110,
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: '#111014',
+  },
+  counts: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
   count: {color: '#111014', fontSize: 12.5, fontWeight: '700'},
   bar: {
     height: 6,

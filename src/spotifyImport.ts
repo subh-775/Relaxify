@@ -10,7 +10,13 @@ import {useSyncExternalStore} from 'react';
 import {importSpotify, type ImportSnapshot} from './backend';
 import {logEvent} from './analytics';
 import {createStore, useStoreValue} from './storage';
-import {addTracksToPlaylist, createPlaylist, setImportedFrom} from './playlists';
+import {
+  addTracksToPlaylist,
+  createPlaylist,
+  readPlaylists,
+  setImportedFrom,
+  type Playlist,
+} from './playlists';
 import {normalizeTracks} from './tracks';
 import {toast} from './toast';
 import {createEmitter} from './emitter';
@@ -29,11 +35,38 @@ export type LastImport = {
   opened: boolean;
   /** YouTube songs kept as their YouTube original (nothing else matched). */
   kept?: number;
+  /** When it finished. Absent on imports saved before this was kept. */
+  at?: number;
 };
-const lastImport = createStore<LastImport | null>('mp.lastImport.v1', null, raw =>
-  raw && typeof raw === 'object' && typeof (raw as LastImport).playlistId === 'string'
-    ? (raw as LastImport)
-    : null,
+
+/** How long Home calls an import new: past this, the card asks for the next
+ *  link again, whether or not the playlist was opened. "My Top Songs 2022,
+ *  imported" stayed on Home for days, as if it had just happened. */
+export const IMPORT_NEWS_MS = 6 * 60 * 60 * 1000;
+
+/** Whether Home's card still announces this import. */
+export function importIsNews(l: LastImport | null, now = Date.now()): boolean {
+  // No time kept: an import from before this update, so not news.
+  return !!l && !l.opened && !!l.at && now - l.at < IMPORT_NEWS_MS;
+}
+
+/** A playlist was opened (from anywhere: Home, Your Library, a search): if it
+ *  is the one just imported, the news has been seen. */
+export function noteCollectionOpened(id: string): void {
+  const l = lastImport.get();
+  if (l && !l.opened && id === `pl:${l.playlistId}`) {
+    lastImport.set({...l, opened: true});
+  }
+}
+const lastImport = createStore<LastImport | null>(
+  'mp.lastImport.v1',
+  null,
+  raw =>
+    raw &&
+    typeof raw === 'object' &&
+    typeof (raw as LastImport).playlistId === 'string'
+      ? (raw as LastImport)
+      : null,
 );
 export const useLastImport = () => useStoreValue(lastImport);
 export function markImportOpened(): void {
@@ -57,6 +90,25 @@ function saveFinished(url: string, res: ImportSnapshot): void {
     return;
   }
   savedUrls.add(url);
+  // Imported before: point at that playlist rather than make a second one
+  // of the same list. Its new songs are what Sync is for, which also keeps
+  // out the ones you removed.
+  const before = importedPlaylistFor(url);
+  if (before) {
+    lastImport.set({
+      url,
+      name: before.name,
+      image: res.image || '',
+      playlistId: before.id,
+      found: res.matched,
+      total: res.total,
+      opened: false,
+      kept: res.kept || 0,
+      at: Date.now(),
+    });
+    toast(`"${before.name}" is already in Your Library`);
+    return;
+  }
   const tracks = normalizeTracks(res.tracks);
   const pl = createPlaylist(res.name || `${importSourceName(url)} playlist`);
   if (!pl) {
@@ -74,6 +126,7 @@ function saveFinished(url: string, res: ImportSnapshot): void {
     total: res.total,
     opened: false,
     kept: res.kept || 0,
+    at: Date.now(),
   });
   toast(`Saved "${pl.name}" to Your Library, ${res.matched} songs`);
   logEvent('spotify_import_done', {
@@ -180,9 +233,50 @@ function isSpotifyUrl(text: string): boolean {
 function isYouTubePlaylistUrl(text: string): boolean {
   const s = (text || '').trim();
   return (
-    /^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//i.test(s) &&
-    /[?&]list=[A-Za-z0-9_-]+/.test(s)
+    /^(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//i.test(
+      s,
+    ) && /[?&]list=[A-Za-z0-9_-]+/.test(s)
   );
+}
+
+/**
+ * Which list a link names, however it was copied. Spotify's share tag
+ * (?si=…) and intl- prefix, and YouTube's www / m / music hosts, are all the
+ * same playlist; compared as raw text they were not, and the same list
+ * imported twice became two playlists.
+ */
+export function importKey(url: string): string {
+  const s = (url || '').trim();
+  const sp =
+    s.match(
+      /open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(playlist|album)\/([A-Za-z0-9]+)/i,
+    ) || s.match(/^spotify:(playlist|album):([A-Za-z0-9]+)/i);
+  if (sp) {
+    return `spotify:${sp[1].toLowerCase()}:${sp[2]}`;
+  }
+  const yt = isYouTubePlaylistUrl(s) && s.match(/[?&]list=([A-Za-z0-9_-]+)/);
+  if (yt) {
+    return `youtube:${yt[1]}`;
+  }
+  return s.toLowerCase();
+}
+
+/** The playlist an earlier import of this link saved, while it is still in
+ *  the library. Imports from before links were remembered are found through
+ *  the last import, the one that still knows its link. */
+export function importedPlaylistFor(url: string): Playlist | undefined {
+  const key = importKey(url);
+  const list = readPlaylists();
+  const own = list.find(
+    p => p.importedFrom && importKey(p.importedFrom.url) === key,
+  );
+  if (own) {
+    return own;
+  }
+  const last = lastImport.get();
+  return last && importKey(last.url) === key
+    ? list.find(p => p.id === last.playlistId)
+    : undefined;
 }
 
 /** Any link the import takes: Spotify, YouTube or YouTube Music. */
@@ -216,7 +310,12 @@ export function startImport(url: string): void {
     return;
   }
   const again = state.url === url;
-  if (again && !state.error && !state.cancelled && !(state.finished && state.matched <= 0)) {
+  if (
+    again &&
+    !state.error &&
+    !state.cancelled &&
+    !(state.finished && state.matched <= 0)
+  ) {
     return;
   }
   stop();
@@ -246,7 +345,11 @@ export function startImport(url: string): void {
       if (res.done !== state.done || res.total !== state.total) {
         lastMove = Date.now();
       }
-      state = {url, ...res, stalled: !res.finished && Date.now() - lastMove > STALL_MS};
+      state = {
+        url,
+        ...res,
+        stalled: !res.finished && Date.now() - lastMove > STALL_MS,
+      };
       changes.emit();
       if (res.finished && !res.error && res.matched > 0) {
         saveFinished(url, res);
@@ -271,7 +374,10 @@ export function startImport(url: string): void {
       if (bad || failures >= MAX_FAILURES) {
         state = {...state, error: bad ? BAD_LINK : NO_ENGINE, finished: true};
         emit();
-        logEvent('spotify_import_failed', {error: bad ? 'bad link' : 'no engine', total: state.total});
+        logEvent('spotify_import_failed', {
+          error: bad ? 'bad link' : 'no engine',
+          total: state.total,
+        });
         return;
       }
     }
@@ -319,7 +425,14 @@ export async function cancelImport(): Promise<void> {
     dismissImport();
     return;
   }
-  state = {...state, ...found, url, cancelled: true, finished: true, stalled: false};
+  state = {
+    ...state,
+    ...found,
+    url,
+    cancelled: true,
+    finished: true,
+    stalled: false,
+  };
   emit();
 }
 
@@ -339,8 +452,5 @@ export function dismissImport(): void {
 }
 
 export function useSpotifyImport(): ImportState {
-  return useSyncExternalStore(
-    changes.subscribe,
-    () => state,
-  );
+  return useSyncExternalStore(changes.subscribe, () => state);
 }
