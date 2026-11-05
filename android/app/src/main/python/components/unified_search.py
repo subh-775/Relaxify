@@ -55,7 +55,6 @@ class SearchConfig:
     enabled_sources: Set[SourceType] = field(
         default_factory=lambda: {
             SourceType.JIOSAAVN,
-            SourceType.SOUNDCLOUD,
             SourceType.YOUTUBE,
             SourceType.ITUNES,
         }
@@ -86,6 +85,16 @@ class SearchContext:
 
     def is_timed_out(self) -> bool:
         return self.elapsed() > self.config.timeout_seconds
+
+
+# Ranking by popularity (see composite in _rank_by_relevance).
+TOP_SONG_BONUS = 15.0
+FEW_PLAYS = 5000
+MANY_PLAYS = 1_000_000
+FEW_PLAYS_PENALTY = 15.0
+# The query is this artist's name: their songs first, whatever else scores.
+# Above anything relevance() gives (at most 110), which still takes penalties.
+ARTIST_QUERY = 200.0
 
 
 class UnifiedSearchService:
@@ -384,7 +393,7 @@ class UnifiedSearchService:
                 }
         return merged
 
-    def _rank_by_relevance(self, tracks: List, query: str) -> List:
+    def _rank_by_relevance(self, tracks: List, query: str) -> List:  # noqa: C901
         """Most relevant first, then one row per song (search_rank.py says how
         and why). Ties keep the sources' own order, which is their popularity.
         CPU only: no extra network."""
@@ -405,7 +414,7 @@ class UnifiedSearchService:
             if len(qd) >= 4 and "jiosaavn" in src_vals:
                 for part in re.split(r"[,&/]|feat|ft| x ", artist.lower()):
                     if sr.fold(part).replace(" ", "") == qd:
-                        return 110.0
+                        return ARTIST_QUERY
             return sr.relevance(query, title, artist)
 
         # The query's words that name an artist: in a JioSaavn credit (an
@@ -413,8 +422,10 @@ class UnifiedSearchService:
         # ("Radiohead - Karma Police") when no JioSaavn title has the word,
         # since "Kesariya - Brahmastra" is the song first.
         q_words = set(sr.words(query))
+        # YouTube Music's songs too: the label's upload, under the real name.
         trusted_rows = [t for t in tracks
-                        if SourceType.JIOSAAVN in getattr(t, "sources", {})]
+                        if SourceType.JIOSAAVN in getattr(t, "sources", {})
+                        or getattr(t, "official", False)]
         in_titles = set()
         for t in trusted_rows:
             in_titles |= set(sr.core_title(t.title or "").split())
@@ -431,6 +442,16 @@ class UnifiedSearchService:
         relevant = [t for t in tracks if bases[id(t)] >= sr.RELEVANT]
         if len(relevant) >= sr.MIN_KEPT:
             tracks = relevant
+        # Compilations are not songs: left out, not just ranked last, where
+        # they still filled the bottom of the list. The playlists shelf is
+        # where "the best of" belongs. Uploads only: a label's release is a
+        # song whatever it is called or however long (Drake's "Nonstop",
+        # Pink Floyd's 23-minute "Echoes").
+        songs = [t for t in tracks if t in trusted_rows or not sr.compilation(
+            query, getattr(t, "title", "") or "", artist_words,
+            getattr(t, "duration_ms", 0) or 0)]
+        if len(songs) >= sr.MIN_KEPT:
+            tracks = songs
 
         def composite(t) -> float:
             title = getattr(t, "title", "") or ""
@@ -441,20 +462,34 @@ class UnifiedSearchService:
                                       artist_words if t in trusted_rows else frozenset())
             src_vals = {getattr(k, "value", k) for k in getattr(t, "sources", {})}
             base = bases[id(t)]
-            if base >= 110.0:
+            if base >= ARTIST_QUERY:
                 return base
             if base <= 0:
                 return -1.0
             # Clean catalogue first: JioSaavn's own releases over uploads.
             sb = 0.0
-            if "jiosaavn" in src_vals:
+            if "jiosaavn" in src_vals or getattr(t, "official", False):
                 sb += 8.0
             if "youtube" in src_vals or "youtube_music" in src_vals:
                 sb += 2.0
             if len(src_vals) >= 2:
                 sb += 4.0
+            # Popularity, the one thing a title cannot say. YouTube Music
+            # lists its songs most played first, so its top song is usually
+            # the one meant ("weird fishes" is Radiohead's, not the dozen
+            # soundalikes JioSaavn has under that exact title). And a
+            # JioSaavn song almost nobody played is rarely the one asked for.
+            plays = getattr(t, "plays", None)
+            # JioSaavn's own measure of the same: a song played a million
+            # times there is the one meant as surely ("Kesariya" is Arijit's,
+            # whatever YouTube Music's top song is).
+            if getattr(t, "music_rank", None) == 0 or (plays or 0) >= MANY_PLAYS:
+                sb += TOP_SONG_BONUS
+            if plays is not None and plays < FEW_PLAYS and not getattr(t, "official", False):
+                sb -= FEW_PLAYS_PENALTY
             return base + sb - sr.penalty(
-                query, title, getattr(t, "artist", "") or "", artist_words)
+                query, title, getattr(t, "artist", "") or "", artist_words,
+                getattr(t, "duration_ms", 0) or 0)
 
         order = {id(t): i for i, t in enumerate(tracks)}
         ranked = sorted(tracks, key=lambda t: (-composite(t), order[id(t)]))
@@ -468,7 +503,8 @@ class UnifiedSearchService:
         # Whose artist credit is real (JioSaavn's), fixed before any row
         # absorbs another's sources.
         trusted = {id(t) for t in ranked
-                   if SourceType.JIOSAAVN in getattr(t, "sources", {})}
+                   if SourceType.JIOSAAVN in getattr(t, "sources", {})
+                   or getattr(t, "official", False)}
         kept = sr.collapse(ranked, absorb=absorb, trusted=lambda t: id(t) in trusted)
         # A row that took in other copies plays the best of them: SoundCloud
         # offers only a 30-second preview of most official songs.

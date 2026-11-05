@@ -13,7 +13,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {stallContext} from '../stallWatch';
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   Keyboard,
@@ -26,12 +25,15 @@ import {
 import {Clock, Search as SearchIcon, X} from '../icons';
 import {C, S, T, fs} from '../theme';
 import {
+  getArtist,
   getGenres,
   getLyricHint,
   getSuggestions,
   search,
   searchArtists,
+  searchCollections,
   waitForBackend,
+  type AlbumCard,
   type ArtistCard,
   type HomeItem,
   type Suggestion,
@@ -40,6 +42,7 @@ import {
 import {useIsActiveTrack} from '../player';
 import {
   cleanText,
+  fold,
   getBestArtworkUrl,
   getTrackId,
   normalizeTracks,
@@ -67,8 +70,31 @@ import {type Collection} from '../collections';
 import {toast} from '../toast';
 import {BRIGHT_PALS, blob} from '../brandArt';
 import Svg, {Path} from 'react-native-svg';
+import {
+  AlbumShelf,
+  PlaylistShelf,
+  SearchSkeleton,
+  TopResultCard,
+  pickTopResult,
+  rankAlbums,
+  type TopResult,
+} from '../components/SearchSections';
 
 const DEBOUNCE_MS = 180;
+/** How long the songs wait for the artists and albums before the Top result
+ *  is chosen without them. */
+const TOP_WAIT_MS = 1500;
+/** Songs shown before the shelves; the rest follow them. */
+const FIRST_SONGS = 4;
+
+/** One row of the results: a song, a heading, or a whole section. */
+type ResultRow =
+  | {k: 'song'; t: Track}
+  | {k: 'head'; text: string}
+  | {k: 'top'}
+  | {k: 'artists'}
+  | {k: 'albums'}
+  | {k: 'playlists'};
 
 /** Browse tiles wear Relaxify's own palettes (the Recap's), each with a blob
  *  of its accent behind the tilted cover. A fixed rotation keeps a given tile
@@ -132,6 +158,7 @@ export const SearchScreen = React.memo(function SearchScreen({
   onOpenBrowse,
   onOpenMenu,
   onOpenCollection,
+  onOpenAlbum,
 }: {
   /** Whether the Search tab is the one on screen. The tab stays MOUNTED when
    *  you leave it (that's what keeps it instant to come back to), so leaving is
@@ -149,11 +176,18 @@ export const SearchScreen = React.memo(function SearchScreen({
   onOpenMenu: () => void;
   /** A friend's shared playlist, opened from a pasted code or message. */
   onOpenCollection: (c: Collection) => void;
+  /** An album a search found, by its id. */
+  onOpenAlbum: (name: string, artist: string, id?: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [results, setResults] = useState<Track[]>([]);
   const [artists, setArtists] = useState<ArtistCard[]>([]);
+  /** The popular songs of the artist the search names, first in Songs. */
+  const [artistTop, setArtistTop] = useState<Track[]>([]);
+  const [albums, setAlbums] = useState<AlbumCard[]>([]);
+  const [playlists, setPlaylists] = useState<HomeItem[]>([]);
+  const [best, setBest] = useState<TopResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [focused, setFocused] = useState(false);
@@ -185,12 +219,43 @@ export const SearchScreen = React.memo(function SearchScreen({
     setError('');
     setSuggestions([]);
     const ticket = ++latest.current;
-    // Artists ride alongside the song search — like the WebView build, a
-    // query answers with both. Best-effort; a miss just means no strip.
-    searchArtists(text, 8)
+    // Artists, albums and playlists ride alongside the song search — like
+    // the WebView build, a query answers with all of them. Best-effort; a
+    // miss just means no shelf.
+    setArtistTop([]);
+    setAlbums([]);
+    setPlaylists([]);
+    setBest(null);
+    const artistsAsked = searchArtists(text, 8).catch(() => [] as ArtistCard[]);
+    const collectionsAsked = searchCollections(text).catch(() => ({
+      albums: [] as AlbumCard[],
+      playlists: [] as HomeItem[],
+    }));
+    collectionsAsked.then(c => {
+      if (ticket === latest.current) {
+        setAlbums(c.albums);
+        setPlaylists(c.playlists);
+      }
+    });
+    artistsAsked
       .then(list => {
-        if (ticket === latest.current) {
-          setArtists(list);
+        if (ticket !== latest.current) {
+          return;
+        }
+        setArtists(list);
+        // The search IS an artist's name: their popular songs lead Songs.
+        // A title search finds songs CALLED the name ("tycho": four songs
+        // titled Tycho, by others, and none of his). The artist page is the
+        // same request, so opening the artist next is instant.
+        const lead = list[0];
+        if (lead && fold(lead.name).trim() === fold(text).trim()) {
+          getArtist(lead.name)
+            .then(p => {
+              if (ticket === latest.current) {
+                setArtistTop(normalizeTracks(p.top_songs).slice(0, 5));
+              }
+            })
+            .catch(() => {});
         }
       })
       .catch(() => {});
@@ -199,7 +264,21 @@ export const SearchScreen = React.memo(function SearchScreen({
       if (ticket !== latest.current) {
         return;
       }
+      // The Top result is chosen once, from all three answers: chosen from
+      // the songs alone, it changed to the album or artist under a finger
+      // reaching for it. They usually land first; a slow one is not waited
+      // for long, and still fills its shelf when it comes.
+      const [named, records] = await Promise.race([
+        Promise.all([artistsAsked, collectionsAsked]),
+        new Promise<[null, null]>(done =>
+          setTimeout(() => done([null, null]), TOP_WAIT_MS),
+        ),
+      ]);
+      if (ticket !== latest.current) {
+        return;
+      }
       stallContext('search results');
+      setBest(pickTopResult(text, named ?? [], records?.albums ?? [], found));
       setResults(found);
       if (!found.length) {
         checkOnline().catch(() => {});
@@ -262,6 +341,10 @@ export const SearchScreen = React.memo(function SearchScreen({
     setQuery('');
     setResults([]);
     setArtists([]);
+    setArtistTop([]);
+    setAlbums([]);
+    setPlaylists([]);
+    setBest(null);
     setSuggestions([]);
     setError('');
     setBusy(false);
@@ -396,11 +479,86 @@ export const SearchScreen = React.memo(function SearchScreen({
   // The songs first; remixes, slowed, live and the like nobody typed wait
   // behind a button. A list of nothing but versions shows them anyway.
   const [showVersions, setShowVersions] = useState(false);
-  const versions = useMemo(() => results.filter(t => t.is_version), [results]);
-  const songsOnly = useMemo(() => results.filter(t => !t.is_version), [results]);
+  // The named artist's popular songs first (artistTop), each song once.
+  const allResults = useMemo(() => {
+    if (!artistTop.length || !results.length) {
+      return results;
+    }
+    const lead = new Set(artistTop.map(getTrackId));
+    return [...artistTop, ...results.filter(t => !lead.has(getTrackId(t)))];
+  }, [artistTop, results]);
+  const versions = useMemo(
+    () => allResults.filter(t => t.is_version),
+    [allResults],
+  );
+  const songsOnly = useMemo(
+    () => allResults.filter(t => !t.is_version),
+    [allResults],
+  );
   const shownResults =
-    showVersions || !songsOnly.length ? results : songsOnly;
+    showVersions || !songsOnly.length ? allResults : songsOnly;
   useEffect(() => setShowVersions(false), [results]);
+
+  /**
+   * The results, in Spotify's order: the Top result, a few songs, then the
+   * artists, albums and playlists it names, then the rest of the songs. All
+   * one list, so it scrolls as one and only what is on screen is built.
+   */
+  const topId =
+    best?.kind === 'song'
+      ? getTrackId(best.track)
+      : best?.kind === 'artist'
+      ? best.artist.name
+      : best?.kind === 'album'
+      ? best.album.album_id
+      : '';
+  const shelfArtists = useMemo(
+    () => artists.filter(a => a.name !== topId),
+    [artists, topId],
+  );
+  const shelfAlbums = useMemo(
+    () => rankAlbums(albums, results).filter(a => a.album_id !== topId),
+    [albums, results, topId],
+  );
+  const rows = useMemo<ResultRow[]>(() => {
+    const songs = shownResults.filter(t => getTrackId(t) !== topId);
+    const out: ResultRow[] = best ? [{k: 'top'}] : [];
+    const first = songs.slice(0, FIRST_SONGS);
+    const rest = songs.slice(FIRST_SONGS);
+    if (first.length) {
+      out.push({k: 'head', text: 'Songs'});
+      first.forEach(t => out.push({k: 'song', t}));
+    }
+    if (shelfArtists.length && onOpenArtist) {
+      out.push({k: 'artists'});
+    }
+    if (shelfAlbums.length) {
+      out.push({k: 'albums'});
+    }
+    if (playlists.length) {
+      out.push({k: 'playlists'});
+    }
+    if (rest.length) {
+      out.push({k: 'head', text: 'More songs'});
+      rest.forEach(t => out.push({k: 'song', t}));
+    }
+    return out;
+  }, [
+    shownResults,
+    best,
+    topId,
+    shelfArtists.length,
+    shelfAlbums.length,
+    playlists.length,
+    onOpenArtist,
+  ]);
+  const openAlbum = useCallback(
+    (a: AlbumCard) => {
+      Keyboard.dismiss();
+      onOpenAlbum(a.name, a.artist, a.album_id);
+    },
+    [onOpenAlbum],
+  );
   /**
    * Recent searches, whenever the field has focus and there is nothing more
    * specific to show.
@@ -495,11 +653,7 @@ export const SearchScreen = React.memo(function SearchScreen({
         </TouchableOpacity>
       )}
 
-      {busy && (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={C.accent} />
-        </View>
-      )}
+      {busy && <SearchSkeleton />}
 
       {!!error && !busy && (
         <View style={styles.errorBox}>
@@ -669,8 +823,14 @@ export const SearchScreen = React.memo(function SearchScreen({
 
       {!busy && !showHistory && !showSuggestions && !showBrowse && (
         <FlatList
-          data={shownResults}
-          keyExtractor={t => getTrackId(t)}
+          data={rows}
+          keyExtractor={(r, i) =>
+            r.k === 'song'
+              ? getTrackId(r.t)
+              : r.k === 'head'
+              ? `head:${r.text}`
+              : `${r.k}:${i}`
+          }
           keyboardShouldPersistTaps="handled"
           {...listWindowing}
           contentContainerStyle={[styles.list, listEnd]}
@@ -680,51 +840,80 @@ export const SearchScreen = React.memo(function SearchScreen({
               <Text style={styles.empty}>No songs matched that.</Text>
             ) : null
           }
-          ListHeaderComponent={
-            artists.length > 0 && onOpenArtist ? (
-              <View>
-                <Text style={styles.section}>Artists</Text>
-                <FlatList
-                  horizontal
-                  data={artists}
-                  keyExtractor={a => a.name}
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.artistStrip}
-                  renderItem={({item}) => (
-                    <TouchableOpacity
-                      style={styles.artistCard}
-                      activeOpacity={0.75}
-                      onPress={() => onOpenArtist(item.name)}>
-                      {item.image ? (
-                        <Image
-                          source={{uri: item.image}}
-                          style={styles.artistPfp}
-                        />
-                      ) : (
-                        <View style={[styles.artistPfp, styles.artistPfpEmpty]}>
-                          <Text style={styles.artistInitial}>
-                            {item.name.trim().charAt(0).toUpperCase()}
+          renderItem={({item: r}) => {
+            switch (r.k) {
+              case 'song':
+                return (
+                  <TrackRow
+                    track={r.t}
+                    onPress={() => onPickTrack(r.t)}
+                    onMenu={() => onMenu(r.t)}
+                    showDuration={false}
+                  />
+                );
+              case 'head':
+                return <Text style={styles.section}>{r.text}</Text>;
+              case 'top':
+                return best ? (
+                  <TopResultCard
+                    top={best}
+                    onOpenArtist={name => onOpenArtist?.(name)}
+                    onOpenAlbum={openAlbum}
+                    onPlay={onPickTrack}
+                    onMenu={onMenu}
+                  />
+                ) : null;
+              case 'albums':
+                return <AlbumShelf albums={shelfAlbums} onOpen={openAlbum} />;
+              case 'playlists':
+                return (
+                  <PlaylistShelf
+                    playlists={playlists}
+                    onOpen={p => {
+                      Keyboard.dismiss();
+                      onOpenBrowse(p);
+                    }}
+                  />
+                );
+              case 'artists':
+                return onOpenArtist ? (
+                  <View>
+                    <Text style={styles.section}>Artists</Text>
+                    <FlatList
+                      horizontal
+                      data={shelfArtists}
+                      keyExtractor={a => a.name}
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={styles.artistStrip}
+                      renderItem={({item}) => (
+                        <TouchableOpacity
+                          style={styles.artistCard}
+                          activeOpacity={0.75}
+                          onPress={() => onOpenArtist(item.name)}>
+                          {item.image ? (
+                            <Image
+                              source={{uri: item.image}}
+                              style={styles.artistPfp}
+                            />
+                          ) : (
+                            <View
+                              style={[styles.artistPfp, styles.artistPfpEmpty]}>
+                              <Text style={styles.artistInitial}>
+                                {item.name.trim().charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={styles.artistName} numberOfLines={1}>
+                            {item.name}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       )}
-                      <Text style={styles.artistName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                />
-                <Text style={styles.section}>Songs</Text>
-              </View>
-            ) : null
-          }
-          renderItem={({item}) => (
-            <TrackRow
-              track={item}
-              onPress={() => onPickTrack(item)}
-              onMenu={() => onMenu(item)}
-              showDuration={false}
-            />
-          )}
+                    />
+                  </View>
+                ) : null;
+            }
+          }}
           ListFooterComponent={
             !showVersions && versions.length && songsOnly.length ? (
               <TouchableOpacity
@@ -763,10 +952,16 @@ const BrowseTile = React.memo(function BrowseTile({
       style={[styles.tile, {backgroundColor: tilePal(i).bg}]}
       activeOpacity={0.8}
       onPress={() => onOpen(g)}>
-      <Svg width={110} height={110} style={styles.tileBlob} pointerEvents="none">
+      <Svg
+        width={110}
+        height={110}
+        style={styles.tileBlob}
+        pointerEvents="none">
         <Path d={TILE_BLOBS[i % TILE_BLOBS.length]} fill={tilePal(i).a} />
       </Svg>
-      <Text style={[styles.tileText, {color: tilePal(i).ink}]} numberOfLines={2}>
+      <Text
+        style={[styles.tileText, {color: tilePal(i).ink}]}
+        numberOfLines={2}>
         {g.name || g.title}
       </Text>
       {!!g.image && <Image source={{uri: g.image}} style={styles.tileArt} />}

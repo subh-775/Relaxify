@@ -138,4 +138,57 @@ buckets = []
 k1 = merged({"title": "Kesariya", "artist": "Pritam, Arijit Singh", "duration": 268}, SourceType.JIOSAAVN, buckets)
 k2 = merged({"title": "Kesariya - Brahmastra", "artist": "Sony Music India", "duration": 270}, SourceType.YOUTUBE, buckets)
 assert k1 == k2
+# A dated or staged recording is live though it never says so, and so is not
+# the studio song's row (it took the studio "Creep" in, and played instead).
+assert core_title("Creep (Lollapalooza Berlin 11.09.2016)") == "creep live"
+assert not same_song("Creep (Lollapalooza Berlin 11.09.2016)", "Radiohead", "Creep", "Radiohead")
+assert core_title("Creep (Remastered 2009)") == "creep"
+
+# A loop, by its title or by its length, is no answer to the song's name.
+assert penalty("sunflower", "SUNFLOWER (1HOUR)") >= 30
+assert penalty("sunflower", "Sunflower", duration_ms=60 * 60 * 1000) >= 40
+assert penalty("sunflower 1 hour", "Sunflower", duration_ms=60 * 60 * 1000) < 40
+
+# What is typed counts in the brackets too ("spiderman" is Sunflower's).
+assert relevance("sunflower spiderman", "Sunflower (Spider-Man: Into the Spider-Verse)",
+                 "Post Malone, Swae Lee") >= relevance("sunflower spiderman", "Sunflower Spiderman", "VinaVin")
+
+# A typo still matches, but below the exact title.
+assert relevance("alfaaz", "Alfaaz", "Hamza Malik") > relevance("alfaaz", "Alfaazo", "Mitraz")
+
+# A title borrowing a name is a cover only when more than the name was asked.
+from components.search_rank import cover_act  # noqa: E402
+assert cover_act("radiohead creep", "Radiohead Creep", "Aiden Yoo", {"radiohead"})
+assert not cover_act("alfaaz", "Alfaaz", "Hamza Malik", {"alfaaz"})
+
+# A YouTube Music song names its artist truly: it does not join a karaoke row.
+buckets = []
+k1 = merged({"title": "Creep (Radio Version)", "artist": "The Karaoke Channel", "duration": 235},
+            SourceType.JIOSAAVN, buckets)
+k2 = merged({"title": "Creep", "artist": "Radiohead", "duration": 238, "is_music": True},
+            SourceType.YOUTUBE, buckets)
+assert k1 != k2
+# "In the style of" a band is a karaoke label's, not the band's: it was played
+# in place of Radiohead's Creep. A real feature still is the same song.
+assert not same_song("Creep", "Radiohead",
+                     "Creep (Radio Version) [In The Style Of Radiohead]", "Done Again")
+assert same_song("Heeriye", "Arijit Singh",
+                 "Heeriye (feat. Arijit Singh)", "Dulquer Salmaan, Jasleen Royal")
+# A genre added to the name is a version; one in the name, or in a film's
+# title, is not.
+assert version_words("Blinding Lights (Afro House)")
+assert version_words("Blinding Lights (Techno)")
+assert version_words("Kesariya - Jazz Version")
+assert not version_words("Uptown Funk")
+assert not version_words('Dracarys (From "House of the Dragon")')
+assert not version_words("Blinding Lights")
+# Many songs as one upload are not songs, unless asked for; "Best of You" is.
+from components.search_rank import compilation  # noqa: E402
+assert compilation("arijit singh", "Best Of Arijit Singh 2024", {"arijit", "singh"})
+assert compilation("arijit singh", "Arijit Singh Top 20 Songs", {"arijit", "singh"})
+assert compilation("arijit singh", "Arijit Singh Jukebox | Romantic", {"arijit", "singh"})
+assert compilation("tum hi ho", "Tum Hi Ho", duration_ms=40 * 60 * 1000)
+assert not compilation("arijit singh best of", "Best Of Arijit Singh 2024", {"arijit", "singh"})
+assert not compilation("foo fighters", "Best of You", {"foo", "fighters"})
+assert not compilation("tum hi ho", "Tum Hi Ho", duration_ms=262_000)
 print("search rank: OK")

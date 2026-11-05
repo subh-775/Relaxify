@@ -29,6 +29,21 @@ describe('thumbArtwork', () => {
     expect(thumbArtwork('https://x/cover.jpg')).toBe('https://x/cover.jpg');
   });
 
+  it('drops a full-HD YouTube cover to the 320px one', () => {
+    expect(
+      thumbArtwork('https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg?sqp=-oaymwEc&rs=AOn4'),
+    ).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg');
+    expect(
+      thumbArtwork('https://i9.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp'),
+    ).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg');
+  });
+
+  it('sizes a YouTube Music cover down', () => {
+    expect(
+      thumbArtwork('https://lh3.googleusercontent.com/abc=w544-h544-l90-rj'),
+    ).toBe('https://lh3.googleusercontent.com/abc=w180-h180-l90-rj');
+  });
+
   it('is safe on empty input', () => {
     expect(thumbArtwork()).toBe('');
     expect(thumbArtwork('')).toBe('');

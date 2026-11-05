@@ -43,14 +43,31 @@ def parse_url(url: str):
     return lm.group(1) if lm else None
 
 
-def clean_item(title: str, uploader: str):
-    """-> (song, artist) for one playlist entry.
+def _key(text: str) -> str:
+    return re.sub(r"[^0-9a-z]+", "", (text or "").casefold())
 
-    "Artist - Song" titles are split at the dash. Otherwise the song is the
-    title and the artist is the channel, minus the " - Topic" YouTube Music
-    adds and a trailing "VEVO". A label channel ("T-Series") stays as the
-    artist; the matcher knows that artist may be wrong (see is_good_match's
-    weak_artist).
+
+def _names(part: str, name: str) -> bool:
+    """Whether a dash-part of a title is (or starts with) this artist's name:
+    "Coldplay", "Coldplay played by 1000 Musicians" for Coldplay."""
+    p, n = _key(part), _key(name)
+    if len(n) < 3:
+        return False
+    return p == n or (p.startswith(n) and len(n) >= 5) or (n.startswith(p) and len(p) >= 5)
+
+
+def clean_item(title: str, uploader: str, artists=()):
+    """-> (song, artist) for one playlist entry or search result.
+
+    "Artist - Song" titles are split at the dash. But "Song - Artist" is as
+    common ("Yellow - Coldplay"), and read the first way it was the song
+    "Coldplay" by "Yellow". So the side the channel names is the artist, or
+    else the side naming an artist the caller already knows (a search's
+    YouTube Music credits); only when neither says is it "Artist - Song".
+    Otherwise the song is the title and the artist is the channel, minus the
+    " - Topic" YouTube Music adds and a trailing "VEVO". A label channel
+    ("T-Series") stays as the artist; the matcher knows that artist may be
+    wrong (see is_good_match's weak_artist).
     """
     t = _NOISE.sub("", title or "").strip()
     # "Song | Film | Singer": the first part is the song.
@@ -59,5 +76,13 @@ def clean_item(title: str, uploader: str):
     up = re.sub(r"\s*vevo$", "", up, flags=re.I).strip()
     parts = _DASH.split(t, maxsplit=1)
     if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-        return parts[1].strip(), parts[0].strip()
+        first, second = parts[0].strip(), parts[1].strip()
+        for names in ([up], [a for a in artists if a]):
+            a1 = any(_names(first, n) for n in names)
+            a2 = any(_names(second, n) for n in names)
+            if a2 and not a1:
+                return first, second
+            if a1 and not a2:
+                return second, first
+        return second, first
     return (t or (title or "").strip()), up

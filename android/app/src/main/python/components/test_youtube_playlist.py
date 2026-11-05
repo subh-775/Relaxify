@@ -28,4 +28,13 @@ if __name__ == "__main__":
     assert clean_item("Tum Hi Ho (Lyrics)", "Lyrics Hub") == ("Tum Hi Ho", "Lyrics Hub")
     # A hyphen inside a word is not a separator.
     assert clean_item("Anti-Hero", "Taylor Swift - Topic") == ("Anti-Hero", "Taylor Swift")
+    # "Song - Artist": the side the channel names is the artist.
+    assert clean_item("Yellow - Coldplay", "Coldplay") == ("Yellow", "Coldplay")
+    assert clean_item("Yellow - Coldplay (Official Video)", "ColdplayVEVO") == ("Yellow", "Coldplay")
+    # Neither side is the channel: an artist the search already knows says.
+    assert clean_item("Yellow - Coldplay played by 1000 Musicians", "Rockin'1000",
+                      ["Coldplay"]) == ("Yellow", "Coldplay played by 1000 Musicians")
+    assert clean_item("Coldplay - Yellow", "Some Fan", ["Coldplay"]) == ("Yellow", "Coldplay")
+    # Nothing to go on: still "Artist - Song".
+    assert clean_item("Arijit Singh - Kesariya", "Sony Music India", ["Pritam"]) == ("Kesariya", "Arijit Singh")
     print("youtube_playlist: OK")

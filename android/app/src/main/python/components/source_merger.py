@@ -46,11 +46,25 @@ class AudioSource:
     is_playable: bool = True
     # Score for ranking this source
     priority: int = 0  # Higher = preferred
+    # This copy's own name and credit. A row joins copies of one song from
+    # several sources, and the row's credit is one of theirs: the copy that
+    # plays must be checked by its own (a karaoke label's "Creep" played
+    # under Radiohead's name).
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    # A YouTube Music song: the label's own upload.
+    official: bool = False
+    # This copy's own length: the row's is the longest of its copies'.
+    duration_ms: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "source": self.source.value,
             "url": self.url,
+            "title": self.title,
+            "artist": self.artist,
+            "official": self.official,
+            "duration_ms": self.duration_ms,
             "bitrate": self.bitrate,
             "codec": self.codec,
             "quality_note": self.quality_note,
@@ -103,6 +117,14 @@ class UnifiedTrack:
 
     # Provider-specific IDs
     provider_ids: Dict[SourceType, str] = field(default_factory=dict)
+
+    # A YouTube Music song: the label's own upload, under the artist's real
+    # name, so its credit is as good as JioSaavn's (unified_search ranking).
+    official: bool = False
+    # Its place in YouTube Music's song search (0 = top), when it was there.
+    music_rank: Optional[int] = None
+    # JioSaavn's play count, when it is a JioSaavn song.
+    plays: Optional[int] = None
 
     def get_best_artwork(self, preferred_sizes: List[str] = None) -> Optional[str]:
         """Get best available artwork URL.
@@ -277,7 +299,10 @@ class SourceMerger:
 
         artist = self._normalize_text(track.get("artist", ""))
         title = self._key_title(track.get("title", ""), artist)
-        trusted = source_type in self.TRUSTED_ARTIST_SOURCES
+        # A YouTube Music song names its artist as truly as JioSaavn does: as an
+        # upload it joined a karaoke row ("Creep" by The Karaoke Channel took in
+        # the real Radiohead one).
+        trusted = source_type in self.TRUSTED_ARTIST_SOURCES or bool(track.get("is_music"))
         duration = self._duration_sec(track)
         raw = (track.get("title", "") or "", track.get("artist", "") or "")
         versions = sr.version_words(raw[0])
@@ -429,6 +454,9 @@ class SourceMerger:
             "release_year": ["release_year", "year"],
             "track_number": ["track_number", "track"],
             "popularity": ["popularity", "rank", "score"],
+            "is_music": ["is_music"],
+            "music_rank": ["music_rank"],
+            "play_count": ["play_count"],
         }
 
         for std_field, possible_keys in field_mapping.items():
@@ -498,6 +526,13 @@ class SourceMerger:
 
         # Process all entries (including primary) to ensure sources and artwork are properly aggregated
         for source_type, data in entries:
+            if data.get("is_music"):
+                track.official = True
+            if data.get("music_rank") is not None and (
+                    track.music_rank is None or data["music_rank"] < track.music_rank):
+                track.music_rank = data["music_rank"]
+            if data.get("play_count") is not None:
+                track.plays = max(track.plays or 0, data["play_count"])
             # One copy per source: the first (see the sort above). Later
             # duplicates used to OVERWRITE the source's URL and cover, so a
             # result titled from the album copy played and showed whichever
@@ -518,6 +553,10 @@ class SourceMerger:
                 preview_url=data.get("preview_url"),
                 is_playable=is_playable,
                 priority=self.priorities.get(source_type, 0),
+                title=data.get("title"),
+                artist=data.get("artist"),
+                official=bool(data.get("is_music")),
+                duration_ms=data.get("duration_ms"),
             )
             track.provider_ids[source_type] = str(
                 data.get("id") or data.get("provider_id") or ""
