@@ -117,10 +117,12 @@ const store = createStore<Stats>('mp.stats.v1', EMPTY, normalize);
 export const readStats = store.get;
 export const onStatsChange = store.subscribe;
 
-/** Drop the least-recently-played half once a map is over its cap. */
-function trim<T extends {last: number}>(
+/** Once a map is over its cap, keep only its most recent entries: `share`
+ *  of the cap (half by default). Also taste.ts's, for its own history. */
+export function trim<T extends {last: number}>(
   map: Record<string, T>,
   max: number,
+  share = 0.5,
 ): Record<string, T> {
   const keys = Object.keys(map);
   if (keys.length <= max) {
@@ -128,7 +130,7 @@ function trim<T extends {last: number}>(
   }
   const keep = keys
     .sort((a, b) => map[b].last - map[a].last)
-    .slice(0, Math.floor(max / 2));
+    .slice(0, Math.floor(max * share));
   const next: Record<string, T> = {};
   for (const k of keep) {
     next[k] = map[k];
