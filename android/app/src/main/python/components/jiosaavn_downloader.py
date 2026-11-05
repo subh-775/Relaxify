@@ -23,6 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _int_or_none(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class JioSaavnSong:
     """Represents a song from JioSaavn search results."""
@@ -36,6 +43,9 @@ class JioSaavnSong:
     duration: Optional[int] = None  # seconds
     year: Optional[int] = None
     language: Optional[str] = None
+    # How often it was played on JioSaavn: a soundalike under a famous
+    # title has a few hundred, the song itself millions.
+    play_count: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -50,6 +60,7 @@ class JioSaavnSong:
             "duration_sec": self.duration,
             "year": self.year,
             "language": self.language,
+            "play_count": self.play_count,
         }
 
 
@@ -204,6 +215,7 @@ class JioSaavnClient:
                 duration=duration,
                 year=song.get("year") or more_info.get("year"),
                 language=more_info.get("language"),
+                play_count=_int_or_none(song.get("play_count")),
             )
         except (KeyError, IndexError, AttributeError):
             return None
