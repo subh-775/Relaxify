@@ -19,6 +19,7 @@
 import {useSyncExternalStore} from 'react';
 import {AppState, Image} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {timedFetch} from './net';
 
 const MANIFEST = 'https://relaxify.pages.dev/doodles/manifest.json';
 const KEY = 'mp.doodles.v1';
@@ -173,7 +174,7 @@ async function refresh() {
     return;
   }
   try {
-    const res = await fetch(MANIFEST, {headers: {'Cache-Control': 'no-cache'}});
+    const res = await timedFetch(MANIFEST, {headers: {'Cache-Control': 'no-cache'}});
     const m = await res.json();
     if (!res.ok || !valid(m)) {
       return;

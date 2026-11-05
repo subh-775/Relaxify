@@ -12,7 +12,6 @@ export {default as ArrowLeftRight} from 'lucide-react-native/dist/esm/icons/arro
 export {default as ArrowUpDown} from 'lucide-react-native/dist/esm/icons/arrow-up-down';
 export {default as ArrowUpRight} from 'lucide-react-native/dist/esm/icons/arrow-up-right';
 export {default as AudioLines} from 'lucide-react-native/dist/esm/icons/audio-lines';
-export {default as ChartColumn} from 'lucide-react-native/dist/esm/icons/chart-column';
 export {default as Check} from 'lucide-react-native/dist/esm/icons/check';
 export {default as CheckSquare} from 'lucide-react-native/dist/esm/icons/square-check-big';
 export {default as CheckSquare2} from 'lucide-react-native/dist/esm/icons/square-check';
@@ -29,7 +28,6 @@ export {default as ExternalLink} from 'lucide-react-native/dist/esm/icons/extern
 export {default as Flame} from 'lucide-react-native/dist/esm/icons/flame';
 export {default as Gauge} from 'lucide-react-native/dist/esm/icons/gauge';
 export {default as Guitar} from 'lucide-react-native/dist/esm/icons/guitar';
-export {default as HardDrive} from 'lucide-react-native/dist/esm/icons/hard-drive';
 export {default as Headphones} from 'lucide-react-native/dist/esm/icons/headphones';
 export {default as GripVertical} from 'lucide-react-native/dist/esm/icons/grip-vertical';
 export {default as Heart} from 'lucide-react-native/dist/esm/icons/heart';

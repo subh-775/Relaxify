@@ -202,6 +202,11 @@ const TITLES: Partial<Record<Panel, string>> = {
   about: 'About and support',
 };
 
+/** "the 12 songs saved", or "the one song saved". */
+function songsSaved(n: number): string {
+  return n === 1 ? 'the one song saved' : `the ${n} songs saved`;
+}
+
 export function SettingsScreen({
   onClose,
   focus,
@@ -501,8 +506,8 @@ export function SettingsScreen({
         </Section>
         <Section title="Labels">
           <ToggleRow
-            label="Show source label"
-            hint="Marks which service each track came from"
+            label="Source on every song"
+            hint="The player always shows where a song plays from"
             value={settings.showSourceBadge}
             onChange={v => writeSetting('showSourceBadge', v)}
           />
@@ -513,8 +518,8 @@ export function SettingsScreen({
             onChange={v => writeSetting('showQualityBadge', v)}
           />
           <ToggleRow
-            label="Show playlist source"
-            hint="Marks playlists from Spotify, YouTube or a friend's link"
+            label="Source on every playlist"
+            hint="A playlist's own page always says where it came from"
             value={settings.showPlaylistSource}
             onChange={v => writeSetting('showPlaylistSource', v)}
           />
@@ -560,7 +565,7 @@ export function SettingsScreen({
             label="Remove all downloads"
             hint={
               storage?.downloads_count
-                ? `Deletes the ${storage.downloads_count} songs saved on this phone. Playlists and likes stay.`
+                ? `Deletes ${songsSaved(storage.downloads_count)} on this phone. Playlists and likes stay.`
                 : 'No downloaded songs on this phone.'
             }
             action={removing ? 'Removing…' : 'Remove'}
@@ -789,9 +794,9 @@ export function SettingsScreen({
       <ConfirmModal
         visible={removeOpen}
         title="Remove all downloads?"
-        message={`Deletes the ${
-          storage?.downloads_count ?? 0
-        } songs saved on this phone. Your playlists and likes are kept, and every song can be downloaded again.`}
+        message={`Deletes ${songsSaved(
+          storage?.downloads_count ?? 0,
+        )} on this phone. Your playlists and likes are kept, and every song can be downloaded again.`}
         confirmLabel="Remove"
         danger
         onConfirm={doRemoveDownloads}

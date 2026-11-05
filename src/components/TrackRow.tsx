@@ -7,7 +7,14 @@
  * drag, so taps and vertical list scrolling are untouched.
  */
 import React, {useMemo, useRef} from 'react';
-import {Image, StyleSheet, Text, TouchableOpacity, View} from 'react-native';
+import {
+  Image,
+  PixelRatio,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -17,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {ArrowDownToLine} from '../icons';
 import {AddToQueue, MoreHorizontal} from '../glyphs';
-import {C, S, T} from '../theme';
+import {C, S, T, fs} from '../theme';
 import type {Track} from '../backend';
 import {
   cleanText,
@@ -33,6 +40,7 @@ import {useIsDownloaded} from '../localFiles';
 import {useOffline} from '../offline';
 import {toast} from '../toast';
 import {SourceBadge} from './Badges';
+import {haptic} from '../haptics';
 
 const SWIPE_COMMIT = 64;
 
@@ -51,8 +59,23 @@ export const listWindowing = {
   removeClippedSubviews: true,
   initialNumToRender: 12,
   maxToRenderPerBatch: 8,
-  windowSize: 7,
+  // 11 screens held (5 either side), up from 7: a fling outran the 3 held
+  // ahead and landed on a blank page that filled in a second later.
+  windowSize: 11,
 } as const;
+
+/**
+ * A row's exact height, which lets a list use getItemLayout.
+ *
+ * Without it a list must render and measure every row between where it is
+ * and where a fling lands before it knows what is on screen, which is the
+ * blank second after a fast scroll ("VirtualizedList: slow to update", dt
+ * 570 ms, on a 96-song playlist). The row is pinned to this height (styles.row),
+ * so the number cannot drift from what is drawn: 8dp above and below a 48dp
+ * cover, or the two text lines when a large system font makes them taller.
+ */
+const TEXT_LINES = 2 + (fs(21) + fs(18)) * PixelRatio.getFontScale();
+export const TRACK_ROW_HEIGHT = Math.ceil(16 + Math.max(48, TEXT_LINES + 2));
 
 /**
  * Memoised, and every store it reads is a BOOLEAN subscription.
@@ -111,11 +134,15 @@ export const TrackRow = React.memo(function TrackRow({
   const isActive = active ?? engineActive;
 
   const slide = useSharedValue(0);
+  /** Past the line that queues: a tick as the finger crosses it, either way,
+   *  so the hand knows letting go now counts. */
+  const armed = useSharedValue(false);
   const trackRef = useRef(track);
   trackRef.current = track;
 
   const commitQueue = React.useCallback(() => {
     const t = trackRef.current;
+    haptic('confirm');
     // In a Jam a swipe goes to the shared queue, as the menu's Add does. It went
     // to this phone's own, so the song played next but no one could see it.
     addToJam(t)
@@ -151,14 +178,20 @@ export const TrackRow = React.memo(function TrackRow({
         .failOffsetY([-14, 14])
         .onUpdate(e => {
           slide.value = Math.max(0, Math.min(96, e.translationX * 0.6));
+          const past = e.translationX >= SWIPE_COMMIT;
+          if (past !== armed.value) {
+            armed.value = past;
+            runOnJS(haptic)('tick');
+          }
         })
         .onEnd(e => {
           if (e.translationX >= SWIPE_COMMIT) {
             runOnJS(commitQueue)();
           }
+          armed.value = false;
           slide.value = withSpring(0, {damping: 18, stiffness: 220});
         }),
-    [slide, commitQueue],
+    [slide, armed, commitQueue],
   );
 
   const rowStyle = useAnimatedStyle(() => ({
@@ -193,7 +226,13 @@ export const TrackRow = React.memo(function TrackRow({
             {index != null ? (
               <Text style={styles.index}>{index + 1}</Text>
             ) : artwork ? (
-              <Image source={{uri: artwork}} style={styles.thumb} />
+              // resize: decoded at the row's size, not the file's — a cover
+              // with no smaller version (thumbArtwork) still costs a thumbnail.
+              <Image
+                source={{uri: artwork}}
+                style={styles.thumb}
+                resizeMethod="resize"
+              />
             ) : (
               <View style={[styles.thumb, styles.thumbFallback]} />
             )}
@@ -261,7 +300,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: S.gutter,
-    paddingVertical: 8,
+    // Pinned, centred: the 8dp above and below the cover are in the height.
+    height: TRACK_ROW_HEIGHT,
     gap: 12,
     backgroundColor: C.bg,
   },
@@ -280,8 +320,8 @@ const styles = StyleSheet.create({
   index: {
     width: 48,
     textAlign: 'center',
-    color: C.faint,
-    fontSize: 13,
+    color: C.sub,
+    fontSize: 15,
     fontVariant: ['tabular-nums'],
   },
   text: {flex: 1, minWidth: 0},

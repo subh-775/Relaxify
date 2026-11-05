@@ -9,7 +9,8 @@
  */
 import {NativeModules} from 'react-native';
 import {toast} from './toast';
-import {getBestArtworkUrl} from './tracks';
+import {getBestArtworkUrl, getPlayableSource} from './tracks';
+import {timedFetch} from './net';
 
 const {port, token, version} = (NativeModules.Backend ?? {}) as {
   port?: number;
@@ -106,17 +107,15 @@ async function apiFetch(
   init: RequestInit,
   timeoutMs: number,
 ): Promise<Response> {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  const started = Date.now();
   try {
-    return await fetch(apiUrl(path), {...init, signal: ctl.signal});
+    return await timedFetch(apiUrl(path), init, timeoutMs);
   } catch (e) {
-    if (!ctl.signal.aborted) {
+    // Abandoned for taking too long is not the engine dying.
+    if (Date.now() - started < timeoutMs) {
       warnIfEngineStopped().catch(() => {});
     }
     throw e;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -170,7 +169,7 @@ export async function waitForBackend(timeoutMs = 30_000): Promise<boolean> {
   let delay = 100;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${BASE}/health`);
+      const res = await timedFetch(`${BASE}/health`, {}, 3000);
       if (res.ok) {
         return true;
       }
@@ -295,10 +294,15 @@ export async function getStreamInfo(
   track: Track,
   bitrate = 320,
 ): Promise<StreamInfo> {
-  const source = track.playable_source || track.primary_source || '';
+  const source = getPlayableSource(track) || '';
   const url = source ? track.sources?.[source]?.url : undefined;
   if (!url) {
     throw new Error('This track has no playable source.');
+  }
+  if (source === 'soundcloud') {
+    // Warms the other copy the player will be sent to (stream_by_name).
+    await rematchTrack(track);
+    throw new Error('No stream info for a SoundCloud song.');
   }
   return apiGet<StreamInfo>(
     `/stream_info?url=${encodeURIComponent(url)}&source=${encodeURIComponent(
@@ -362,7 +366,15 @@ export async function getLyrics(
 
 // ─── Collections (album / playlist) ─────────────────────────────────────────
 
-export type Collection = {name: string; tracks: Track[]; error?: string};
+export type Collection = {
+  name: string;
+  tracks: Track[];
+  error?: string;
+  /** An album's own cover, when the source gave one. */
+  image?: string;
+  /** An album's year. */
+  year?: string;
+};
 
 /** Open an album or playlist by its source page URL. */
 export async function getCollection(url: string): Promise<Collection> {
@@ -405,7 +417,26 @@ export async function getAlbum(
     name: data.name || name,
     tracks: Array.isArray(data.tracks) ? data.tracks : [],
     error: data.error,
+    image: data.image || undefined,
+    year: data.year ? String(data.year) : undefined,
   };
+}
+
+/** The album a song is on, for a song that does not name it (YouTube's):
+ *  its exact release, or null when it is not found (a cover, a remix). */
+export async function getAlbumOf(
+  track: Track,
+): Promise<{name: string; artist: string; album_id: string} | null> {
+  const data = await apiGet<{
+    album?: {name: string; artist: string; album_id: string} | null;
+  }>(
+    `/album_of?title=${encodeURIComponent(
+      track.title || '',
+    )}&artist=${encodeURIComponent(track.artist || '')}&duration_ms=${
+      track.duration_ms || 0
+    }`,
+  );
+  return data.album ?? null;
 }
 
 // ─── Library (downloaded / offline) ─────────────────────────────────────────
@@ -480,16 +511,23 @@ export async function clearBackendCache(): Promise<number> {
   return data.freed ?? 0;
 }
 
-/** Songs similar to a seed — what keeps playback going when the queue ends. */
+/** Songs similar to a seed — what keeps playback going when the queue ends.
+ *  `seed` is the song's own copies, when it has them: the radio then starts
+ *  from that very song, not whatever a search for its name finds. */
 export async function getRadio(
   title: string,
   artist: string,
   limit = 12,
+  seed?: Track,
 ): Promise<Track[]> {
+  const saavn = seed?.sources?.jiosaavn?.url ?? '';
+  const video = seed?.sources?.youtube?.url ?? '';
   const data = await apiGet<{tracks?: Track[]}>(
     `/radio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(
       artist,
-    )}&limit=${limit}`,
+    )}&limit=${limit}${saavn ? `&saavn_url=${encodeURIComponent(saavn)}` : ''}${
+      video ? `&video_url=${encodeURIComponent(video)}` : ''
+    }`,
   );
   return Array.isArray(data.tracks) ? data.tracks : [];
 }
@@ -502,7 +540,9 @@ export async function getDiscover(
   limit = 24,
 ): Promise<Track[]> {
   const data = await apiGet<{tracks?: Track[]}>(
-    `/discover?seeds=${encodeURIComponent(JSON.stringify(seeds))}&limit=${limit}`,
+    `/discover?seeds=${encodeURIComponent(
+      JSON.stringify(seeds),
+    )}&limit=${limit}`,
   );
   return Array.isArray(data.tracks) ? data.tracks : [];
 }
@@ -553,9 +593,11 @@ export async function getSuggestions(
 /** A typed line of lyrics (four words or more) -> the song it is from, by
  *  YouTube Music's song search; null when it names none. */
 export async function getLyricHint(q: string): Promise<Suggestion | null> {
-  const data = await apiGet<{title?: string; artist?: string; artwork_url?: string}>(
-    `/search/lyric?q=${encodeURIComponent(q)}`,
-  );
+  const data = await apiGet<{
+    title?: string;
+    artist?: string;
+    artwork_url?: string;
+  }>(`/search/lyric?q=${encodeURIComponent(q)}`);
   return data.title
     ? {
         kind: 'lyric',
@@ -581,7 +623,12 @@ export type ImportSnapshot = {
   /** Stopped part-way by the person; `tracks` holds what was found by then. */
   cancelled?: boolean;
   /** Each song as it was checked, in the order the checks finished. */
-  checked?: {title: string; artist: string; found: boolean; artwork_url?: string}[];
+  checked?: {
+    title: string;
+    artist: string;
+    found: boolean;
+    artwork_url?: string;
+  }[];
   /** "spotify" or "youtube". */
   source?: string;
   /** YouTube songs kept as their YouTube original: nothing else matched. */
@@ -640,7 +687,9 @@ export async function syncImport(
  *  The job lives in the server process, so it survives the screen closing. */
 export const importSpotify = (url: string, cancel = false) =>
   apiGet<ImportSnapshot>(
-    `/spotify/import?url=${encodeURIComponent(url)}${cancel ? '&cancel=1' : ''}`,
+    `/spotify/import?url=${encodeURIComponent(url)}${
+      cancel ? '&cancel=1' : ''
+    }`,
   );
 
 // ─── Artists ────────────────────────────────────────────────────────────────
@@ -651,6 +700,8 @@ export type ArtistProfile = {
   name: string;
   image?: string;
   bio?: string;
+  /** The whole biography, when `bio` is only its first sentences. */
+  bio_full?: string;
   followers?: number | null;
   listeners?: number | null;
   top_songs: Track[];
@@ -658,9 +709,13 @@ export type ArtistProfile = {
     name: string;
     image?: string;
     year?: string | number;
-    /** JioSaavn's id; absent on an iTunes-only album. */
+    /** JioSaavn's id, or "itunes:<id>" for one only iTunes lists. */
     album_id?: string;
+    /** How many songs; null when the store did not say. */
+    track_count?: number | null;
   }>;
+  /** "Fans also like": each one checked to open, with a photo when found. */
+  similar_artists?: Array<{name: string; image?: string}>;
   error?: string;
 };
 
@@ -675,18 +730,57 @@ export async function searchArtists(
   return Array.isArray(data.artists) ? data.artists : [];
 }
 
-export async function getArtist(name: string): Promise<ArtistProfile> {
+/** A release a search names. `album_id` opens it ("itunes:<id>" for one only
+ *  iTunes lists); `exact` is a name that IS the query, a Top result. */
+export type AlbumCard = {
+  name: string;
+  artist: string;
+  image?: string;
+  year?: string;
+  songs: number;
+  album_id: string;
+  exact?: boolean;
+};
+
+/** The albums and playlists a search names, best first. Playlists are Home's
+ *  card shape, so they open the way Home's do. */
+export async function searchCollections(
+  q: string,
+): Promise<{albums: AlbumCard[]; playlists: HomeItem[]}> {
+  const data = await apiGet<{albums?: AlbumCard[]; playlists?: HomeItem[]}>(
+    `/search/collections?q=${encodeURIComponent(q)}&limit=10`,
+  );
+  return {
+    albums: Array.isArray(data.albums) ? data.albums : [],
+    playlists: Array.isArray(data.playlists) ? data.playlists : [],
+  };
+}
+
+/** The song the artist was tapped on names them exactly, where the name
+ *  alone can find a stranger: `songUrl` for a JioSaavn song (its credits),
+ *  `songTitle` for any other, a YouTube one (its JioSaavn copy's credits). */
+export async function getArtist(
+  name: string,
+  songUrl = '',
+  songTitle = '',
+): Promise<ArtistProfile> {
   const data = await apiGet<Partial<ArtistProfile>>(
-    `/artist?name=${encodeURIComponent(name)}`,
+    `/artist?name=${encodeURIComponent(name)}${
+      songUrl ? `&song_url=${encodeURIComponent(songUrl)}` : ''
+    }${songTitle ? `&song_title=${encodeURIComponent(songTitle)}` : ''}`,
   );
   return {
     name: data.name || name,
     image: data.image,
     bio: data.bio,
+    bio_full: data.bio_full,
     followers: data.followers ?? null,
     listeners: data.listeners ?? null,
     top_songs: Array.isArray(data.top_songs) ? data.top_songs : [],
     albums: Array.isArray(data.albums) ? data.albums : [],
+    similar_artists: Array.isArray(data.similar_artists)
+      ? data.similar_artists
+      : [],
     error: data.error,
   };
 }
@@ -712,7 +806,16 @@ export async function startDownload(
   track: Track,
   bitrate = 320,
 ): Promise<DownloadTask> {
-  const source = track.playable_source || track.primary_source || '';
+  if (getPlayableSource(track) === 'soundcloud') {
+    // SoundCloud's own uploads are previews or DRM-locked, so the download
+    // failed: the same song's copy elsewhere is downloaded instead.
+    const other = await rematchTrack(track);
+    if (!other) {
+      throw new Error("This song isn't available to download.");
+    }
+    track = other;
+  }
+  const source = getPlayableSource(track) || '';
   const url = source ? track.sources?.[source]?.url : undefined;
   if (!url) {
     throw new Error('This track has no downloadable source.');
@@ -731,6 +834,46 @@ export async function startDownload(
     max_bitrate: Math.max(64, Math.min(bitrate, 320)),
   });
   return (await res.json()) as DownloadTask;
+}
+
+/**
+ * A song saved from SoundCloud, found on a source that plays it (JioSaavn or
+ * YouTube), or null. The engine looks for each song once and remembers it.
+ */
+export async function rematchTrack(track: Track): Promise<Track | null> {
+  const res = await apiGet<{track?: Track | null}>(
+    `/rematch?title=${encodeURIComponent(
+      track.title || '',
+    )}&artist=${encodeURIComponent(track.artist || '')}&duration_ms=${
+      track.duration_ms || 0
+    }`,
+  );
+  return res.track ?? null;
+}
+
+/** One saved JioSaavn copy, as /api/recheck takes it. */
+export type CopyCheck = {
+  key: string;
+  title: string;
+  artist: string;
+  duration_ms: number;
+  url: string;
+};
+
+/**
+ * Which saved copies are not the song they are saved as (someone else's
+ * recording under its name), with the copy to play instead. Slow on
+ * purpose (each wrong one is searched for again), so a long timeout.
+ */
+export async function recheckCopies(
+  tracks: CopyCheck[],
+): Promise<Array<{key: string; ok: boolean; was?: string; track?: Track}>> {
+  const res = await apiPost('/recheck', {tracks}, 120000);
+  if (!res.ok) {
+    throw new Error(`recheck ${res.status}`);
+  }
+  const data = (await res.json()) as {results?: unknown};
+  return Array.isArray(data.results) ? data.results : [];
 }
 
 export const getDownloadStatus = (taskId: string) =>

@@ -5,6 +5,8 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.provider.MediaStore
+import android.view.HapticFeedbackConstants
+import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -139,5 +141,31 @@ class DeviceModule(private val ctx: ReactApplicationContext) :
     fun setRecapReminder(enabled: Boolean, body: String) {
         RecapReminder.save(ctx, enabled, body)
         RecapReminder.schedule(ctx)
+    }
+
+    /**
+     * A light tap under the finger (src/haptics.ts). Through the window's own
+     * view, not the Vibrator: no permission, and it follows the phone's
+     * "Touch feedback" setting, so anyone who turned that off feels nothing.
+     *
+     *  - "tick": a small step (a swipe crossing its line, a sheet snapping);
+     *  - "confirm": something was done (liked, queued);
+     *  - "press": a long press opened something.
+     */
+    @ReactMethod
+    fun haptic(kind: String) {
+        // The two oldest, on purpose: Xiaomi's system answers CLOCK_TICK,
+        // CONFIRM and KEYBOARD_TAP with "not support vibrator effect" and
+        // stays still. VIRTUAL_KEY (the nav-key tap) plays everywhere.
+        val constant = when (kind) {
+            "press" -> HapticFeedbackConstants.LONG_PRESS
+            else -> HapticFeedbackConstants.VIRTUAL_KEY
+        }
+        UiThreadUtil.runOnUiThread {
+            try {
+                currentActivity?.window?.decorView?.performHapticFeedback(constant)
+            } catch (e: Exception) {
+            }
+        }
     }
 }

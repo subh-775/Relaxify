@@ -779,8 +779,6 @@ class MetadataEmbedder:
                     pic.extend(struct.pack(">I", len(pic_data)))
                     pic.extend(pic_data)
 
-                    import base64
-
                     audio["METADATA_BLOCK_PICTURE"] = [
                         base64.b64encode(pic).decode("ascii")
                     ]

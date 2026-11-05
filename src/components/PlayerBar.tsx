@@ -25,6 +25,7 @@
  *     three different KINDS of control rather than one row.
  */
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
+import {haptic} from '../haptics';
 import {
   ActivityIndicator,
   Image,
@@ -526,7 +527,10 @@ export const PlayerBar = React.memo(function PlayerBar({
             />
 
             <TouchableOpacity
-              onPress={() => togglePlay()}
+              onPress={() => {
+                haptic('tick');
+                togglePlay();
+              }}
               activeOpacity={0.85}
               hitSlop={8}
               style={styles.playBtn}>

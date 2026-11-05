@@ -20,7 +20,6 @@ import TrackPlayer, {
   Event,
   RepeatMode,
   State,
-  TrackType,
   useProgress as useProgressPolled,
   type Track as RNTPTrack,
 } from 'react-native-track-player';
@@ -30,6 +29,7 @@ import {
   cleanText,
   getBestArtworkUrl,
   getDownloadKey,
+  getPlayableSource,
   isPlayableTrack,
   normalizeTrack,
 } from './tracks';
@@ -51,7 +51,7 @@ import {
   sleepMode,
   sleepTimerOnTrackChange,
 } from './sleepTimer';
-import {readRecentlyPlayed, remember} from './recentlyPlayed';
+import {remember} from './recentlyPlayed';
 import {recordPlay} from './stats';
 import {toast} from './toast';
 import {noteState, noteTrackChange, resetQualityCap} from './adaptiveQuality';
@@ -63,8 +63,15 @@ import {embeddedArtworkUrl, refreshDownloads} from './downloads';
 import {isOffline} from './offline';
 import {clampRate} from './playbackRate';
 import {createEmitter} from './emitter';
-import {alignUpcoming, restoreOrder, rowIndex, shuffleUpcoming} from './queueOrder';
+import {
+  alignUpcoming,
+  restoreOrder,
+  rowIndex,
+  shuffleUpcoming,
+} from './queueOrder';
 import {earnedPlay, listenOutcome} from './listenRules';
+import {noteListen, radioSignals, skippedLast} from './taste';
+import {rankRadio} from './radioRank';
 
 let ready = false;
 let available: boolean | null = null;
@@ -283,10 +290,7 @@ const STREAM_UA = 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36';
 
 /** Build the streaming URL. proxy_stream picks the bitrate rung and answers
  *  with a redirect to the CDN; apiUrl attaches the API token it requires. */
-function streamUrlFor(
-  track: Track,
-  bitrate = currentQuality(),
-): string | null {
+function streamUrlFor(track: Track, bitrate = currentQuality()): string | null {
   // A downloaded track has no `sources` at all — it was scanned off disk — so
   // it is served straight from the file. Without this branch, playing anything
   // from the Downloads folder failed with "no playable source", which is
@@ -301,10 +305,24 @@ function streamUrlFor(
       .map(encodeURIComponent)
       .join('/')}`;
   }
-  const source = track.playable_source || track.primary_source || '';
+  // getPlayableSource, not the stored field: a song saved from SoundCloud
+  // with another copy on it plays that copy.
+  const source = getPlayableSource(track) || '';
   const url = source ? track.sources?.[source]?.url : undefined;
   if (!url) {
     return null;
+  }
+  if (source === 'soundcloud') {
+    // SoundCloud is no longer a source: its own uploads are 30-second
+    // previews or DRM-locked. The engine finds this song on JioSaavn or
+    // YouTube and redirects there (mobile_server.py stream_by_name).
+    return apiUrl(
+      `/stream_by_name?title=${encodeURIComponent(
+        track.title || '',
+      )}&artist=${encodeURIComponent(track.artist || '')}&duration_ms=${
+        track.duration_ms || 0
+      }&bitrate=${bitrate}`,
+    );
   }
   return apiUrl(
     `/proxy_stream?url=${encodeURIComponent(url)}&source=${encodeURIComponent(
@@ -336,7 +354,9 @@ export function setupPlayer(): Promise<boolean> {
  * here first, and that refusal showed "audio engine missing" until a restart.
  * It is a "not yet", so wait for the activity instead of giving up.
  */
-async function setupEngine(opts: Parameters<typeof TrackPlayer.setupPlayer>[0]) {
+async function setupEngine(
+  opts: Parameters<typeof TrackPlayer.setupPlayer>[0],
+) {
   for (let i = 0; ; i++) {
     try {
       return await TrackPlayer.setupPlayer(opts);
@@ -377,17 +397,29 @@ async function setupPlayerOnce(): Promise<boolean> {
       // 320kbps audio is tiny: 15s of lookahead is ~600KB, not worth hoarding
       // 50s for. playBuffer down to 400ms is still enough margin to not
       // audibly stutter on a normal connection.
-      minBuffer: 15,
-      maxBuffer: 30,
-      playBuffer: 0.4,
+      //
+      // Then deepened again, for the opposite complaint: a song from a
+      // playlist (JioSaavn too) "suddenly pauses and buffers for a while".
+      // - Loading only restarted once lookahead fell to 15s, so any network
+      //   gap longer than that at the wrong moment ran the player dry. It
+      //   now refills from 30s, up to a minute ahead: ~2.4 MB at 320 kbps.
+      // - KotlinAudio (BaseAudioPlayer.setupBuffer, read from its bytecode)
+      //   sets the after-a-stall threshold to playBuffer x 2, and offers no
+      //   separate knob. At 0.4 that was 0.8s: a stall resumed with under a
+      //   second of audio, ran dry and stalled again, over and over. 1s
+      //   gives 2s after a stall; a first start waits for 1s of audio
+      //   (~40 KB), which the connection setup before it dwarfs.
+      minBuffer: 30,
+      maxBuffer: 60,
+      playBuffer: 1,
       // Seeking BACKWARD (double-tap peek, tapping an earlier lyric line)
       // reuses audio already downloaded instead of a fresh network round trip
       // through the proxy — was 0 (nothing kept), so even a 2-second rewind
       // paid the full resolve+reconnect cost again.
       backBuffer: 20,
       // In KB. Songs heard lately replay from here instead of the network.
-      // Under the 100 MB the cache limit starts at, so this alone never sets
-      // off the whole-cache clear.
+      // It lives in cacheDir/TrackPlayer, which the cache limit's clear
+      // leaves alone (mobile_server.py _CACHE_KEEP): it trims itself.
       maxCacheSize: 80 * 1024,
     });
     await TrackPlayer.updateOptions({
@@ -565,8 +597,7 @@ async function setupPlayerOnce(): Promise<boolean> {
       // down a list starts it alone, then inserts the earlier songs in front
       // of it; the shift fires this event a second time for the song that is
       // already playing, and every tapped song was counted twice.
-      const sameRow =
-        !!e.lastTrack?._qid && e.lastTrack._qid === e.track?._qid;
+      const sameRow = !!e.lastTrack?._qid && e.lastTrack._qid === e.track?._qid;
       if (!sameRow) {
         // The song that ended: at the engine's own last position when it is
         // the one whose listen is open (exact even behind a locked screen).
@@ -809,7 +840,7 @@ function toQueueItem(track: Track, bitrate: number) {
   if (!url) {
     return null;
   }
-  const source = track.playable_source || track.primary_source || '';
+  const source = getPlayableSource(track) || '';
   return {
     id: `${track.title}-${track.artist}`,
     /** Identity of this ROW, as opposed to `id`, the identity of the song. */
@@ -817,16 +848,15 @@ function toQueueItem(track: Track, bitrate: number) {
     /** The recording (see recordingOf), for the playing highlight. */
     _rec: recordingOf(track),
     url,
-    // SoundCloud streams only as HLS now (soundcloud_downloader.py
-    // pick_audio_format), and the URL is the proxy's, with no .m3u8 for
-    // ExoPlayer to recognise: without this it read the playlist as an audio
-    // file and every SoundCloud song failed.
-    type:
-      source === 'soundcloud' && !track.file_path ? TrackType.HLS : undefined,
+    // No HLS any more: SoundCloud (the one HLS source) plays another copy,
+    // through stream_by_name, which is a plain file like the rest.
     // Sent on the redirect to the CDN too (see STREAM_UA).
     userAgent: STREAM_UA,
+    // A SoundCloud song's other copy is most often JioSaavn's.
     headers:
-      source === 'jiosaavn' ? {Referer: 'https://www.jiosaavn.com/'} : undefined,
+      source === 'jiosaavn' || source === 'soundcloud'
+        ? {Referer: 'https://www.jiosaavn.com/'}
+        : undefined,
     title: track.title,
     artist: track.artist,
     // Not the baked artwork_url: songs saved by older builds carry an iTunes
@@ -1135,6 +1165,38 @@ async function moveQueueItemNow(from: number, to: number): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Take an upcoming track out of the queue. An ENGINE index, after the active
+ * one only, for the same reason as moveQueueItem: removing the playing item
+ * stops the music.
+ */
+export function removeQueueItem(index: number): Promise<boolean> {
+  return serialQueueOp(async () => {
+    try {
+      const activeIdx = await TrackPlayer.getActiveTrackIndex();
+      if (activeIdx == null || index <= activeIdx) {
+        return false;
+      }
+      // A track from the block queued after the current song: that block is
+      // one shorter, so the next "add to queue" still lands right behind it.
+      if (index <= activeIdx + queuedAhead) {
+        queuedAhead = Math.max(0, queuedAhead - 1);
+      }
+      await TrackPlayer.remove([index]);
+      if (index < queueSource.length) {
+        queueSource = [
+          ...queueSource.slice(0, index),
+          ...queueSource.slice(index + 1),
+        ];
+      }
+      await refreshEngineMirror();
+      return true;
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**
@@ -1656,6 +1718,8 @@ export async function seekTo(seconds: number): Promise<void> {
  * label them "Recommended".
  */
 let radioBusy = false;
+/** What two seeds' radios agreeing on a song adds to it (radioRank). */
+const AGREED = 4;
 /**
  * Run something once a burst of track changes has STOPPED.
  *
@@ -1774,12 +1838,15 @@ export async function topUpFromRadio(force = false): Promise<void> {
     if (!queue.length || index == null || queue.length - index > 3) {
       return;
     }
-    // The song playing now first, then the two before it: a song the radio
-    // knows nothing about must not end the music, which is what a single
-    // seed with no answer used to do.
-    const seeds = [queue[index], queue[index - 1], queue[index - 2]]
+    // The song playing now, then the songs before it that were LISTENED to:
+    // one skipped after two seconds says what the listener does not want,
+    // and its neighbours were the next eight.
+    const before = [queue[index - 1], queue[index - 2], queue[index - 3]]
       .map(q => sourceTrackFor(q ?? null))
-      .filter((t): t is Track => !!t);
+      .filter((t): t is Track => !!t && !skippedLast(t));
+    const seeds = [sourceTrackFor(queue[index] ?? null), ...before].filter(
+      (t): t is Track => !!t,
+    );
     if (!seeds.length && queueSource.length) {
       seeds.push(queueSource[queueSource.length - 1]);
     }
@@ -1788,28 +1855,56 @@ export async function topUpFromRadio(force = false): Promise<void> {
     // came from a catalogue lookup WITH one. Two ids for one song is a dedupe
     // that passes everything through.
     const seen = new Set(queueSource.map(getDownloadKey));
-    // The last twenty played go to the back rather than out: the same few
-    // songs coming round again is what made radio feel like a loop, but a
-    // seed with thin data may have little else, and some music beats none.
-    const lately = new Set(readRecentlyPlayed().map(getDownloadKey));
-    let picks: Track[] = [];
-    for (const seed of seeds) {
-      const fresh = (
-        await getRadio(cleanText(seed.title), cleanText(seed.artist), 16)
-      )
-        .map(raw => normalizeTrack(raw))
-        .filter(
-          (t): t is Track =>
-            !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
+    const ask = (seed: Track) =>
+      getRadio(cleanText(seed.title), cleanText(seed.artist), 20, seed)
+        .catch(() => [] as Track[])
+        .then(list =>
+          list
+            .map(raw => normalizeTrack(raw))
+            .filter(
+              (t): t is Track =>
+                !!t && isPlayableTrack(t) && !seen.has(getDownloadKey(t)),
+            ),
         );
-      const played = (t: Track) => lately.has(getDownloadKey(t));
-      picks = [...fresh.filter(t => !played(t)), ...fresh.filter(played)]
-        .slice(0, 8)
-        .map(t => ({...chosenCopy(t), _autoplay: true}));
-      if (picks.length) {
-        break;
+    // Two seeds at once, the song playing and the last one heard before it:
+    // a radio for one song drifts with that song, and a sitting is more
+    // than its latest song. The first leads, two picks to the second's one,
+    // and a song both radios offer is the surest pick of all.
+    const [lists, sig] = [
+      await Promise.all(seeds.slice(0, 2).map(ask)),
+      radioSignals(),
+    ];
+    const [firstList = [], secondList = []] = lists;
+    const both: Record<string, number> = {};
+    const firstKeys = new Set(firstList.map(getDownloadKey));
+    for (const t of secondList) {
+      if (firstKeys.has(getDownloadKey(t))) {
+        both[getDownloadKey(t)] = AGREED;
       }
     }
+    const merged: Track[] = [];
+    const taken = new Set<string>();
+    const put = (t: Track | undefined) => {
+      if (t && !taken.has(getDownloadKey(t))) {
+        taken.add(getDownloadKey(t));
+        merged.push(t);
+      }
+    };
+    for (let i = 0, j = 0; i < firstList.length || j < secondList.length; ) {
+      put(firstList[i++]);
+      put(firstList[i++]);
+      put(secondList[j++]);
+    }
+    // A third seed only when the first two found nothing: some music beats
+    // none.
+    if (!merged.length && seeds[2]) {
+      (await ask(seeds[2])).forEach(put);
+    }
+    // In the order this listener's history puts them (radioRank.ts): songs
+    // they keep skipping left out, the last twenty played at the back.
+    const picks = rankRadio(merged, sig, both)
+      .slice(0, 8)
+      .map(t => ({...chosenCopy(t), _autoplay: true}));
     const items = picks
       .map(t => ({t, q: toQueueItem(t, currentQuality())}))
       .filter(x => x.q !== null);
@@ -1905,6 +2000,11 @@ function closeListen(position?: number, byUser = false): void {
   }
   const crossfade = readSettings().crossfadeDuration;
   const listen = listenOutcome(at, dur, crossfade);
+  const endedByUser =
+    byUser || Date.now() - Math.max(manualStepAt, userMoveAt) <= 3000;
+  // The radio's memory of this listener: skipped in the first seconds, or
+  // heard to the end (taste.ts).
+  noteListen(src, listen, endedByUser);
   logEvent('song_listened', {
     ...songParams(src),
     // How far it got, which is the time heard unless it was seeked.
@@ -1913,10 +2013,7 @@ function closeListen(position?: number, byUser = false): void {
     // The same as yes/no, for the reports that read it since v1.2.36.
     finished: listen === 'full' ? 'yes' : 'no',
     // Text, not a number: GA keeps a number in a text dimension as blank.
-    ended_by:
-      byUser || Date.now() - Math.max(manualStepAt, userMoveAt) <= 3000
-        ? 'user'
-        : 'auto',
+    ended_by: endedByUser ? 'user' : 'auto',
     rate: playbackRate(),
     crossfade,
   });
@@ -2076,9 +2173,15 @@ function skipPastError(): void {
     .catch(() => undefined)
     .then(t => {
       const name = t?.title ? cleanText(String(t.title)) : '';
-      toast(name ? `Couldn't play ${name}, skipped` : "Couldn't play this song, skipped", 'info', {
-        art: typeof t?.artwork === 'string' ? t.artwork : null,
-      });
+      toast(
+        name
+          ? `Couldn't play ${name}, skipped`
+          : "Couldn't play this song, skipped",
+        'info',
+        {
+          art: typeof t?.artwork === 'string' ? t.artwork : null,
+        },
+      );
     });
   skipNext().catch(() => {});
 }
@@ -2135,7 +2238,11 @@ let stalledSince = 0;
  * few seconds on its own" can be traced to its cause from Analytics.
  */
 let jumpLast = {pos: -1, at: 0, idx: -1};
-function noteJump(state: State | undefined, position: number, idx: number): void {
+function noteJump(
+  state: State | undefined,
+  position: number,
+  idx: number,
+): void {
   const now = Date.now();
   const prev = jumpLast;
   jumpLast = {pos: state === State.Playing ? position : -1, at: now, idx};
@@ -2345,6 +2452,8 @@ export function startCrossfadeWatcher(getSeconds: () => number): void {
 let playingNow = false;
 let bufferingNow = false;
 let bufferTimer: ReturnType<typeof setTimeout> | null = null;
+/** When the current stall became one (bufferingNow went true). */
+let stalledAt = 0;
 const playStateChanges = createEmitter();
 
 function notePlayState(state: State | undefined): void {
@@ -2372,11 +2481,22 @@ function notePlayState(state: State | undefined): void {
     if (bufferingNow) {
       bufferingNow = false;
       changed = true;
+      // How long a real stall lasted, and on what: "it paused and buffered"
+      // reported from memory could not be told apart from a slow network, a
+      // stream retry or a cache read. `adb logcat -s MPJS` shows each one.
+      const t = trackSnapshot;
+      diag(
+        'buffer',
+        `stalled ${Date.now() - stalledAt + 1500}ms: ${String(
+          t?.title ?? '',
+        )} (${String(t?.url ?? '').match(/source=(\w+)/)?.[1] ?? 'file'})`,
+      );
     }
   } else if (!bufferTimer && !bufferingNow) {
     bufferTimer = setTimeout(() => {
       bufferTimer = null;
       bufferingNow = true;
+      stalledAt = Date.now();
       playStateChanges.emit();
     }, 1500);
   }
@@ -2420,11 +2540,6 @@ export function useIsPlaying(frozen = false): boolean {
 
 export function useIsBuffering(frozen = false): boolean {
   return useHeld(playStateChanges.subscribe, () => bufferingNow, frozen);
-}
-
-/** The engine's own state, for screens that compare it: Playing, Paused... */
-export function isPlayingNow(): boolean {
-  return playingNow;
 }
 
 export {TrackPlayer, State, Event, RepeatMode};

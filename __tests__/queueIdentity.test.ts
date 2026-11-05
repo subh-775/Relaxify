@@ -178,21 +178,37 @@ test('the playing row is found by identity, not a stale index', () => {
   expect(rowIndex(queue, null, 3)).toBe(3);
 });
 
-test('a SoundCloud song is queued as HLS, any other as a plain stream', async () => {
-  // SoundCloud serves HLS only since October 2026, behind a proxy URL with no
-  // .m3u8 in it: unmarked, ExoPlayer read the playlist as an audio file and
-  // every SoundCloud song failed.
+test('a SoundCloud song plays its copy elsewhere, through the engine', async () => {
+  // SoundCloud is no longer a source: its own uploads are previews or
+  // DRM-locked. A saved SoundCloud song is sent to stream_by_name, which
+  // redirects to the same song on JioSaavn or YouTube: a plain stream.
   await playTrack({
     title: 'Cloud',
     artist: 'Someone',
+    duration_ms: 200000,
     playable_source: 'soundcloud',
     sources: {soundcloud: {url: 'https://soundcloud.com/a/b'}},
   } as any);
   await addToQueue(song('Saavn'));
   const cloud = engine.__queue.find(t => t.title === 'Cloud');
   const saavn = engine.__queue.find(t => t.title === 'Saavn');
-  expect(cloud.type).toBe('hls');
+  expect(cloud.url).toContain('/stream_by_name?title=Cloud&artist=Someone');
+  expect(cloud.type).toBeUndefined();
   expect(saavn.type).toBeUndefined();
+});
+
+test('a SoundCloud song with a JioSaavn copy on it plays that copy', async () => {
+  await playTrack({
+    title: 'Both',
+    artist: 'Someone',
+    playable_source: 'soundcloud',
+    sources: {
+      soundcloud: {url: 'https://soundcloud.com/a/c'},
+      jiosaavn: {url: 'https://www.jiosaavn.com/song/both/x'},
+    },
+  } as any);
+  const both = engine.__queue.find(t => t.title === 'Both');
+  expect(both.url).toContain('source=jiosaavn');
 });
 
 test('a song with no cover still queues: the engine refuses an empty artwork', async () => {
