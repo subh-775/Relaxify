@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Animated,
   Image,
+  type LayoutChangeEvent,
   Modal,
   NativeModules,
   Share,
@@ -49,15 +50,26 @@ import {
 } from '../glyphs';
 import {C, S, T} from '../theme';
 import {deleteDownload, type Track} from '../backend';
-import {formatTotalDuration, getBestArtworkUrl, getTrackId} from '../tracks';
+import {
+  formatTotalDuration,
+  getBestArtworkUrl,
+  getTrackId,
+  thumbArtwork,
+} from '../tracks';
 import {
   collectionKey,
   isSaved,
   toggleSaved,
   type Collection,
+  releaseKind,
+  releaseTitle,
 } from '../collections';
 import {CollectionArt} from '../components/CollectionArt';
-import {TrackRow, listWindowing} from '../components/TrackRow';
+import {
+  TRACK_ROW_HEIGHT,
+  TrackRow,
+  listWindowing,
+} from '../components/TrackRow';
 import {toast} from '../toast';
 import {
   enqueueDownload,
@@ -98,6 +110,7 @@ import {Sheet} from '../components/Sheet';
 import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {EmptyState} from '../components/EmptyState';
+import {SkeletonBar, SkeletonRows} from '../components/Skeleton';
 import {MoreByArtist} from '../components/MoreByArtist';
 import {shuffleUpcoming} from '../queueOrder';
 
@@ -116,6 +129,91 @@ function kindLabel(kind: Collection['kind']): string {
       return 'Playlist';
   }
 }
+
+/**
+ * Live download progress, subscribed HERE rather than by the screen: the jobs
+ * list is replaced on every 500 ms poll, and read at the top it re-rendered
+ * the whole screen twice a second for as long as anything was downloading —
+ * on every playlist, not only Downloads, where it is shown.
+ */
+function DownloadJobs() {
+  const jobs = useDownloadJobs();
+  if (!jobs.length) {
+    return null;
+  }
+  return (
+    <View style={styles.jobs}>
+      {jobs.map(j => (
+        <DownloadRow key={j.taskId} job={j} />
+      ))}
+    </View>
+  );
+}
+
+type RowFrom = {playlistId?: string; playlistName?: string};
+
+/** One song in the list, re-rendered only when its own props change. */
+const CollectionRow = React.memo(function CollectionRow({
+  track,
+  selecting,
+  checked,
+  canSelect,
+  playlistFrom,
+  onPlay,
+  onToggle,
+  onStartSelect,
+  onMenu,
+  number,
+}: {
+  /** An album's track number, in place of the cover every row shares. */
+  number?: number;
+  track: Track;
+  selecting: boolean;
+  checked: boolean;
+  canSelect: boolean;
+  playlistFrom?: RowFrom;
+  onPlay: (t: Track) => void;
+  onToggle: (t: Track) => void;
+  onStartSelect: (t: Track) => void;
+  onMenu?: (t: Track, from?: RowFrom) => void;
+}) {
+  const toggle = useCallback(() => onToggle(track), [onToggle, track]);
+  const press = useCallback(
+    () => (selecting ? onToggle(track) : onPlay(track)),
+    [selecting, onToggle, onPlay, track],
+  );
+  const menu = useCallback(
+    () => onMenu?.(track, playlistFrom),
+    [onMenu, track, playlistFrom],
+  );
+  const hold = useCallback(() => onStartSelect(track), [onStartSelect, track]);
+  return (
+    <View style={styles.rowWrap}>
+      {selecting && (
+        <TouchableOpacity onPress={toggle} hitSlop={10} style={styles.check}>
+          {checked ? (
+            <CheckSquare size={22} color={C.accent} />
+          ) : (
+            <Square size={22} color={C.faint} />
+          )}
+        </TouchableOpacity>
+      )}
+      <View style={styles.rowFill}>
+        <TrackRow
+          track={track}
+          onPress={press}
+          onLongPress={
+            canSelect && !selecting ? hold : onMenu ? menu : undefined
+          }
+          onMenu={onMenu && !selecting ? menu : undefined}
+          showActions={!selecting}
+          showDuration={false}
+          index={number}
+        />
+      </View>
+    </View>
+  );
+});
 
 export function CollectionScreen({
   collection,
@@ -170,7 +268,6 @@ export function CollectionScreen({
   const playlists = usePlaylists();
   const localTracks = useDownloads();
   const phoneMusic = usePhoneMusic();
-  const jobs = useDownloadJobs();
 
   const tracks = useMemo(() => {
     switch (collection.kind) {
@@ -189,14 +286,24 @@ export function CollectionScreen({
     }
   }, [collection, likes, playlists, localTracks, phoneMusic]);
   const runtime = useMemo(() => formatTotalDuration(tracks), [tracks]);
+  const isAlbum = collection.kind === 'album';
 
   // Sort and find, for this visit only. "Order" is the list's own: the
   // record's running order, or the playlist's.
   const [sortBy, setSortBy] = useState<'order' | 'title' | 'artist'>('order');
   const [find, setFind] = useState<string | null>(null);
+  /** An album's rows are numbered, not each given the cover they all share
+   *  (the page's own). Not while searching it: the numbers would skip. */
+  // Not while the album loads: the one song it opened with is not track 1.
+  const numbered = isAlbum && !find?.trim() && !loading;
+  // Opened with the song it came from, the album is still being found: it
+  // read as a finished one-song album ("1 song", numbered 1) until it landed.
+  const fillingIn = loading && tracks.length > 0;
   const nextSort = useCallback(
     () =>
-      setSortBy(s => (s === 'order' ? 'title' : s === 'title' ? 'artist' : 'order')),
+      setSortBy(s =>
+        s === 'order' ? 'title' : s === 'title' ? 'artist' : 'order',
+      ),
     [],
   );
   const sortLabel =
@@ -230,7 +337,11 @@ export function CollectionScreen({
   const livePlaylist = isOwnPlaylist
     ? playlists.find(p => p.id === playlistId)
     : undefined;
-  const displayName = livePlaylist?.name ?? collection.name;
+  // An album without the store's " - Single" tag: the word over the title
+  // says what it is.
+  const displayName =
+    livePlaylist?.name ??
+    (isAlbum ? releaseTitle(collection.name) : collection.name);
 
   // The original this playlist was imported from. Imports made before Sync
   // existed remember no link, except the most recent one, which the import
@@ -255,7 +366,9 @@ export function CollectionScreen({
         const added = addTracksToPlaylist(livePlaylist.id, res.tracks);
         setImportedFrom(livePlaylist.id, {url: from.url, keys: res.keys});
         const notFound = res.missing
-          ? ` ${res.missing} new ${res.missing === 1 ? 'song was' : 'songs were'} not found.`
+          ? ` ${res.missing} new ${
+              res.missing === 1 ? 'song was' : 'songs were'
+            } not found.`
           : '';
         toast(
           added
@@ -348,7 +461,9 @@ export function CollectionScreen({
   // freshly-opened playlist doesn't pop empty squares in one by one.
   useEffect(() => {
     tracks.slice(0, 12).forEach(t => {
-      const art = getBestArtworkUrl(t);
+      // The size the rows draw: prefetching the full cover warmed a picture
+      // no row ever asks for.
+      const art = thumbArtwork(getBestArtworkUrl(t));
       if (art) {
         Image.prefetch(art).catch(() => {});
       }
@@ -357,13 +472,17 @@ export function CollectionScreen({
   const selecting = selected !== null;
   const canSelect = collection.kind === 'downloads';
   // Only a playlist of the user's can offer "remove from this playlist".
-  const playlistFrom =
-    collection.kind === 'userPlaylist'
-      ? {
-          playlistId: collection.id.replace(/^pl:/, ''),
-          playlistName: collection.name,
-        }
-      : undefined;
+  // Memoised: a new object each render would re-render every row.
+  const playlistFrom = useMemo(
+    () =>
+      collection.kind === 'userPlaylist'
+        ? {
+            playlistId: collection.id.replace(/^pl:/, ''),
+            playlistName: collection.name,
+          }
+        : undefined,
+    [collection.kind, collection.id, collection.name],
+  );
 
   const toggleOne = useCallback((t: Track) => {
     setSelected(prev => {
@@ -418,8 +537,75 @@ export function CollectionScreen({
   }, [selected, tracks, onChanged]);
 
   // What you see is what plays: a sorted or filtered list queues in that
-  // order.
-  const play = useCallback((t: Track) => onPlay(t, shown), [onPlay, shown]);
+  // order. Read through refs so `play` never changes: App hands a fresh
+  // onPlay every render, and a new `play` re-rendered every row of the list.
+  const onPlayRef = useRef(onPlay);
+  onPlayRef.current = onPlay;
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  const play = useCallback(
+    (t: Track) => onPlayRef.current(t, shownRef.current),
+    [],
+  );
+  const startSelect = useCallback(
+    (t: Track) => setSelected(new Set([getTrackId(t)])),
+    [],
+  );
+
+  /**
+   * One stable renderItem over a memoised row. It was an inline function
+   * handing each TrackRow fresh closures, which defeated TrackRow's memo: any
+   * re-render of this screen (a song change, play/pause, a playlist edit)
+   * re-drew every mounted row — dozens of covers, gesture handlers and hearts
+   * — and that is what made the list stutter.
+   */
+  const renderItem = useCallback(
+    ({item, index}: {item: Track; index: number}) => (
+      <CollectionRow
+        number={numbered ? index : undefined}
+        track={item}
+        selecting={selecting}
+        checked={selecting && selected.has(getTrackId(item))}
+        canSelect={canSelect}
+        playlistFrom={playlistFrom}
+        onPlay={play}
+        onToggle={toggleOne}
+        onStartSelect={startSelect}
+        onMenu={onMenu}
+      />
+    ),
+    [
+      selecting,
+      selected,
+      canSelect,
+      playlistFrom,
+      play,
+      toggleOne,
+      startSelect,
+      onMenu,
+      numbered,
+    ],
+  );
+
+  /**
+   * Every row is TRACK_ROW_HEIGHT, so the list knows where each one is
+   * without drawing it: a fling lands on rows already placed instead of
+   * measuring its way there. VirtualizedList does not add the header to
+   * these offsets itself, so the header's measured height is.
+   */
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const onHeaderLayout = useCallback(
+    (e: LayoutChangeEvent) => setHeaderHeight(e.nativeEvent.layout.height),
+    [],
+  );
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({
+      length: TRACK_ROW_HEIGHT,
+      offset: headerHeight + TRACK_ROW_HEIGHT * index,
+      index,
+    }),
+    [headerHeight],
+  );
 
   /** Queue every track for download. Sequential so the backend isn't handed
    *  fifty simultaneous fetches. */
@@ -511,15 +697,7 @@ export function CollectionScreen({
       // Give the queue a beat to build before shuffling its tail.
       setTimeout(() => setShuffle(true).catch(() => {}), 600);
     }
-  }, [
-    onPlay,
-    tracks,
-    playingHere,
-    shuffled,
-    origin,
-    collection,
-    displayName,
-  ]);
+  }, [onPlay, tracks, playingHere, shuffled, origin, collection, displayName]);
 
   /** The green button: pause/resume when this collection is playing, start it
    *  otherwise — never a dead control. */
@@ -651,6 +829,7 @@ export function CollectionScreen({
         // playlist holding one song twice gets the place as well.
         keyExtractor={(t, i) => t.file_path || `${getTrackId(t)}#${i}`}
         {...listWindowing}
+        getItemLayout={getItemLayout}
         contentContainerStyle={[styles.list, listEnd]}
         showsVerticalScrollIndicator={false}
         onScroll={Animated.event(
@@ -659,7 +838,7 @@ export function CollectionScreen({
         )}
         scrollEventThrottle={16}
         ListHeaderComponent={
-          <View style={styles.header}>
+          <View style={styles.header} onLayout={onHeaderLayout}>
             {/* Cover beside the title, so the first songs show without a
                 scroll. The cover still eases back as the list moves up. */}
             <View style={styles.top}>
@@ -669,12 +848,24 @@ export function CollectionScreen({
               </Animated.View>
               <View style={styles.meta}>
                 <View style={styles.kindLine}>
-                  <Text style={styles.kind}>{kindLabel(collection.kind)}</Text>
-                  <PlaylistSourceBadge source={playlistSource(livePlaylist)} />
+                  <Text style={styles.kind}>
+                    {isAlbum
+                      ? releaseKind(collection.name, tracks, !loading)
+                      : kindLabel(collection.kind)}
+                  </Text>
+                  <PlaylistSourceBadge
+                    source={playlistSource(livePlaylist)}
+                    always
+                  />
                 </View>
-                <Text style={styles.name} numberOfLines={3}>
-                  {displayName}
-                </Text>
+                {collection.name ? (
+                  <Text style={styles.name} numberOfLines={3}>
+                    {displayName}
+                  </Text>
+                ) : (
+                  // Its name is still being found.
+                  <SkeletonBar width="85%" height={24} style={styles.nameBar} />
+                )}
                 {collection.kind === 'album' && !!collection.artist && (
                   <Text style={styles.by} numberOfLines={1}>
                     {collection.artist}
@@ -685,21 +876,23 @@ export function CollectionScreen({
                     {shared ? `Shared by ${sharedBy}` : `From ${sharedBy}`}
                   </Text>
                 )}
-                <Text style={styles.sub}>
-                  {`${tracks.length} ${tracks.length === 1 ? 'song' : 'songs'}${
-                    runtime ? `, ${runtime}` : ''
-                  }`}
-                </Text>
+                {/* Loading at all, not only filling in: an empty page that is
+                    still loading said "0 songs". */}
+                {loading ? (
+                  <SkeletonBar width={130} height={12} style={styles.subBar} />
+                ) : (
+                  <Text style={styles.sub}>
+                    {`${
+                      isAlbum && collection.year ? `${collection.year} · ` : ''
+                    }${tracks.length} ${
+                      tracks.length === 1 ? 'song' : 'songs'
+                    }${runtime ? `, ${runtime}` : ''}`}
+                  </Text>
+                )}
               </View>
             </View>
 
-            {collection.kind === 'downloads' && jobs.length > 0 && (
-              <View style={styles.jobs}>
-                {jobs.map(j => (
-                  <DownloadRow key={j.taskId} job={j} />
-                ))}
-              </View>
-            )}
+            {collection.kind === 'downloads' && <DownloadJobs />}
 
             {!selecting && (
               <>
@@ -707,7 +900,11 @@ export function CollectionScreen({
                     order, so an album gets Play alone, full width. */}
                 <View style={styles.bigRow}>
                   <TouchableOpacity
-                    style={[styles.bigBtn, styles.bigPlay]}
+                    style={[
+                      styles.bigBtn,
+                      styles.bigPlay,
+                      !tracks.length && styles.unready,
+                    ]}
                     activeOpacity={0.85}
                     onPress={onBigPlay}
                     disabled={!tracks.length}
@@ -723,16 +920,17 @@ export function CollectionScreen({
                   </TouchableOpacity>
                   {collection.kind !== 'album' && (
                     <TouchableOpacity
-                      style={[styles.bigBtn, styles.bigShuffle]}
+                      style={[
+                        styles.bigBtn,
+                        styles.bigShuffle,
+                        !tracks.length && styles.unready,
+                      ]}
                       activeOpacity={0.8}
                       onPress={shuffle}
                       disabled={!tracks.length}
                       accessibilityRole="button"
                       accessibilityState={{selected: shuffled}}>
-                      <Shuffle
-                        size={19}
-                        color={shuffled ? C.accent : C.text}
-                      />
+                      <Shuffle size={19} color={shuffled ? C.accent : C.text} />
                       <Text
                         style={[
                           styles.bigShuffleText,
@@ -751,7 +949,9 @@ export function CollectionScreen({
                       onPress={() => runSync(syncFrom)}
                       disabled={syncing}
                       accessibilityRole="button"
-                      accessibilityLabel={`Sync with the ${importSourceName(syncFrom.url)} playlist`}>
+                      accessibilityLabel={`Sync with the ${importSourceName(
+                        syncFrom.url,
+                      )} playlist`}>
                       {syncing ? (
                         <ActivityIndicator size="small" color={C.bg} />
                       ) : (
@@ -769,8 +969,13 @@ export function CollectionScreen({
                     <TouchableOpacity
                       activeOpacity={0.7}
                       hitSlop={10}
+                      // Not half an album: saved while loading, it kept only
+                      // the song it opened with.
+                      disabled={loading}
                       accessibilityRole="button"
-                      accessibilityLabel={saved ? 'Remove from library' : 'Save to library'}
+                      accessibilityLabel={
+                        saved ? 'Remove from library' : 'Save to library'
+                      }
                       onPress={() => {
                         const now = toggleSaved(collection);
                         setSaved(now);
@@ -807,7 +1012,11 @@ export function CollectionScreen({
                   {shared &&
                     (added ? (
                       <View style={styles.sortPill}>
-                        <CircleCheck size={16} color={C.accent} strokeWidth={2.4} />
+                        <CircleCheck
+                          size={16}
+                          color={C.accent}
+                          strokeWidth={2.4}
+                        />
                         <Text style={styles.sortText}>In your library</Text>
                       </View>
                     ) : (
@@ -839,10 +1048,12 @@ export function CollectionScreen({
           </View>
         }
         ListFooterComponent={
-          collection.kind === 'album' &&
-          !!collection.artist &&
-          !!onOpenAlbum &&
-          !find ? (
+          fillingIn ? (
+            <SkeletonRows count={7} />
+          ) : collection.kind === 'album' &&
+            !!collection.artist &&
+            !!onOpenAlbum &&
+            !find ? (
             <MoreByArtist
               artist={collection.artist}
               current={collection.name}
@@ -852,12 +1063,10 @@ export function CollectionScreen({
         }
         ListEmptyComponent={
           find && tracks.length ? (
-            <Text style={styles.empty}>{`No songs match "${find.trim()}".`}</Text>
+            <Text
+              style={styles.empty}>{`No songs match "${find.trim()}".`}</Text>
           ) : loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator size="large" color={C.accent} />
-              <Text style={styles.empty}>Loading songs…</Text>
-            </View>
+            <SkeletonRows count={8} />
           ) : (
             <EmptyState
               title={
@@ -872,51 +1081,12 @@ export function CollectionScreen({
                   ? 'Download a song from its menu and it plays here without a connection.'
                   : collection.kind === 'liked'
                   ? 'Tap the heart on any song and it lands here.'
-                  : 'Add songs from any song\'s menu.'
+                  : "Add songs from any song's menu."
               }
             />
           )
         }
-        renderItem={({item}) => {
-          const id = getTrackId(item);
-          const checked = selecting && selected.has(id);
-          return (
-            <View style={styles.rowWrap}>
-              {selecting && (
-                <TouchableOpacity
-                  onPress={() => toggleOne(item)}
-                  hitSlop={10}
-                  style={styles.check}>
-                  {checked ? (
-                    <CheckSquare size={22} color={C.accent} />
-                  ) : (
-                    <Square size={22} color={C.faint} />
-                  )}
-                </TouchableOpacity>
-              )}
-              <View style={styles.rowFill}>
-                <TrackRow
-                  track={item}
-                  onPress={() => (selecting ? toggleOne(item) : play(item))}
-                  onLongPress={
-                    canSelect && !selecting
-                      ? () => setSelected(new Set([id]))
-                      : onMenu
-                      ? () => onMenu(item, playlistFrom)
-                      : undefined
-                  }
-                  onMenu={
-                    onMenu && !selecting
-                      ? () => onMenu(item, playlistFrom)
-                      : undefined
-                  }
-                  showActions={!selecting}
-                  showDuration={false}
-                />
-              </View>
-            </View>
-          );
-        }}
+        renderItem={renderItem}
       />
 
       {/* Manage this playlist — same options as the library's long-press sheet,
@@ -1117,7 +1287,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
-  loadingBox: {alignItems: 'center', paddingTop: 26},
+  nameBar: {marginTop: 6, marginBottom: 4},
+  subBar: {marginTop: 8},
+  // Play and Shuffle with nothing to play yet (still loading): visibly off.
+  unready: {opacity: 0.4},
   // Background, rounded top, padding, scrim and handle all live in <Sheet>.
   sheet: {},
   sheetTitle: {

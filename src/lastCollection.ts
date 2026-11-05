@@ -25,7 +25,9 @@ const store = createStore<LastCollection | null>(
 
 /** What is kept of `c`, or null for an artist. Pure; exported for the test. */
 export function snapshotCollection(c: Collection): LastCollection | null {
-  if (c.kind === 'artist') {
+  // Nothing to carry on with: an artist, or a page with no name yet (an
+  // album still being found).
+  if (c.kind === 'artist' || !c.name) {
     return null;
   }
   const live =
