@@ -65,6 +65,7 @@ import {logEvent} from './analytics';
 import {toast} from './toast';
 import {createStore} from './storage';
 import {createEmitter} from './emitter';
+import {timedFetch} from './net';
 
 const JAM_DB =
   'https://relaxify-observability-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -228,7 +229,7 @@ const SERVER_TIME = {'.sv': 'timestamp'};
 
 /** One request to the database (Jam, and shared playlists: sharedPlaylists.ts). */
 export async function call<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-  const res = await fetch(url(path), {
+  const res = await timedFetch(url(path), {
     method,
     headers: body === undefined ? undefined : {'Content-Type': 'application/json'},
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -268,6 +269,22 @@ export function normalizeCode(raw: string): string {
     .replace(/O/g, '0')
     .replace(/I/g, '1')
     .slice(0, CODE_LEN);
+}
+
+/**
+ * The code in whatever was typed or pasted into the join box: the code alone
+ * ("k7qx 2m", "K7QX-2M"), or the whole invite message, whose last six-letter
+ * word is the code. Cut to six only after the spaces and dashes are gone.
+ */
+export function codeFrom(raw: string): string {
+  const words = raw.match(/[A-Za-z0-9]+/g) ?? [];
+  if (words.length > 2) {
+    const last = [...words].reverse().find(w => w.length === CODE_LEN);
+    if (last) {
+      return normalizeCode(last);
+    }
+  }
+  return normalizeCode(raw);
 }
 
 export function validCode(code: string): boolean {
@@ -739,6 +756,32 @@ async function takeOverIfStuck(code: string): Promise<void> {
   } catch {
     // Nothing to play on even after asking the radio: stay stopped.
   }
+}
+
+/**
+ * Play a song for the whole Jam now: one tapped in the Jam's "Up next" (and
+ * taken off it, as it is playing), or one found in the room's own search.
+ * Those rows did nothing when tapped; only the + and the drag handle worked.
+ */
+export async function playInJam(track: Track, key?: string): Promise<void> {
+  const v = view;
+  if (!v) {
+    await playTrack(track, [track]);
+    return;
+  }
+  // Quiet while it loads, so the track change is not announced half-made;
+  // announced once, below, when it is playing.
+  echoUntil = Date.now() + ECHO_MS;
+  await playTrack(await playable(track), [track], '', true);
+  if (key) {
+    view = {...v, queue: v.queue.filter(q => q.key !== key)};
+    emit();
+    await call(`jams/${v.code}/queue/${encodeURIComponent(key)}`, 'DELETE').catch(
+      () => {},
+    );
+  }
+  echoUntil = 0;
+  await publish(v.code);
 }
 
 /** Play the Jam queue's first song and take it off the queue. False when
