@@ -135,6 +135,14 @@ def lastfm_similar(title, artist, limit=15):
     return pairs
 
 
+def _artist_key(name):
+    """One artist however a source writes them: "Kaneko Ayano" and a channel's
+    "kanekoayano" are one key (case, spaces and marks aside)."""
+    import unicodedata
+    n = unicodedata.normalize("NFKC", name or "").casefold()
+    return re.sub(r"[\W_]+", "", n)
+
+
 def _diversify(tracks, limit, max_per_artist=3):
     """Interleave tracks across artists (round-robin) and cap how many come
     from any one artist, so the radio feels curated instead of looping a single
@@ -142,7 +150,7 @@ def _diversify(tracks, limit, max_per_artist=3):
     from collections import OrderedDict, defaultdict
     buckets = OrderedDict()
     for t in tracks:
-        a = (_primary_artist(t.get("artist", "")) or "?").lower()
+        a = _artist_key(_primary_artist(t.get("artist", ""))) or "?"
         buckets.setdefault(a, []).append(t)
 
     out = []
@@ -223,14 +231,23 @@ def _svc():
 
 
 def _resolve(pair):
-    """Resolve one (name, artist) to a raw JioSaavn result dict, or None."""
+    """Resolve one (name, artist) to a raw JioSaavn result dict, or None.
+
+    Only when the hit IS that song by that artist: the first hit was taken
+    as it came, and "Never Young" by Loser came back as three strangers'
+    songs of that name, and a Japanese seed's radio as a Hindi rap track."""
+    from types import SimpleNamespace
+    from components.spotify_import import is_good_match
+
     name, art = pair
     try:
-        songs = _jiosaavn().search(f"{name} {art}".strip(), limit=1)
-        if songs:
-            return {"source_type": "jiosaavn", **songs[0].to_dict()}
+        songs = _jiosaavn().search(f"{name} {art}".strip(), limit=3)
     except Exception:
-        pass
+        return None
+    item = {"title": name or "", "artist": art or "", "duration_ms": 0}
+    for s in songs:
+        if is_good_match(item, SimpleNamespace(title=s.title, artist=s.artist, duration_ms=0)):
+            return {"source_type": "jiosaavn", **s.to_dict()}
     return None
 
 
@@ -243,26 +260,33 @@ def _resolve_elsewhere(pair):
     JioSaavn used to be dropped on the floor — so seeding from, say, a metal track
     returned a handful of songs and then dried up.
 
-    SoundCloud is tried before YouTube: it's cheaper to search and its hits are
-    already direct streams. Either returns None when the host has it disabled.
+    YouTube only (SoundCloud was dropped as a source); None when the host has
+    it disabled.
     """
     from components.source_merger import SourceType
 
     name, art = pair
     q = f"{name} {art}".strip()
+    # Not SoundCloud any more: its own uploads are previews or DRM-locked,
+    # so a hit there was mostly someone else's copy (mobile_server _rematch).
     for source_type, label in (
-        (SourceType.SOUNDCLOUD, "soundcloud"),
         (SourceType.YOUTUBE, "youtube"),
     ):
         try:
             client = _svc()._get_client(source_type)
             if client is None:
                 continue          # source switched off on this device
-            hits = client.search(q, 1)
-            if hits:
-                return {"source_type": label, **hits[0].to_dict()}
+            hits = client.search(q, 3)
         except Exception:
             continue
+        # That song by that artist, as on JioSaavn (_resolve): the first
+        # upload of a name is a cover as often as not.
+        from types import SimpleNamespace
+        from components.spotify_import import is_good_match
+        item = {"title": name or "", "artist": art or "", "duration_ms": 0}
+        for h in hits or []:
+            if is_good_match(item, SimpleNamespace(title=h.title, artist=h.artist, duration_ms=0)):
+                return {"source_type": label, **h.to_dict()}
     return None
 
 
@@ -312,13 +336,45 @@ def _lastfm_radio(title, artist, limit=12, shuffle=True):
     return raw
 
 
-def jiosaavn_station(title, artist, n=12):
+def _saavn_seed_id(title, artist, saavn_url=""):
+    """JioSaavn's id for the seed song.
+
+    From the song's own page when the phone has it: the exact song, with no
+    search to get wrong. Else searched for, and only a hit that is that song
+    by that artist; the first hit as it came was a cover or another song of
+    the name as often as not, and its station was that song's neighbours."""
+    from types import SimpleNamespace
+    from components.spotify_import import is_good_match
+
+    if saavn_url:
+        try:
+            from components.profile import _jcall, _token_from_url
+            d = _jcall({"__call": "webapi.get", "token": _token_from_url(saavn_url),
+                        "type": "song", "api_version": "4"})
+            songs = d.get("songs") if isinstance(d, dict) else None
+            if songs and songs[0].get("id"):
+                return str(songs[0]["id"])
+        except Exception:
+            pass
+    item = {"title": title or "", "artist": artist or "", "duration_ms": 0}
+    # "Weird Fishes/Arpeggi" found nothing with its slash.
+    for q in {f"{title} {_primary_artist(artist)}".strip(),
+              re.sub(r"[/\\|]+", " ", f"{title} {_primary_artist(artist)}").strip()}:
+        try:
+            hits = _jiosaavn().search(q, limit=5)
+        except Exception:
+            continue
+        for h in hits:
+            if is_good_match(item, SimpleNamespace(title=h.title, artist=h.artist, duration_ms=0)):
+                return h.id
+    return ""
+
+
+def jiosaavn_station(title, artist, n=12, saavn_url=""):
     """The next `n` songs of JioSaavn's station for the seed, as raw dicts."""
     try:
-        seed = _jiosaavn().search(f"{title} {_primary_artist(artist)}".strip(), limit=1)
-        if not seed:
-            return []
-        songs = _jiosaavn().station(seed[0].id, n)
+        sid = _saavn_seed_id(title, artist, saavn_url)
+        songs = _jiosaavn().station(sid, n) if sid else []
     except Exception:
         return []
     return [{"source_type": "jiosaavn", **s.to_dict()} for s in songs]
@@ -364,31 +420,135 @@ def _on_saavn(item):
     return None
 
 
-def youtube_radio(title, artist, n=12):
-    """YouTube Music's radio for the seed, matched to JioSaavn, as raw dicts.
-    Nothing when YouTube is switched off on the phone, or off the phone (no
-    NewPipe)."""
+_VIDEO_ID = re.compile(r"(?:[?&]v=|youtu\.be/)([\w-]{11})")
+# How far into a mix to look.
+MIX_DEPTH = 32
+# A mix's song kept as its YouTube copy: a song's length, not a podcast's
+# or a one-hour loop's.
+_SONG_MS = (60_000, 10 * 60_000)
+
+
+def _as_youtube(item):
+    """A mix item JioSaavn lacks, as the YouTube result it already is, or None
+    for one that is not a song (too short or long)."""
+    m = _VIDEO_ID.search(item.get("url") or "")
+    d = int(item.get("duration_ms") or 0)
+    if not m or not (_SONG_MS[0] <= d <= _SONG_MS[1]):
+        return None
+    return {"source_type": "youtube", "id": m.group(1), "title": item["title"],
+            "artist": item["artist"], "url": f"https://www.youtube.com/watch?v={m.group(1)}",
+            "duration_ms": d, "thumbnail": item.get("artwork") or "", "is_music": True}
+
+
+def youtube_radio(title, artist, n=12, video_url=""):
+    """YouTube Music's radio for the seed, as raw dicts: each song on JioSaavn
+    when it is there (its quality), else as its own YouTube copy.
+
+    It kept only what JioSaavn also carries, so a seed outside it (Kaneko
+    Ayano's 光の方へ) kept 3 of its mix's songs and was filled up with
+    strangers' songs. From the seed's own video when the phone has it, else
+    the seed is searched for. Nothing when YouTube is switched off on the
+    phone, or off the phone (no NewPipe)."""
     try:
         from components.source_merger import SourceType
         import newpipe_yt
 
         if _svc()._get_client(SourceType.YOUTUBE) is None:
             return []
+        # The song's YouTube Music copy first: the mix of a music video (the
+        # copy a phone may be playing, an artist's own upload) is "more of
+        # this artist", all eight picks hers; the song's is the radio. The
+        # video the phone has is the fallback.
         hits = newpipe_yt.search(f"{title} {_primary_artist(artist)}".strip(), 1, music=True)
-        vid = re.search(r"[?&]v=([\w-]{11})", (hits[0].get("url") or "") if hits else "")
+        vid = _VIDEO_ID.search((hits[0].get("url") or "") if hits else "")
+        if not vid:
+            vid = _VIDEO_ID.search(video_url or "")
         if not vid:
             return []
         v = vid.group(1)
-        mix = newpipe_yt.playlist(f"https://www.youtube.com/watch?v={v}&list=RDAMVM{v}", n + 8) or {}
+        mix = newpipe_yt.playlist(f"https://www.youtube.com/watch?v={v}&list=RDAMVM{v}", MIX_DEPTH) or {}
     except Exception:
         return []
+    seed_key = _artist_key(_primary_artist(artist))
     items = []
-    for t in (mix.get("tracks") or [])[1:]:          # the first is the seed itself
+    for t in (mix.get("tracks") or []):
+        if v in (t.get("url") or ""):
+            continue                                  # the seed itself
         name, art = _yt_song(t.get("title"), t.get("artist"))
+        # An artist's own channel names them twice ("カネコアヤノ /
+        # kanekoayano"): the seed's artist, when it is them, so they count as
+        # one artist (five of eight picks were hers, as two "artists"), and
+        # otherwise the first way of writing it.
+        parts = [p.strip() for p in re.split(r"\s+/\s+", art or "") if p.strip()]
+        if seed_key and any(_artist_key(p) == seed_key for p in parts):
+            art = _primary_artist(artist)
+        elif len(parts) > 1:
+            art = parts[0]
         if name:
-            items.append({"title": name, "artist": art, "duration_ms": t.get("duration_ms") or 0})
+            items.append({"title": name, "artist": art, "url": t.get("url") or "",
+                          "artwork": t.get("artwork") or "",
+                          "duration_ms": t.get("duration_ms") or 0})
+    # Deeper than the songs wanted: a mix leads with the seed's own artist
+    # (Kaneko Ayano's: six of its first twenty were hers), and the artist cap
+    # needs others to put in their place.
+    items = items[: max(n + 4, MIX_DEPTH)]
+
+    def one(item):
+        return _on_saavn(item) or _as_youtube(item)
+
     with ThreadPoolExecutor(max_workers=8) as ex:
-        return [r for r in ex.map(_on_saavn, items[: n + 4]) if r]
+        return [r for r in ex.map(one, items) if r]
+
+
+def _same_song(a, b):
+    """One song by one artist, however each source titles it: "光の方へ /
+    Kaneko Ayano - Hikarinohoue" by カネコアヤノ is "光の方へ - Hikari No Hou
+    E" by Kaneko Ayano, and was queued after itself."""
+    from components.profile import _song_core
+
+    def named_in(credit, t):
+        # The artist written into the title: a channel credited in one
+        # script titles its upload "光の方へ / Kaneko Ayano - ...".
+        k = _artist_key(_primary_artist(credit or ""))
+        return len(k) >= 3 and k in _artist_key(t.get("title") or "")
+
+    if not (_same_artist(a.get("artist", ""), b.get("artist", ""))
+            or named_in(b.get("artist"), a) or named_in(a.get("artist"), b)):
+        return False
+    ca, cb = _song_core(a.get("title") or ""), _song_core(b.get("title") or "")
+    if not ca or not cb:
+        return False
+    if ca == cb or (min(len(ca), len(cb)) >= 2 and (ca.startswith(cb) or cb.startswith(ca))):
+        return True
+    # In two scripts: "愛のままを / Kaneko Ayano - Ainomamawo" is "Ai No Mama
+    # Wo", by a piece of its title written the other way.
+    def pieces(t):
+        return {k for k in (_artist_key(p) for p in re.split(r"\s+[-/|]\s+", t or "")) if len(k) >= 4}
+    return bool(pieces(a.get("title")) & pieces(b.get("title")))
+
+
+def _credit_seed_artist(raw, artist):
+    """An upload by the seed's artist under another spelling ("カネコアヤノ",
+    its title naming "Kaneko Ayano") is credited as the seed is: the phone's
+    artist cap took them for two artists, and three of eight were hers."""
+    lead = _primary_artist(artist or "")
+    k = _artist_key(lead)
+    if len(k) < 3:
+        return
+    for r in raw:
+        if (not _same_artist(r.get("artist", ""), artist)
+                and k in _artist_key(r.get("title") or "")
+                and not _artist_key(_primary_artist(r.get("artist", ""))).isascii()):
+            r["artist"] = lead
+
+
+def _same_artist(a, b):
+    """The same lead artist, in either script: "Kaneko Ayano" and
+    "カネコアヤノ / kanekoayano" are one (a channel writes both)."""
+    def keys(credit):
+        lead = _primary_artist(credit or "")
+        return {_artist_key(p) for p in re.split(r"\s+/\s+", credit or "") + [lead] if _artist_key(p)}
+    return bool(keys(a) & keys(b))
 
 
 def _deal(*lists):
@@ -408,26 +568,44 @@ def _other_version(seed_title, r):
     return bool(sr.version_words(title) - sr.version_words(seed_title or ""))         or sr.cover_act(seed_title or "", title, r.get("artist") or "")
 
 
-def resolve_radio(title, artist, limit=12, shuffle=True):
+def resolve_radio(title, artist, limit=12, shuffle=True, saavn_url="", video_url=""):
     """Return up to `limit` playable similar tracks as plain dicts
-    (UnifiedTrack.to_dict shape, ready for the frontend to queue)."""
+    (UnifiedTrack.to_dict shape, ready for the frontend to queue).
+
+    `saavn_url` / `video_url`: the seed's own JioSaavn page and YouTube
+    video, when the phone has them, so the radio starts from that very song
+    rather than whatever a search for its name finds."""
     with ThreadPoolExecutor(max_workers=2) as ex:
-        station = ex.submit(jiosaavn_station, title, artist, limit)
-        mix = ex.submit(youtube_radio, title, artist, limit)
+        station = ex.submit(jiosaavn_station, title, artist, limit, saavn_url)
+        mix = ex.submit(youtube_radio, title, artist, limit, video_url)
         raw = _deal(station.result(), mix.result())
 
     seed_key = ((title or "").lower().strip(), _primary_artist(artist).lower())
-    seen, picks = {seed_key}, []
+    seed = {"title": title, "artist": artist}
+    picks = []
     for r in raw:
-        key = ((r.get("title") or "").lower().strip(), _primary_artist(r.get("artist", "")).lower())
-        if key not in seen and not _other_version(title, r):
-            seen.add(key)
+        if (not _other_version(title, r) and not _same_song(r, seed)
+                and not any(_same_song(r, p) for p in picks)):
             picks.append(r)
     raw = picks
-    if len(raw) < limit // 2:
-        raw += [r for r in _lastfm_radio(title, artist, limit, shuffle)
-                if not _other_version(title, r)]
+    _credit_seed_artist(raw, artist)
+    # Short, or all one artist: YouTube's mix of an artist's song can be
+    # twenty of their own (Kaneko Ayano's was, on the phone), and the station
+    # may not know the song at all. Last.fm's similar songs and similar
+    # artists' top songs bring the others.
+    seed_artist = _artist_key(_primary_artist(artist))
+    others = sum(1 for r in raw if _artist_key(_primary_artist(r.get("artist", ""))) != seed_artist)
+    if len(raw) < limit // 2 or others < limit // 2:
+        have = {((r.get("title") or "").lower().strip(), _primary_artist(r.get("artist", "")).lower())
+                for r in raw} | {seed_key}
+        for r in _lastfm_radio(title, artist, limit, shuffle):
+            key = ((r.get("title") or "").lower().strip(), _primary_artist(r.get("artist", "")).lower())
+            if (key not in have and not _other_version(title, r) and not _same_song(r, seed)
+                    and not any(_same_song(r, p) for p in raw)):
+                have.add(key)
+                raw.append(r)
 
+    _credit_seed_artist(raw, artist)
     if not raw:
         return []
 
@@ -519,7 +697,12 @@ def resolve_discover(seeds, limit=16):
     if not raw:
         return []
 
-    merged = SourceMerger().merge_search_results(jiosaavn_results=raw)
+    # By source: the mix now keeps YouTube copies too, and one passed in as
+    # a JioSaavn result would come out unplayable.
+    buckets = {}
+    for r in raw:
+        buckets.setdefault(f"{r.get('source_type', 'jiosaavn')}_results", []).append(r)
+    merged = SourceMerger().merge_search_results(**buckets)
     out = [t.to_dict() for t in merged if getattr(t, "primary_source", None)]
     # Two per artist, not radio's three: nine tiles with three by one artist
     # read as that artist's page.

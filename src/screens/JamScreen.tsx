@@ -29,10 +29,12 @@ import {BRIGHT_PALS} from '../brandArt';
 import {useStoreValue} from '../storage';
 import {
   addToJam,
+  codeFrom,
   joinJam,
   leaveJam,
   memberName,
   moveInJam,
+  playInJam,
   removeFromJam,
   savedName,
   startJam,
@@ -45,7 +47,8 @@ import {getBestArtworkUrl, normalizeTracks, thumbArtwork} from '../tracks';
 import {toast} from '../toast';
 import {useBackPress} from '../useBackPress';
 import {TitleBar} from '../components/TitleBar';
-import {GripVertical, Plus, Search, X} from '../icons';
+import {Check, GripVertical, Plus, Search, X} from '../icons';
+import {ConfirmModal} from '../components/ConfirmModal';
 
 type QueueRow = JamView['queue'][number];
 
@@ -127,12 +130,13 @@ function Lobby() {
       <View style={styles.joinRow}>
         <TextInput
           value={code}
-          onChangeText={v => setCode(v.toUpperCase())}
+          // Not maxLength: it cut a pasted "K7QX-2M" to "K7QX-2" before the
+          // dash could be taken out. codeFrom keeps six.
+          onChangeText={v => setCode(codeFrom(v))}
           placeholder="K7QX2M"
           placeholderTextColor={C.faint}
           autoCapitalize="characters"
           autoCorrect={false}
-          maxLength={6}
           style={[styles.input, styles.codeInput]}
         />
         <TouchableOpacity
@@ -153,6 +157,13 @@ function Lobby() {
   );
 }
 
+/** A tapped song plays for everyone in the Jam, now. */
+function play(t: Track, key?: string) {
+  playInJam(t, key).catch(() =>
+    toast("Couldn't play that song. Check your connection."),
+  );
+}
+
 function Room({jam}: {jam: JamView}) {
   const renderItem = useCallback(
     ({item, drag, isActive}: RenderItemParams<QueueRow>) => (
@@ -168,6 +179,7 @@ function Room({jam}: {jam: JamView}) {
             art={thumbArtwork(getBestArtworkUrl(item.track))}
             title={item.track.title}
             sub={`Added by ${item.by}`}
+            onPress={() => play(item.track, item.key)}
           />
           <TouchableOpacity
             onPress={() => removeFromJam(item.key)}
@@ -285,6 +297,9 @@ function AddSongs() {
   const [q, setQ] = useState('');
   const [found, setFound] = useState<Track[]>([]);
   const [busy, setBusy] = useState(false);
+  /** Songs added from this search: their + becomes a tick, so a second tap
+   *  does not queue the same song twice for everyone. */
+  const [added, setAdded] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const text = q.trim();
@@ -306,10 +321,21 @@ function AddSongs() {
     };
   }, [q]);
 
-  const add = (t: Track) =>
+  const keyOf = (t: Track) => `${t.title}|${t.artist}`;
+  const add = (t: Track) => {
+    const k = keyOf(t);
+    setAdded(prev => new Set(prev).add(k));
     addToJam(t)
       .then(() => toast(`Added "${t.title}" to the Jam`))
-      .catch(() => toast("Couldn't add that song. Check your connection."));
+      .catch(() => {
+        setAdded(prev => {
+          const next = new Set(prev);
+          next.delete(k);
+          return next;
+        });
+        toast("Couldn't add that song. Check your connection.");
+      });
+  };
 
   return (
     <View style={styles.add}>
@@ -338,18 +364,25 @@ function AddSongs() {
         ) : null}
       </View>
       {found.map(t => (
-        <View key={`${t.title}|${t.artist}`} style={styles.found}>
+        <View key={keyOf(t)} style={styles.found}>
           <SongRow
             art={thumbArtwork(getBestArtworkUrl(t))}
             title={t.title}
             sub={t.artist}
+            onPress={() => play(t)}
           />
-          <TouchableOpacity
-            onPress={() => add(t)}
-            hitSlop={10}
-            accessibilityLabel={`Add ${t.title} to the Jam`}>
-            <Plus size={22} color={C.text} />
-          </TouchableOpacity>
+          {added.has(keyOf(t)) ? (
+            <View accessibilityLabel={`${t.title} is in the Jam`}>
+              <Check size={22} color={C.accent} />
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => add(t)}
+              hitSlop={10}
+              accessibilityLabel={`Add ${t.title} to the Jam`}>
+              <Plus size={22} color={C.text} />
+            </TouchableOpacity>
+          )}
         </View>
       ))}
     </View>
@@ -357,34 +390,59 @@ function AddSongs() {
 }
 
 function RoomFoot({jam}: {jam: JamView}) {
-  const after = jam.now?.next;
+  // Ending stops the music on every phone in it: asked first. Leaving only
+  // takes this phone out, and the code still lets it back in.
+  const [asking, setAsking] = useState(false);
+  const leave = () => leaveJam().catch(() => {});
   return (
+    // No "Then" row: it was this phone's next song (a radio pick, mostly),
+    // shown under the Jam's own "Up next", so two lists answered "what's
+    // next" differently, and it arrived late and moved the button below it.
+    // The Jam still shares that song (now.next) so phones can load it early.
     <View>
-      {after ? (
-        <>
-          <Text style={[styles.label, styles.gap]}>Then</Text>
-          <SongRow
-            art={thumbArtwork(getBestArtworkUrl(after))}
-            title={after.title}
-            sub={after.artist}
-          />
-        </>
-      ) : null}
       <TouchableOpacity
         style={styles.leave}
-        onPress={() => leaveJam().catch(() => {})}
+        onPress={() => (jam.host ? setAsking(true) : leave())}
         activeOpacity={0.8}>
         <Text style={styles.leaveText}>
           {jam.host ? 'End the Jam for everyone' : 'Leave the Jam'}
         </Text>
       </TouchableOpacity>
+      <ConfirmModal
+        visible={asking}
+        title="End the Jam?"
+        message="The music stops for everyone in it, and the code stops working."
+        confirmLabel="End Jam"
+        danger
+        onConfirm={() => {
+          setAsking(false);
+          leave();
+        }}
+        onCancel={() => setAsking(false)}
+      />
     </View>
   );
 }
 
-function SongRow({art, title, sub}: {art?: string; title: string; sub: string}) {
+function SongRow({
+  art,
+  title,
+  sub,
+  onPress,
+}: {
+  art?: string;
+  title: string;
+  sub: string;
+  onPress?: () => void;
+}) {
   return (
-    <View style={styles.song}>
+    <TouchableOpacity
+      style={styles.song}
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={0.7}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `Play ${title} in the Jam` : undefined}>
       {art ? (
         <Image source={{uri: art}} style={styles.art} />
       ) : (
@@ -398,7 +456,7 @@ function SongRow({art, title, sub}: {art?: string; title: string; sub: string}) 
           {sub}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 

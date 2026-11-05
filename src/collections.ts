@@ -44,7 +44,49 @@ export type Collection = {
   shared?: {code: string; copy: SharedCopy};
   /** A playlist of yours added from a friend's link: whose it was. */
   from?: {by: string};
+  /** kind 'album': the year it came out, when the source said. */
+  year?: string;
 };
+
+const RELEASE_SUFFIX = /\s*[-–([]\s*(single|ep)\s*[)\]]?\s*$/i;
+
+/** An album's title without the store's " - Single" / " - EP" tag, which the
+ *  word over the title says instead. */
+export function releaseTitle(name: string): string {
+  const bare = name.replace(RELEASE_SUFFIX, '').trim();
+  return bare || name;
+}
+
+/**
+ * What an album page calls itself: the store's own tag when the title has
+ * one, else the usual rule (Spotify's): up to 3 songs under 30 minutes is a
+ * single, up to 6 an EP. `final`: the tracklist is complete; while it is
+ * still loading the one seed song would read as a single.
+ */
+export function releaseKind(
+  name: string,
+  tracks: {duration_ms?: number}[],
+  final = true,
+): 'Album' | 'Single' | 'EP' {
+  const tag = name.match(RELEASE_SUFFIX)?.[1]?.toLowerCase();
+  if (tag) {
+    return tag === 'ep' ? 'EP' : 'Single';
+  }
+  const n = tracks.length;
+  if (!final || !n) {
+    return 'Album';
+  }
+  const ms = tracks.reduce((a, t) => a + (t.duration_ms || 0), 0);
+  // No lengths at all: count alone, which errs toward Album.
+  const short = ms ? ms < 30 * 60 * 1000 : n <= 3;
+  if (short && n <= 3) {
+    return 'Single';
+  }
+  if (short && n <= 6) {
+    return 'EP';
+  }
+  return 'Album';
+}
 
 /** What the row under the title says, matching the library's own vocabulary. */
 export function collectionSubtitle(c: Collection): string {
@@ -56,7 +98,9 @@ export function collectionSubtitle(c: Collection): string {
     case 'local':
       return `Your files · ${count}`;
     case 'album':
-      return c.artist ? `Album · ${c.artist}` : `Album · ${count}`;
+      return c.artist
+        ? `${releaseKind(c.name, c.tracks)} · ${c.artist}`
+        : `${releaseKind(c.name, c.tracks)} · ${count}`;
     case 'artist':
       return 'Artist';
     case 'shared':
@@ -79,11 +123,7 @@ const saved = createStore<Collection[]>('mp.savedCollections.v1', [], raw =>
 );
 
 /** Stable identity for something saved from a source. */
-function savedId(c: {
-  source?: string;
-  name?: string;
-  artist?: string;
-}): string {
+function savedId(c: {source?: string; name?: string; artist?: string}): string {
   return String(c.source || `${c.name || ''}|${c.artist || ''}`).toLowerCase();
 }
 

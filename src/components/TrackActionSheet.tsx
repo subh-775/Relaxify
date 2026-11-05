@@ -28,6 +28,7 @@ import {cleanText, getBestArtworkUrl} from '../tracks';
 import {isLiked, toggleLike} from '../store';
 import {removeTrackFromPlaylist} from '../playlists';
 import {addToQueue} from '../player';
+import {haptic} from '../haptics';
 import {addToJam, inJam} from '../jam';
 import {toast} from '../toast';
 import {Sheet} from './Sheet';
@@ -46,6 +47,9 @@ export type SheetContext = {
 let opener: ((t: Track) => void) | null = null;
 
 export function openTrackMenu(t: Track): void {
+  if (opener) {
+    haptic('press');
+  }
   opener?.(t);
 }
 
@@ -240,7 +244,9 @@ function TrackActionSheetView({
       label: 'Go to artist',
       onPress: run(() => onOpenArtist(t)),
     },
-    ...(t.album
+    // Every streamed song: one that does not name its album (YouTube's) has
+    // it looked up on the tap (App.openAlbumOf, the engine's album_of).
+    ...(t.album || !t.file_path
       ? [
           {
             key: 'album',

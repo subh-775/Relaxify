@@ -27,6 +27,8 @@ VERSION_WORDS = {
     "nightcore", "chopped", "screwed", "flip", "refix", "bootleg", "remake",
     "instrumental", "cover", "live", "acoustic", "unplugged", "reprise",
     "extended", "loop", "hour", "hours", "minutes",
+    # A song played another way, as "acoustic" is ("Perfect (Piano Version)").
+    "piano", "stripped", "orchestral", "demo",
 }
 # The release itself, however it is labelled: not a different version.
 _RELEASE = re.compile(
@@ -40,6 +42,9 @@ ARTIST_JUNK = re.compile(
     r"piano players|string quartet|kids|baby|sleep|relaxing|cover band)\b"
 )
 COVER_ACT_PENALTY = 35.0
+_SOUNDALIKE = re.compile(
+    r"\b(in the style of|made famous by|originally performed by|"
+    r"as performed by|performance track|backing track|sing like)\b")
 # A video about the song rather than the recording.
 VIDEO_WORDS = {"lyrics", "lyric", "lyrical", "status", "whatsapp", "shorts",
                "reaction", "tutorial", "karaoke", "dance", "choreography"}
@@ -58,15 +63,40 @@ _PACKAGING = re.compile(
 RELEVANT = 60.0
 MIN_KEPT = 3
 
+# A live recording that does not say "live": a date or a stage in its
+# brackets or after its dash ("Creep (Lollapalooza Berlin 11.09.2016)").
+_LIVE_HINT = re.compile(
+    r"\b(\d{1,2} \d{1,2} (19|20)?\d{2}|sessions?|festival|concert|tour|"
+    r"glastonbury|lollapalooza|coachella|bbc|mtv|tiny desk|in the studio|kexp)\b"
+)
+# "(1 HOUR)", "10hrs": a loop, however it is written.
+_HOURS = re.compile(r"\b\d+\s*(h|hr|hrs|hour|hours)\b")
+# Longer than any song: a loop, a mix, a whole album as one video.
+LONG_MS = 15 * 60 * 1000
+LONG_WORDS = {"hour", "hours", "mix", "album", "full", "jukebox", "nonstop",
+              "set", "loop", "playlist"}
+
 VERSION_PENALTY = 30.0
 VIDEO_PENALTY = 14.0
 JUNK_PENALTY = 40.0
 
 
+_NATIVE_CHAR = re.compile(
+    r"[぀-ヿㇰ-ㇿ㐀-䶿一-鿿가-힯]")
+
+
 def fold(text: str) -> str:
-    """Lowercase ASCII words only: accents and punctuation go."""
-    text = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode()
-    text = re.sub(r"[^a-z0-9 ]", " ", text.lower())
+    """Lowercase words: accents and punctuation go. Japanese, Chinese and
+    Korean letters stay as they are: folded to ASCII they vanished, and a
+    search for 光の方へ had no words to rank by."""
+    out = []
+    for c in unicodedata.normalize("NFKC", text or ""):
+        if _NATIVE_CHAR.match(c):
+            out.append(c)
+        else:
+            out.append(unicodedata.normalize("NFKD", c).encode("ascii", "ignore").decode())
+    text = re.sub(r"[^a-z0-9 ぀-ヿㇰ-ㇿ㐀-䶿一-鿿가-힯]",
+                  " ", "".join(out).lower())
     return re.sub(r"\s+", " ", text).strip()
 
 
@@ -100,7 +130,12 @@ def core_title(title: str) -> str:
     stays a different song from the original."""
     def bracket(m):
         inside = fold(m.group(1))
-        return f" {inside} " if set(inside.split()) & VERSION_WORDS else " "
+        if set(inside.split()) & VERSION_WORDS:
+            return f" {inside} "
+        # "(Lollapalooza Berlin 11.09.2016)" is a live recording that never
+        # says so; dropped as packaging, it was the studio song and took its
+        # row.
+        return " live " if _LIVE_HINT.search(inside) else " "
 
     t = re.sub(r"[\(\[\{]([^\)\]\}]*)[\)\]\}]", bracket, title or "")
     t = re.split(r"\s(?:feat\.?|ft\.?|featuring)\s", t, flags=re.I)[0]
@@ -115,8 +150,12 @@ def _same_word(a: str, b: str) -> bool:
     return min(len(a), len(b)) >= 5 and fuzz.ratio(a, b) >= 88
 
 
-def _covered(want: Iterable[str], have: List[str]) -> int:
-    return sum(1 for w in want if any(_same_word(w, h) for h in have))
+def _covered(want: Iterable[str], have: List[str]) -> float:
+    """How many of `want` are in `have`; a word there only with a typo
+    counts 0.9, so a near spelling ("Alfaazo") never ties the exact title
+    ("Alfaaz") and wins it on popularity."""
+    return sum(1.0 if w in have else 0.9 if any(_same_word(w, h) for h in have) else 0.0
+               for w in want)
 
 
 def _relevance(q: List[str], song: str, credit: str) -> float:
@@ -126,7 +165,13 @@ def _relevance(q: List[str], song: str, credit: str) -> float:
     a = words(credit)
     q_artist = [w for w in q if any(_same_word(w, x) for x in a)]
     rest = [w for w in q if w not in q_artist] or q
-    coverage = _covered(rest, t) / len(rest)
+    # Asked-for words count wherever the title has them, brackets too: in
+    # "Sunflower (Spider-Man: Into the Spider-Verse)" the "spiderman" typed
+    # is the bracket's ("spider man" joined). Only the core counts against
+    # a title for words it adds.
+    full = words(song)
+    full = full + ["".join(p) for p in zip(full, full[1:])]
+    coverage = max(_covered(rest, t), _covered(rest, full)) / len(rest)
     precision = _covered(t, rest) / len(t)
     score = 100.0 * (0.65 * coverage + 0.35 * precision)
     if q_artist and rest is not q:
@@ -154,22 +199,66 @@ def relevance(query: str, title: str, artist: str) -> float:
     return max(_relevance(q, song, credit) for song, credit in readings)
 
 
+def _extras(title: str) -> str:
+    """What a title adds after the song's name: its brackets and the parts
+    after a dash, folded."""
+    inside = re.findall(r"[\(\[\{]([^\)\]\}]*)[\)\]\}]", title or "")
+    parts = title_parts(title)[1:]
+    return fold(" ".join([*inside, *parts]))
+
+
+# A genre named as an add-on is a remix that never says so: "Blinding Lights
+# (Afro House)", "Blinding Lights (Techno)" sat in the song list under the
+# real one. Only in the brackets or after a dash: "Uptown Funk" is the song.
+_GENRE_TAG = re.compile(
+    r"\b(afro ?house|deep house|tech house|house|techno|trance|trap|drill|"
+    r"phonk|edm|dnb|drum (and|n) bass|dubstep|hardstyle|jersey club|amapiano|"
+    r"afrobeats?|reggaeton|bossa nova|jazz|funk|disco|hyperpop|uk garage)\b")
+# A film or show a song is from ("(From \"House of the Dragon\")"), or who
+# is on it, says nothing about its version.
+_CREDIT_BRACKET = re.compile(r"^\s*(from|feat|ft|with|featuring)\b", re.I)
+
+
+def _genre_tagged(title: str) -> bool:
+    inside = [b for b in re.findall(r"[\(\[\{]([^\)\]\}]*)[\)\]\}]", title or "")
+              if not _CREDIT_BRACKET.match(b)]
+    bare = re.sub(r"[\(\[\{][^\)\]\}]*[\)\]\}]", " ", title or "")
+    return bool(_GENRE_TAG.search(fold(" ".join([*inside, *title_parts(bare)[1:]]))))
+
+
+def _told(title: str) -> Set[str]:
+    """A title's words, with the versions it implies without the word: a
+    dated or staged recording is "live", "(1 HOUR)" is "hour"."""
+    folded = _RELEASE.sub(" ", fold(title))
+    told = set(folded.split())
+    # "燦々 @ SHIBUYA全感覚祭": a venue after an @, or ライブ ("live").
+    if _LIVE_HINT.search(_extras(title)) or re.search(r"\s@\s|ライブ", title or ""):
+        told.add("live")
+    if _HOURS.search(folded):
+        told.add("hour")
+    if _genre_tagged(title):
+        told.add("remix")
+    return told
+
+
 def version_words(title: str) -> Set[str]:
     """The version a title names (remix, live, slowed...), as a set; empty for
     the release itself, however it is labelled."""
-    return set(words(_RELEASE.sub(" ", fold(title)))) & VERSION_WORDS
+    return _told(title) & VERSION_WORDS
 
 
 def penalty(query: str, title: str, artist: str = "",
-            artist_words: Set[str] = frozenset()) -> float:
+            artist_words: Set[str] = frozenset(), duration_ms: int = 0) -> float:
     """Versions, videos, cover acts and junk the query did not ask for.
 
     `artist_words`: the query's words that name the artist it wants. A title
     carrying them while the credit does not ("Bags Clairo" by Dreamy Dynamics)
     is a cover act borrowing the name."""
     asked = set(words(query))
-    told = set(words(_RELEASE.sub(" ", fold(title))))
+    told = _told(title)
     pen = VERSION_PENALTY * len((told & VERSION_WORDS) - asked)
+    if (duration_ms or 0) > LONG_MS and not asked & LONG_WORDS:
+        pen += JUNK_PENALTY
     if _mashup(title) and "x" not in asked:
         pen += VERSION_PENALTY
     pen += VIDEO_PENALTY * len((told & VIDEO_WORDS) - asked)
@@ -179,6 +268,36 @@ def penalty(query: str, title: str, artist: str = "",
     if cover_act(query, title, artist, artist_words):
         pen += COVER_ACT_PENALTY
     return pen
+
+
+_COMPILATION = re.compile(
+    r"\b(top \d+|\d+ (songs|hits|tracks)|hits of|non ?stop|back to back|"
+    r"jukebox|full album|all songs|collection|compilation)\b")
+_ASKED_FOR_MANY = LONG_WORDS | {"best", "top", "hits", "collection", "compilation",
+                                "songs", "non", "nonstop"}
+
+
+def compilation(query: str, title: str, artist_words: Set[str] = frozenset(),
+                duration_ms: int = 0) -> bool:
+    """Many songs as one upload: "Best Of Arijit Singh 2024", "Top 20 Songs",
+    a jukebox, a nonstop mix, anything longer than a song. Penalised, it
+    still filled the end of the song list. Kept when the query asks for one.
+
+    "Best of" counts only before the artist asked for or a year: "Best of
+    You" is a song."""
+    asked = set(words(query))
+    if asked & _ASKED_FOR_MANY:
+        return False
+    if (duration_ms or 0) > LONG_MS:
+        return True
+    t = fold(title)
+    if _COMPILATION.search(t):
+        return True
+    m = re.search(r"\bbest of\b(.*)", t)
+    if m:
+        rest = set(m.group(1).split())
+        return bool(rest & set(artist_words)) or bool(re.search(r"\b(19|20)\d{2}\b", m.group(1)))
+    return False
 
 
 def _mashup(title: str) -> bool:
@@ -196,9 +315,16 @@ def cover_act(query: str, title: str, artist: str,
     credit = fold(artist)
     if credit and ARTIST_JUNK.search(credit) and not ARTIST_JUNK.search(fold(query)):
         return True
+    # A karaoke label's own words for "not the original".
+    if _SOUNDALIKE.search(fold(title)) and not _SOUNDALIKE.search(fold(query)):
+        return True
     # The whole name, borrowed: "Space House" does not borrow "Beach House".
     told = set(fold(title).split())
-    return (bool(artist_words) and artist_words <= told
+    # The query must ask for more than the name ("radiohead creep"): asked
+    # only "alfaaz", a title of "Alfaaz" is the song, though an act of that
+    # name exists, not a borrowing of it.
+    rest = set(words(query)) - set(artist_words)
+    return (bool(artist_words) and bool(rest) and artist_words <= told
             and not artist_words & set(credit.split()))
 
 
@@ -221,6 +347,13 @@ def _artists(title: str, artist: str) -> Set[str]:
     return {fold(n) for n in names if len(fold(n)) >= 3}
 
 
+def _featured(title: str) -> str:
+    """The artists a title features: what follows "feat."/"ft."/"with" up to
+    the bracket's end, or ''."""
+    return " ".join(m.group(1) for m in re.finditer(
+        r"(?:feat\.?|ft\.?|featuring|with)\s+([^\)\]\}]+)", title or "", re.I))
+
+
 def same_song(a_title: str, a_artist: str, b_title: str, b_artist: str,
               a_trusted: bool = True, b_trusted: bool = True) -> bool:
     """The same recording, listed twice.
@@ -236,8 +369,12 @@ def same_song(a_title: str, a_artist: str, b_title: str, b_artist: str,
         a, b = _artists(a_title, a_artist), _artists(b_title, b_artist)
         if a & b:
             return True
-        told_b = fold(f"{b_title} {b_artist}")
-        told_a = fold(f"{a_title} {a_artist}")
+        # A name the other credits only in its title counts as a feature
+        # ("Heeriye (feat. Arijit Singh)"), and only there: "Creep [In The
+        # Style Of Radiohead]" by a karaoke label is not Radiohead's, and as
+        # "the same song" it was played in place of the real one.
+        told_b = fold(f"{_featured(b_title)} {b_artist}")
+        told_a = fold(f"{_featured(a_title)} {a_artist}")
         return any(n in told_b for n in a) or any(n in told_a for n in b)
     if a_trusted or b_trusted:
         known, upload = (a_title, b_title) if a_trusted else (b_title, a_title)

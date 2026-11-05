@@ -17,8 +17,10 @@ const PLAYABLE_SOURCES = new Set([
   'local',
 ]);
 
-/** Quality-first. The player walks this order when a source fails to stream. */
-const SOURCE_ORDER = ['jiosaavn', 'soundcloud', 'youtube_music', 'youtube'];
+/** Quality-first. The player walks this order when a source fails to stream.
+ *  SoundCloud last: no longer a source, its own uploads previews or
+ *  DRM-locked; a song saved from it plays another copy (player.ts). */
+const SOURCE_ORDER = ['jiosaavn', 'youtube_music', 'youtube', 'soundcloud'];
 
 /** Mojibake: UTF-8 read as Latin-1 somewhere upstream. */
 const TEXT_REPLACEMENTS: Array<[RegExp, string]> = [
@@ -150,8 +152,25 @@ export function cleanText(value: unknown): string {
   // Only when the tail is noise — "Artist - Song" must survive intact.
   text = text.replace(/\s+-\s+(?:official|full)\s+.*$/gi, '');
   text = text.replace(/\s+(?:feat\.|ft\.).*$/gi, '');
+  text = withoutChannelSuffix(text);
 
   return text.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * A YouTube channel's name as the artist's: "Natalie Holt - Topic" (YouTube
+ * Music's auto-generated channel), "TaylorSwiftVEVO". Songs saved from a
+ * YouTube result carried the channel, so the same artist was two artists
+ * (Recap, Your artists), the song two songs, and the artist page for
+ * "Natalie Holt - Topic" did not exist. Applied in cleanText, which every
+ * display, identity (getTrackId) and split (splitArtists) goes through, so
+ * songs already saved are read cleanly too.
+ */
+function withoutChannelSuffix(text: string): string {
+  return text
+    .replace(/\s+-\s+Topic$/i, '')
+    .replace(/(\S)VEVO$/, '$1')
+    .replace(/\s+VEVO$/i, '');
 }
 
 /** Stable identity for a track. ISRC when known, else cleaned title+artist. */
@@ -273,6 +292,7 @@ export function getPlayableSource(
   const preferred = track.playable_source || track.primary_source;
   if (
     preferred &&
+    preferred !== 'soundcloud' &&
     PLAYABLE_SOURCES.has(preferred) &&
     track.sources[preferred]?.url
   ) {
@@ -324,6 +344,18 @@ export function upgradeArtwork(url?: string): string {
 export function thumbArtwork(url?: string): string {
   if (!url) {
     return '';
+  }
+  // A YouTube video's cover carries no NxN in its name, so it went through
+  // whole: NewPipe hands the LARGEST thumbnail (hq720 / maxresdefault, 1280
+  // wide), and a playlist of imported YouTube songs decoded a full-HD picture
+  // per 48dp row — the lag in exactly those playlists. mqdefault is 320x180.
+  const yt = url.match(/^https?:\/\/i\d?\.ytimg\.com\/(vi(?:_webp)?)\/([\w-]{6,})\//);
+  if (yt) {
+    return `https://i.ytimg.com/vi/${yt[2]}/mqdefault.jpg`;
+  }
+  // YouTube Music's covers size by "=w544-h544" at the end instead.
+  if (/googleusercontent\.com\//.test(url)) {
+    return url.replace(/[=]w\d+-h\d+/, '=w180-h180');
   }
   // ONE pass, with the iTunes "bb" suffix captured rather than matched by a
   // lookahead. Two chained replaces needed a negative lookahead to stop the

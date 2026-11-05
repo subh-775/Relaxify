@@ -14,6 +14,7 @@
  * the rows, so they cannot end up disagreeing about what a press does.
  */
 import React, {useCallback} from 'react';
+import {haptic} from '../haptics';
 import {StyleProp, TouchableOpacity, ViewStyle} from 'react-native';
 import {Heart} from '../icons';
 import {C} from '../theme';
@@ -42,6 +43,7 @@ export function LikeButton({
       return;
     }
     toggle();
+    haptic('confirm');
     toast(liked ? 'Removed from Liked Songs' : 'Added to Liked Songs', 'info', {
       art: getBestArtworkUrl(track),
     });

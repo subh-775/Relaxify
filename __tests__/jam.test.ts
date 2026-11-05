@@ -16,6 +16,7 @@ import {
   SEEK_S,
   SYNC_OK_S,
   bestOffset,
+  codeFrom,
   correction,
   mayAlign,
   newCode,
@@ -42,6 +43,17 @@ test('a typed code is tidied, and look-alikes become the real characters', () =>
   expect(validCode(normalizeCode('KOQX2M'))).toBe(false);
   expect(validCode('ABC')).toBe(false);
   expect(validCode('ABCDE1')).toBe(false);
+});
+
+test('the join box finds the code in a paste: alone, split, or the whole invite', () => {
+  expect(codeFrom('K7QX-2M')).toBe('K7QX2M');
+  expect(codeFrom('k7qx 2m')).toBe('K7QX2M');
+  expect(
+    codeFrom('Join my Relaxify Jam: open Relaxify, go to Jam, and enter K7QX2M'),
+  ).toBe('K7QX2M');
+  // Typing it letter by letter is never mistaken for a message.
+  expect(codeFrom('K7Q')).toBe('K7Q');
+  expect(codeFrom('K7QX2MZZ')).toBe('K7QX2M');
 });
 
 test('the clock trusts the fastest round trip, not the latest', () => {

@@ -25,6 +25,9 @@ class YouTubeTrack:
     upload_date: Optional[str] = None
     is_music: bool = False
     album: Optional[str] = None
+    # Its place in YouTube Music's song search, 0 = the top song; None for a
+    # video.
+    music_rank: Optional[int] = None
 
     @property
     def search_query(self) -> str:
@@ -44,6 +47,7 @@ class YouTubeTrack:
             "thumbnail": self.thumbnail,
             "view_count": self.view_count,
             "is_music": self.is_music,
+            "music_rank": self.music_rank,
             "album": self.album,
             "search_query": self.search_query,
         }

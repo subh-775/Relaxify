@@ -6,10 +6,18 @@
  * starting.
  */
 import React from 'react';
-import {Image, StyleSheet, Text, View} from 'react-native';
+import {
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import {C, S, T} from '../theme';
+import {X} from '../icons';
 import {cleanText, getBestArtworkUrl, thumbArtwork} from '../tracks';
-import type {DownloadJob} from '../downloads';
+import {dismissDownload, retryDownload, type DownloadJob} from '../downloads';
 
 export function DownloadRow({job}: {job: DownloadJob}) {
   const artwork = thumbArtwork(getBestArtworkUrl(job.track));
@@ -17,8 +25,23 @@ export function DownloadRow({job}: {job: DownloadJob}) {
   const indeterminate = job.progress === null;
   const failed = job.status === 'error';
 
+  // A failed one is tapped to try again, and has an X to clear it.
+  // How far along, as the bar's width: the one style that is per-render.
+  const fillWidth: ViewStyle = {
+    width: indeterminate ? '8%' : `${Math.round(pct * 100)}%`,
+  };
   return (
-    <View style={styles.row}>
+    <TouchableOpacity
+      style={[styles.row, failed && styles.rowFailed]}
+      disabled={!failed}
+      activeOpacity={0.7}
+      onPress={() => retryDownload(job)}
+      accessibilityRole={failed ? 'button' : undefined}
+      accessibilityLabel={
+        failed
+          ? `Download failed: ${cleanText(job.track.title)}. Try again`
+          : undefined
+      }>
       {artwork ? (
         <Image source={{uri: artwork}} style={styles.art} />
       ) : (
@@ -36,20 +59,29 @@ export function DownloadRow({job}: {job: DownloadJob}) {
               style={[
                 styles.fill,
                 failed && styles.fillFailed,
-                {width: indeterminate ? '8%' : `${Math.round(pct * 100)}%`},
+                fillWidth,
               ]}
             />
           </View>
-          <Text style={styles.pct}>
+          <Text style={[styles.pct, failed && styles.pctFailed]}>
             {failed
-              ? 'Failed'
+              ? 'Failed, tap to retry'
               : indeterminate
               ? 'Queued'
               : `${Math.round(pct * 100)}%`}
           </Text>
         </View>
       </View>
-    </View>
+      {failed && (
+        <TouchableOpacity
+          onPress={() => dismissDownload(job)}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Clear">
+          <X size={18} color={C.sub} />
+        </TouchableOpacity>
+      )}
+    </TouchableOpacity>
   );
 }
 
@@ -62,6 +94,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     opacity: 0.75,
   },
+  rowFailed: {opacity: 1},
+  pctFailed: {minWidth: 0},
   art: {width: 46, height: 46, borderRadius: 5, backgroundColor: C.surface},
   artEmpty: {backgroundColor: C.surfaceHi},
   text: {flex: 1, minWidth: 0},

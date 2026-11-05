@@ -25,6 +25,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import {haptic} from '../haptics';
 import {
   ActivityIndicator,
   Keyboard,
@@ -1185,7 +1186,7 @@ export const PlayerScreen = React.memo(function PlayerScreen({
                   disabled={!track}
                   onPress={() => track && openWrongSong(track)}
                   accessibilityLabel="Wrong song? Pick another copy">
-                  <SourceBadge track={track} />
+                  <SourceBadge track={track} always />
                   <QualityBadge track={track} />
                 </TouchableOpacity>
               </Animated.View>
@@ -1295,7 +1296,10 @@ export const PlayerScreen = React.memo(function PlayerScreen({
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => togglePlay()}
+              onPress={() => {
+                haptic('tick');
+                togglePlay();
+              }}
               activeOpacity={0.85}
               style={styles.playBtn}>
               {buffering ? (

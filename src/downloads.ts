@@ -345,6 +345,8 @@ export async function enqueueDownload(track: Track): Promise<void> {
   if (jobs.some(j => getDownloadKey(j.track) === id && j.status !== 'error')) {
     return;
   }
+  // A failed row of this song gives way to the new attempt.
+  jobs = jobs.filter(j => getDownloadKey(j.track) !== id);
   const res = await startDownload(track);
   if (!res.task_id) {
     toast(res.error || 'Could not start that download');
@@ -360,9 +362,18 @@ export async function enqueueDownload(track: Track): Promise<void> {
   ensurePolling();
 }
 
+/** A failed download, tried again: its row turns back into a live one. */
+export function retryDownload(job: DownloadJob): void {
+  enqueueDownload(job.track).catch(() => {});
+}
+
+/** A failed download, cleared from the list. It stayed there, "Failed", with
+ *  nothing to do about it, until the app was restarted. */
+export function dismissDownload(job: DownloadJob): void {
+  jobs = jobs.filter(j => j.taskId !== job.taskId);
+  emit();
+}
+
 export function useDownloadJobs(): DownloadJob[] {
-  return useSyncExternalStore(
-    changes.subscribe,
-    () => jobs,
-  );
+  return useSyncExternalStore(changes.subscribe, () => jobs);
 }

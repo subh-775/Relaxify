@@ -348,8 +348,14 @@ class iTunesClient:
     def lookup_album(
         self, album_id: str, country: Optional[str] = None, entity: str = "album"
     ) -> Optional[Any]:
-        """Get album details by ID, optionally with tracks."""
-        params = {"id": album_id, "entity": entity}
+        """Get album details by ID, optionally with tracks (entity "song", or
+        "albumTrack" as callers have asked for it).
+
+        "albumTrack" is not an entity the lookup API knows: it answered 400,
+        so every album opened from iTunes came back with no songs. The
+        tracks it lists are wrapperType "track" (their kind is "song")."""
+        want_tracks = entity in ("albumTrack", "song")
+        params = {"id": album_id, "entity": "song" if want_tracks else entity}
         if country:
             params["country"] = country
 
@@ -358,12 +364,12 @@ class iTunesClient:
         if results:
             # First result is the album
             album = self._parse_album(results[0])
-            if entity == "albumTrack":
+            if want_tracks:
                 # Remaining results are tracks
                 album.tracks = [
                     self._parse_track(t)
                     for t in results[1:]
-                    if t.get("kind") == "track"
+                    if t.get("wrapperType") == "track"
                 ]
             return album
         return None

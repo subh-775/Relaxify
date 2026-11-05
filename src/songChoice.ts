@@ -42,6 +42,12 @@ export function chosenCopy(t: Track): Track {
   return pick && !isOffline() ? pick : withLocalFile(pick ?? t);
 }
 
+/** Whether you picked a copy of `t`'s song yourself ("Wrong song?"):
+ *  nothing automatic may change it then. */
+export function hasChoice(t: Track): boolean {
+  return !!choices.get()[getDownloadKey(t)];
+}
+
 /**
  * Remember `pick` as the copy of `original`'s song. Returns what was
  * remembered before (null for none), which is what Undo puts back.

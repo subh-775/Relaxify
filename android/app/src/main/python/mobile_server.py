@@ -71,6 +71,29 @@ _original_get_client = UnifiedSearchService._get_client
 _youtube_enabled = False
 
 
+def _youtube_song(title: str, channel: str, official: bool = False, artists=()):
+    """A YouTube video as (song, artist), not (video title, channel).
+
+    Search results kept both as YouTube has them, so a song played or saved
+    from one was by "Natalie Holt - Topic" or "TaylorSwiftVEVO", called
+    "Anti-Hero (Official Music Video)", and its artist page did not exist.
+    A " - Topic" channel is YouTube Music's own copy: its title is the song
+    as released (a dash in it is part of the name, "Neon Escapism - Edit"),
+    so only the suffix goes. Anything else is cleaned as a playlist import's
+    entries are (youtube_playlist.clean_item): video tags dropped, and
+    "Artist - Song" split at the dash."""
+    from components.youtube_playlist import clean_item
+    # `official`: a YouTube Music song, whose artist is the real credit. Its
+    # title is the song's own and a dash in it is not "Artist - Song": a
+    # Japanese song is listed "花ひらくまで - Hana Hiraku Made", and split
+    # there, the title became the artist and no album song was ever found.
+    if official:
+        return title, re.sub(r"\s*-\s*topic\s*$", "", channel or "", flags=re.I).strip()
+    if re.search(r"\s-\s*topic\s*$", channel or "", re.I):
+        return title, re.sub(r"\s*-\s*topic\s*$", "", channel, flags=re.I).strip()
+    return clean_item(title, channel, artists)
+
+
 class _NewPipeYouTubeClient:
     """Drop-in for YouTubeClient, backed by NewPipeExtractor instead of yt-dlp.
 
@@ -80,25 +103,56 @@ class _NewPipeYouTubeClient:
     """
 
     def search(self, query: str, limit: int = 10):
+        """YouTube Music's songs first, then YouTube's videos, at once.
+
+        The videos alone are lives, lyric videos and covers: "radiohead
+        creep" found no studio Creep at all. YouTube Music's song search is
+        the labels' own uploads ("Creep" on Radiohead's Topic channel), the
+        catalogue JioSaavn lacks outside India. Marked is_music, which
+        ranking reads as a real credit."""
         import newpipe_yt
+        from concurrent.futures import ThreadPoolExecutor
         from components.youtube_downloader import YouTubeTrack
 
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            songs = pool.submit(newpipe_yt.search, query, 6, True)
+            videos = pool.submit(newpipe_yt.search, query, limit)
+            try:
+                song_hits = songs.result() or []
+            except Exception:
+                song_hits = []
+            try:
+                video_hits = videos.result() or []
+            except Exception:
+                video_hits = []
+
         out = []
-        for r in newpipe_yt.search(query, limit):
+        seen = set()
+        # The real artists YouTube Music credits for this search: a video
+        # titled "Yellow - Coldplay" is split by them, not read as the song
+        # "Coldplay" by "Yellow".
+        known = [re.sub(r"\s*-\s*topic\s*$", "", h.get("artist") or "", flags=re.I).strip()
+                 for h in song_hits]
+        for i, (r, official) in enumerate([*((h, True) for h in song_hits),
+                                           *((h, False) for h in video_hits)]):
             url = r.get("url") or ""
-            if not url:
+            if not url or url in seen:
                 continue
+            seen.add(url)
+            title, artist = _youtube_song(r.get("title") or "", r.get("artist") or "",
+                                          official, known)
             out.append(
                 YouTubeTrack(
                     # The watch URL is the id we resolve a stream from later.
                     id=url.rsplit("v=", 1)[-1],
-                    title=r.get("title") or "",
-                    artist=r.get("artist") or "",
+                    title=title,
+                    artist=artist,
                     uploader=r.get("artist") or "",
                     url=url,
                     duration_ms=int(r.get("duration_ms") or 0) or None,
                     thumbnail=r.get("artwork") or None,
-                    is_music=True,
+                    is_music=official,
+                    music_rank=i if official else None,
                 )
             )
         return out
@@ -189,13 +243,15 @@ DownloadManager._download_from_url = _download_from_url_android
 
 # The sources a mobile search actually queries. iTunes is metadata-only (no
 # stream URL) and would just slow the response down. YouTube is added once this
-# phone has passed the self-test (see _start_youtube).
-PLAYABLE_SEARCH_SOURCES = {SourceType.JIOSAAVN, SourceType.SOUNDCLOUD}
+# phone has passed the self-test (see _start_youtube). SoundCloud is not one any
+# more: its own uploads are previews or DRM-locked, and what plays is copies
+# (see _rematch). Its search, preview check and fallback code below stay inert.
+PLAYABLE_SEARCH_SOURCES = {SourceType.JIOSAAVN}
 
 # The same set, as the strings a track's `sources` dict is keyed by.
 # _playable_source_name() gates on THIS one: a track whose only source isn't in
 # here is treated as unplayable and dropped from the results entirely.
-PLAYABLE_SOURCES = {"jiosaavn", "soundcloud"}
+PLAYABLE_SOURCES = {"jiosaavn"}
 
 
 def _set_youtube(enabled: bool) -> None:
@@ -647,7 +703,7 @@ def search_tracks():
         req_config = replace(
             _search_service.config,
             max_total_results=limit,
-            enabled_sources=_first_sources(query),
+            enabled_sources=set(PLAYABLE_SEARCH_SOURCES),
             # 12 -> 8. This number used to be decorative: the search blocked on
             # the slowest source no matter what it said (see the executor in
             # unified_search.search). Now it is a real wall-clock cap on how long
@@ -660,26 +716,11 @@ def search_tracks():
         # words or more), and its song leads when the results lack it.
         lyric_f = (_search_pool.submit(_lyric_song, query)
                    if len(query.split()) >= 4 else None)
-        # SoundCloud, alongside rather than after: waited for only if the
-        # others find too little. Run after them it added three seconds.
-        sc_f = (_search_pool.submit(
-                    _search_service.search, query,
-                    replace(req_config, enabled_sources={SourceType.SOUNDCLOUD}))
-                if SourceType.SOUNDCLOUD not in req_config.enabled_sources
-                and SourceType.SOUNDCLOUD in PLAYABLE_SEARCH_SOURCES else None)
         t0 = time.monotonic()
         answered = set()
         results = _search_service.search(query, req_config, answered)
-        if sc_f is not None and _needs_soundcloud(query, results, req_config):
-            try:
-                extra = sc_f.result(timeout=SOUNDCLOUD_WAIT)
-                results = _search_service._rank_by_relevance(
-                    list(results) + list(extra), query)
-            except Exception:
-                pass                     # too slow: what is here ships
         if lyric_f is not None and not _answers(query, results):
             results = _with_lyric_song(query, results, lyric_f, req_config)
-        results = _without_previews(results)
         print(f"[search] {int((time.monotonic() - t0) * 1000)}ms | {query[:40]}")
         if not results and not answered:
             return jsonify({"error": "unreachable"}), 504
@@ -714,81 +755,6 @@ def search_tracks():
         return jsonify({"error": str(e)}), 500
 
 
-# SoundCloud is asked only when it can help. Measured on 30 searches, 61% of
-# its results were remixes, edits, slowed versions or re-uploads, and it made a
-# third of every result list. JioSaavn and YouTube go first; SoundCloud joins
-# when they find little, or when the search asks for a version.
-SOUNDCLOUD_WHEN_FEWER_THAN = 2
-# How long past the others SoundCloud is waited for, when it is needed.
-SOUNDCLOUD_WAIT = 2.0
-
-
-def _asks_for_version(query: str) -> bool:
-    from components import search_rank as sr
-    return bool(set(sr.words(query)) & sr.VERSION_WORDS)
-
-
-def _first_sources(query: str) -> set:
-    sources = set(PLAYABLE_SEARCH_SOURCES)
-    rest = sources - {SourceType.SOUNDCLOUD}
-    return sources if _asks_for_version(query) or not rest else rest
-
-
-def _needs_soundcloud(query: str, results, config) -> bool:
-    """Too few real songs without it, and it was left out.
-
-    Not when the first one is plainly the song typed: a famous song's copies
-    fold into one row, so "summertime sadness" always had fewer than two, and
-    SoundCloud's mashups ("Hiltz Simple x Summertime Sadness") filled the
-    list under the real one."""
-    from components import search_rank as sr
-    if (SourceType.SOUNDCLOUD in config.enabled_sources
-            or SourceType.SOUNDCLOUD not in PLAYABLE_SEARCH_SOURCES):
-        return False
-    songs = [t for t in results
-             if sr.penalty(query, t.title or "") < sr.VERSION_PENALTY]
-    return len(songs) < SOUNDCLOUD_WHEN_FEWER_THAN and not _answers(query, songs)
-
-
-def _without_previews(results, top: int = 8, wait: float = 2.0):
-    """The leading rows that would play from SoundCloud, checked first.
-
-    Most official songs there are a 30-second preview, which the player
-    refuses, so such a row did nothing when tapped. Checked together, under
-    one time limit; the resolved address is cached, so a tap plays sooner.
-    A row with another source plays that instead; one with none is dropped."""
-    checks = {}
-    for t in results[:top]:
-        if _playable_source_name(t) != "soundcloud":
-            continue
-        src = t.sources.get(SourceType.SOUNDCLOUD)
-        url = getattr(src, "url", None)
-        if url:
-            checks[id(t)] = _search_pool.submit(
-                _resolve_stream_url_cached, url, "soundcloud")
-    if not checks:
-        return results
-    deadline = time.monotonic() + wait
-    out = []
-    for t in results:
-        f = checks.get(id(t))
-        if f is None:
-            out.append(t)
-            continue
-        try:
-            ok = f.result(timeout=max(0.0, deadline - time.monotonic())) is not None
-        except Exception:
-            ok = True   # not answered in time: keep it, as before
-        if ok:
-            out.append(t)
-            continue
-        t.sources.pop(SourceType.SOUNDCLOUD, None)
-        t.primary_source = None
-        if _playable_source_name(t):
-            out.append(t)
-    return out
-
-
 def _lyric_song(q: str):
     """The song a typed line of lyrics is from: {title, artist}, or None."""
     try:
@@ -797,7 +763,10 @@ def _lyric_song(q: str):
     except Exception:
         return None
     hit = hits[0] if hits else None
-    return hit if hit and hit.get("title") else None
+    if not hit or not hit.get("title"):
+        return None
+    title, artist = _youtube_song(hit["title"], hit.get("artist") or "")
+    return {**hit, "title": title, "artist": artist}
 
 
 def _answers(query, results) -> bool:
@@ -930,9 +899,10 @@ def search_lyric():
     hit = hits[0] if hits else None
     if not hit or not hit.get("title"):
         return jsonify({})
+    title, artist = _youtube_song(hit["title"], hit.get("artist") or "")
     return jsonify({
-        "title": hit["title"],
-        "artist": hit.get("artist") or "",
+        "title": title,
+        "artist": artist,
         "artwork_url": hit.get("artwork") or None,
     })
 
@@ -1112,6 +1082,125 @@ def proxy_stream():
         headers=resp_headers,
         direct_passthrough=True,
     )
+
+
+# ─── SoundCloud songs, played and saved from elsewhere ────────────────────────
+# SoundCloud is no longer a source (see PLAYABLE_SEARCH_SOURCES). Measured
+# 2026-11-05 on 36 top results for 12 songs: the artists' own uploads are
+# 30-second previews or DRM-locked; what still plays is someone else's
+# re-upload, slowed edit, remix or cover. Songs saved from it before are
+# found again on JioSaavn or YouTube, by the import's matcher.
+_rematches: Dict[str, Optional[Dict[str, Any]]] = {}
+_rematch_lock = threading.Lock()
+
+
+def _rematch(title: str, artist: str, duration_ms: int) -> Optional[Dict[str, Any]]:
+    """The same song from a source that plays it, or None. Remembered for the
+    life of the engine, misses too: a song is looked for once."""
+    from components import search_rank as sr
+    key = f"{sr.fold(title)}|{sr.fold(artist)}"
+    with _rematch_lock:
+        if key in _rematches:
+            return _rematches[key]
+    found = None
+    if title:
+        # weak_artist: a SoundCloud artist is whoever uploaded the song.
+        found = _match_track({"title": title, "artist": artist or "",
+                              "duration_ms": duration_ms or 0}, weak_artist=True)
+    with _rematch_lock:
+        _rematches[key] = found
+    return found
+
+
+@app.get("/api/rematch")
+def rematch():
+    """{track} for a saved SoundCloud song found elsewhere, or {track: null}."""
+    return jsonify({"track": _rematch(_arg("title"), _arg("artist"),
+                                      _int_arg("duration_ms", 0))})
+
+
+@app.get("/api/stream_by_name")
+def stream_by_name():
+    """Play a song that has no source that plays (a SoundCloud one) from the
+    copy _rematch finds: a redirect to its stream, as proxy_stream gives."""
+    t = _rematch(_arg("title"), _arg("artist"), _int_arg("duration_ms", 0))
+    src = (t or {}).get("playable_source") or ""
+    url = ((t or {}).get("sources") or {}).get(src, {}).get("url") if t else None
+    if not url:
+        return jsonify({"detail": "Not found outside SoundCloud"}), 404
+    try:
+        s_url, last_status = _verified_stream(url, src, _int_arg("bitrate", 320))
+    except Exception as e:
+        return jsonify({"detail": str(e)}), 500
+    if not s_url:
+        return jsonify({"detail": f"Stream unavailable ({last_status})"}), 502
+    resp = redirect(s_url, code=302)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+# ─── Saved songs, re-checked ──────────────────────────────────────────────────
+# A song saved before the copy's own credit was checked (an import, a like
+# from search) can be someone else's recording under the song's name: a search
+# row joined a karaoke label's "Creep [In The Style Of Radiohead]" to
+# Radiohead's, and the import kept it, at JioSaavn's quality, as theirs. The
+# app sends its saved JioSaavn copies a few at a time (src/copyRepair.ts);
+# each is looked up by its own page, and one that is not the song is replaced
+# by the copy the importer finds now. Nothing is removed: a song with no
+# better copy stays as it is.
+
+def _saavn_copy(url: str):
+    """A JioSaavn song page as (title, artist, duration_ms) by its own
+    details, or None."""
+    from components import profile
+    from components.jiosaavn_downloader import JioSaavnClient
+    d = profile._jcall({"__call": "webapi.get", "token": profile._token_from_url(url),
+                        "type": "song", "api_version": "4"})
+    songs = d.get("songs") if isinstance(d, dict) else None
+    song = JioSaavnClient.parse_song(songs[0]) if songs else None
+    if not song:
+        return None
+    return (_clean_text(song.title) or "", _clean_text(song.artist) or "",
+            (song.duration or 0) * 1000)
+
+
+def _recheck_one(t: Dict[str, Any]) -> Dict[str, Any]:
+    """{key, ok} or {key, ok: False, track} for one saved copy."""
+    from types import SimpleNamespace
+    key = t.get("key") or ""
+    url = t.get("url") or ""
+    item = {"title": t.get("title") or "", "artist": t.get("artist") or "",
+            "duration_ms": int(t.get("duration_ms") or 0)}
+    if not url or not item["title"]:
+        return {"key": key, "ok": True}
+    own = _saavn_copy(url)
+    if own is None:
+        return {"key": key, "ok": True}      # not answered: assume nothing
+    copy = SimpleNamespace(title=own[0], artist=own[1], duration_ms=own[2], sources={})
+    if _is_real(item, copy):
+        return {"key": key, "ok": True}
+    found = _match_track(item)
+    src = (found or {}).get("playable_source") or ""
+    new_url = (((found or {}).get("sources") or {}).get(src) or {}).get("url")
+    if not found or not new_url or new_url == url:
+        return {"key": key, "ok": True}      # nothing better: leave it
+    return {"key": key, "ok": False, "was": f"{own[0]} by {own[1]}", "track": found}
+
+
+@app.post("/api/recheck")
+def recheck_copies():
+    """{results: [...]} for up to 40 saved JioSaavn copies
+    [{key, title, artist, duration_ms, url}]: which are not the song they
+    are saved as, with the copy to play instead."""
+    items = (_body().get("tracks") or [])[:40]
+    futures = [_search_pool.submit(_recheck_one, t) for t in items if isinstance(t, dict)]
+    out = []
+    for f in futures:
+        try:
+            out.append(f.result(timeout=60))
+        except Exception:
+            pass
+    return jsonify({"results": out})
 
 
 @app.get("/api/quality_cap")
@@ -1407,7 +1496,11 @@ def radio():
     try:
         from components.radio import resolve_radio
         limit = min(max(_int_arg("limit", 12), 1), 20)
-        return jsonify({"tracks": resolve_radio(_arg("title"), _arg("artist"), limit)})
+        # The seed's own JioSaavn page and YouTube video, when the phone has
+        # them: the radio starts from that very song.
+        return jsonify({"tracks": resolve_radio(_arg("title"), _arg("artist"), limit,
+                                                saavn_url=_arg("saavn_url"),
+                                                video_url=_arg("video_url"))})
     except Exception as e:
         return jsonify({"tracks": [], "error": str(e)})
 
@@ -1431,7 +1524,9 @@ def artist_profile():
     name = _arg("name")
     try:
         from components.profile import get_artist
-        return jsonify(get_artist(name))
+        # The song the artist was tapped on names them exactly: song_url for a
+        # JioSaavn song, song_title for any other (its JioSaavn copy's credits).
+        return jsonify(get_artist(name, _arg("song_url"), _arg("song_title")))
     except Exception as e:
         return jsonify({"name": name, "top_songs": [], "albums": [], "error": str(e)})
 
@@ -1453,6 +1548,28 @@ def search_artists_ep():
         return jsonify({"artists": search_artists(_arg("q"), _int_arg("limit", 10))})
     except Exception as e:
         return jsonify({"artists": [], "error": str(e)})
+
+
+@app.get("/api/search/collections")
+def search_collections_ep():
+    """{albums, playlists}: the releases and playlists a search names."""
+    try:
+        from components.collection_search import search_collections
+        return jsonify(search_collections(_arg("q"), _int_arg("limit", 10)))
+    except Exception as e:
+        return jsonify({"albums": [], "playlists": [], "error": str(e)})
+
+
+@app.get("/api/album_of")
+def album_of_song():
+    """{album: {name, artist, album_id} | null}: the album a song is on, for a
+    song that does not say (YouTube's): its "Go to album"."""
+    try:
+        from components.profile import album_of
+        return jsonify({"album": album_of(_arg("title"), _arg("artist"),
+                                          _int_arg("duration_ms", 0))})
+    except Exception as e:
+        return jsonify({"album": None, "error": str(e)})
 
 
 @app.get("/api/album")
@@ -1558,38 +1675,107 @@ def _youtube_original(item: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# ─── Is this the real recording? ─────────────────────────────────────────────
+# One answer for every place that looks for a known song: an import, a saved
+# SoundCloud song moved elsewhere, a saved copy re-checked (/api/recheck).
+# Search ranks for a few typed words; these know the song (title, artist,
+# length) and check the copy that will PLAY, by its own name and credit: a
+# search row joins copies from several sources under one of their credits.
+
+def _is_soundalike(item: Dict[str, Any], copy) -> bool:
+    """A cover, a karaoke or tribute act's take, or a soundalike sold under
+    the song's name ("Creep [In The Style Of Radiohead]"), for a song that
+    is not one itself."""
+    from components import search_rank as sr
+    names = _credited(item.get("artist") or "")
+    # The borrowed-name test is for a real credit only: an upload's "artist"
+    # is the channel (a label: "MaD DoG Records"), and the artist named in
+    # its title is the song's, not a borrowing.
+    words = set(sr.words(names[0])) if names and not getattr(copy, "upload", False) else set()
+    query = f"{item.get('title') or ''} {item.get('artist') or ''}"
+    return sr.cover_act(query, getattr(copy, "title", "") or "",
+                        getattr(copy, "artist", "") or "", words)
+
+
+def _is_real(item: Dict[str, Any], copy, weak_artist: bool = False) -> bool:
+    """`copy` is `item`: its title, its artist, its length, and not a
+    soundalike.
+
+    A YouTube upload that is not YouTube Music's own is read both ways: its
+    "Song - Artist" title was split as "Artist - Song" ("Twirling -
+    savemesamudio" came out as the song "savemesamudio" by "Twirling")."""
+    def ok(c):
+        return _title_artist_ok(item, c, weak_artist) and not _is_soundalike(item, c)
+    if ok(copy):
+        return True
+    if getattr(copy, "upload", False):
+        from types import SimpleNamespace
+        swapped = SimpleNamespace(**{**vars(copy), "title": copy.artist, "artist": copy.title})
+        return ok(swapped)
+    return False
+
+
+def _copies(track):
+    """Each playable copy on a search row, best source first, as
+    (source name, namespace with that copy's own title, artist, length)."""
+    from types import SimpleNamespace
+    order = {"jiosaavn": 0, "youtube_music": 1, "youtube": 2}
+    out = []
+    for key, src in (getattr(track, "sources", {}) or {}).items():
+        name = getattr(key, "value", key)
+        data = _source_to_dict(src)
+        if name not in PLAYABLE_SOURCES or not data.get("url"):
+            continue
+        out.append((name, SimpleNamespace(
+            # Saved before copies kept their own credit: the row's.
+            title=data.get("title") or getattr(track, "title", ""),
+            artist=data.get("artist") or getattr(track, "artist", ""),
+            duration_ms=data.get("duration_ms") or getattr(track, "duration_ms", 0) or 0,
+            sources={name: src},
+            official=bool(data.get("official")),
+            upload=name == "youtube" and not data.get("official"),
+        )))
+    out.sort(key=lambda c: order.get(c[0], 9))
+    return out
+
+
 def _youtube_match(item: Dict[str, Any], title: str, names: List[str]):
-    """The song on YouTube: (hit, playable track) or None. A label's channel
-    ("T-Series") is not the singer, so the weak-artist rule applies: a
-    near-exact title and the original's length within five seconds, or a
-    credited artist as the channel. Searched through NewPipe whatever the
-    YouTube switch says, as a YouTube playlist's originals are."""
+    """The song on YouTube: (hit, playable track) or None, through the same
+    YouTube search as everything else (YouTube Music's songs, then videos).
+    A label's channel ("T-Series") is not the singer, so the weak-artist rule
+    applies: a near-exact title and the original's length within five
+    seconds, or a credited artist as the channel. Searched through NewPipe
+    whatever the YouTube switch says, as a YouTube playlist's originals
+    are."""
     from types import SimpleNamespace
     try:
-        import newpipe_yt
-        hits = newpipe_yt.search(f"{title} {names[0] if names else ''}".strip(), 6)
+        hits = _NewPipeYouTubeClient().search(
+            f"{title} {names[0] if names else ''}".strip(), 6)
     except Exception:
         return None
     good = []
     for h in hits or []:
-        if not h.get("url"):
+        if not h.url:
             continue
-        t = SimpleNamespace(title=h.get("title") or "", artist=h.get("artist") or "",
-                            duration_ms=h.get("duration_ms") or 0, sources={})
-        if _title_artist_ok(item, t, True):
+        t = SimpleNamespace(title=h.title or "", artist=h.artist or "",
+                            duration_ms=h.duration_ms or 0, sources={},
+                            official=bool(h.is_music), upload=not h.is_music)
+        if _is_real(item, t, True):
             good.append((t, h))
     if not good:
         return None
     t, h = max(good, key=lambda g: _match_rank(item, g[0]))
-    return t, _youtube_original({**item, "url": h["url"], "artwork": h.get("artwork"),
-                                 "duration_ms": item.get("duration_ms") or h.get("duration_ms")})
+    return t, _youtube_original({**item, "url": h.url, "artwork": h.thumbnail,
+                                 "duration_ms": item.get("duration_ms") or h.duration_ms})
 
 
 def _settled(item: Dict[str, Any], track) -> bool:
     """A hit good enough to stop searching: the title near-exact and, when
     both are known, the length within five seconds of the original's."""
-    exact, close = _match_rank(item, track)[:2]
+    exact = _match_rank(item, track)[0]
     want = int(item.get("duration_ms") or 0)
+    got = int(getattr(track, "duration_ms", 0) or 0)
+    close = -abs(got - want) if want and got else -60_000
     return bool(exact) and (not want or close >= -5_000)
 
 
@@ -1620,39 +1806,53 @@ def _match_track(item: Dict[str, Any], weak_artist: bool = False) -> Optional[Di
             enabled_sources=PLAYABLE_SEARCH_SOURCES,
             timeout_seconds=10.0,
         )
+        # Candidates are COPIES, each with its own credit and length: a row
+        # joins copies of one song from several sources under one credit and
+        # the longest length, and the copy that plays is what must be right.
+        # (row, source name, copy); search rows are cached and shared with
+        # the search screen, so nothing is written onto them.
         best = None
         for query in queries:
-            # The BEST hit that passes, not the first: an exact title and the
+            # The BEST copy that passes, not the first: an exact title and the
             # original's length beat a copy that happened to rank higher.
-            good = [t for t in _search_service.search(query, cfg)
-                    if _playable_source_name(t) and _title_artist_ok(item, t, weak_artist)]
+            good = [(t, n, c) for t in _search_service.search(query, cfg)
+                    for n, c in _copies(t) if _is_real(item, c, weak_artist)]
             if best is not None:
                 good.append(best)
             if good:
-                best = max(good, key=lambda t: _match_rank(item, t))
+                best = max(good, key=lambda g: _match_rank(item, g[2]))
                 # Settled only by a near-exact title within a few seconds of
                 # the original; anything less ("O Saathiya" for "O Saathi", a
                 # DJ upload 30 s short) lets the next search try for better.
-                if _settled(item, best):
+                if _settled(item, best[2]):
                     break
         # Not on JioSaavn or SoundCloud as itself (T-Series' catalogue is the
         # big one: only fan uploads there): the original on YouTube, when it
         # is closer than anything found. Not for a YouTube playlist, whose
         # songs already keep their own video (see _find).
-        if not weak_artist and (best is None or not _settled(item, best)):
+        if not weak_artist and (best is None or not _settled(item, best[2])):
             yt = _youtube_match(item, title, names)
-            if yt is not None and (best is None or _match_rank(item, yt[0]) > _match_rank(item, best)):
+            if yt is not None and (best is None or _match_rank(item, yt[0]) > _match_rank(item, best[2])):
                 return yt[1]
         if best is not None:
-            track = best
-            source = _playable_source_name(track)
+            track, source, copy = best
+            # The row's other copies that are the song too (the stream's
+            # fallbacks), the chosen one first.
+            keep = {n for n, c in _copies(track) if _is_real(item, c, weak_artist)}
+            # A plain upload's names are a guess (which side of its dash is
+            # the artist): the song keeps the names it was asked for by.
+            upload = getattr(copy, "upload", False)
             return {
-                "title": _clean_text(track.title) or item["title"],
-                "artist": _clean_text(track.artist) or item["artist"],
+                "title": (item["title"] if upload else _clean_text(track.title)) or item["title"],
+                "artist": (item["artist"] if upload else _clean_text(track.artist)) or item["artist"],
                 "album": _clean_text(track.album),
-                "duration_ms": track.duration_ms,
+                "duration_ms": copy.duration_ms or track.duration_ms,
                 "isrc": track.isrc,
-                "sources": {k.value: _source_to_dict(v) for k, v in track.sources.items()},
+                # Only the copies that are the song: a soundalike left on the
+                # row would be what "Wrong song?" or a failed stream falls
+                # back to.
+                "sources": {k.value: _source_to_dict(v) for k, v in track.sources.items()
+                            if k.value in keep or k.value not in PLAYABLE_SOURCES},
                 "primary_source": source,
                 "playable_source": source,
                 "artwork_url": track.get_best_artwork() if hasattr(track, "get_best_artwork") else None,
@@ -1913,7 +2113,18 @@ def spotify_import():
 # live interpreter is asking for a broken backend, and it only forces a slow
 # re-extract on the next launch. Excluded from the clear AND from the size, so
 # the number on the button is exactly what pressing it frees.
-_CACHE_KEEP = {"chaquopy"}
+# Caches that bound THEMSELVES, and that break or cost a re-download when
+# their files vanish from under them:
+#   TrackPlayer  ExoPlayer's song cache (80 MB, LRU), open while a song plays.
+#                Its index still listed the deleted spans, so a song replayed
+#                from it hit missing files and went back to the network.
+#   image_cache  Fresco's covers (its own 40 MB limit). Wiped, every cover in
+#                every list downloaded again on the next scroll.
+#   http         HttpResponseCache for artwork colours (10 MB, installed for
+#                the process; its journal must not lose its files).
+# Together they are 130 MB, over the 100 MB limit's default: once they had
+# filled, every return to the app cleared them all again.
+_CACHE_KEEP = {"chaquopy", "TrackPlayer", "image_cache", "http"}
 
 
 def _cache_walk():
@@ -2162,22 +2373,12 @@ def start_server(files_dir: str, downloads_dir: str,
     return port
 
 
-def stop_server() -> None:
-    global _server
-    if _server is not None:
-        _server.shutdown()
-        _server = None
-    if _download_manager:
-        _download_manager.stop()
-    if _search_service:
-        _search_service.shutdown()
-
-
 if __name__ == "__main__":
-    # Desktop smoke test:
-    #   cd mobile/python && python mobile_server.py [--port 8765]
-    # Serves the mobile UI + API on localhost using throwaway local folders, so
-    # you can iterate on the whole app in a browser without an emulator.
+    # The engine alone, on a desktop:
+    #   cd android/app/src/main/python && python mobile_server.py [--port 8765]
+    # Serves the API on localhost with throwaway local folders, for poking at
+    # routes without a phone. (The app itself is React Native; there is no
+    # web UI to serve any more.)
     import argparse
 
     parser = argparse.ArgumentParser(description="Fix_Spotify mobile backend")

@@ -62,10 +62,19 @@ export function useListEnd(): {paddingBottom: number} {
  * version and Install. Plain: no edge, no shadow. The strip says only what to
  * do.
  */
-export function UpdateModal({hidden = false}: {hidden?: boolean}) {
+export function UpdateModal({
+  hidden = false,
+  quiet = false,
+}: {
+  hidden?: boolean;
+  /** Away from Home: a waiting update keeps to the dot on Settings rather
+   *  than floating over a playlist or an artist's page. A download the user
+   *  started, or its failure, still shows wherever they are. */
+  quiet?: boolean;
+}) {
   const u = useUpdate();
   const {phase, info, pct} = u;
-  if (hidden || !stripUp(u)) {
+  if (hidden || !stripUp(u) || (quiet && phase === 'found')) {
     return null;
   }
   const failed = phase === 'failed';

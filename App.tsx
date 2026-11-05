@@ -62,6 +62,7 @@ import {
 } from './src/update';
 import {watchCacheLimit} from './src/cacheLimit';
 import {repairCovers} from './src/coverRepair';
+import {recheckSavedCopies} from './src/copyRepair';
 import {
   TrackActionSheet,
   useTrackMenuHost,
@@ -83,11 +84,12 @@ import {C} from './src/theme';
 import {
   appVersion,
   getAlbum,
+  getAlbumOf,
   getCollection,
   type HomeItem,
   type Track,
 } from './src/backend';
-import {collectionKey} from './src/collections';
+import {collectionKey, playlistToCollection} from './src/collections';
 import {refreshDownloads, watchDownloads} from './src/downloads';
 import {
   playTrack,
@@ -98,11 +100,17 @@ import {
 } from './src/player';
 import {hydrate, readSettings} from './src/store';
 import {flushAll} from './src/storage';
-import {cleanText, normalizeTracks, splitArtists} from './src/tracks';
+import {
+  cleanText,
+  getTrackId,
+  normalizeTracks,
+  splitArtists,
+} from './src/tracks';
 import {type Collection} from './src/collections';
 import {applyAudioEffects} from './src/audioEffects';
 import {toggleFollow} from './src/artists';
 import {toast} from './src/toast';
+import {importedPlaylistFor, noteCollectionOpened} from './src/spotifyImport';
 import {diag} from './src/diag';
 import {logEvent} from './src/analytics';
 
@@ -127,10 +135,13 @@ function Shell() {
   /** The page that asks for a playlist link (Home's import card). */
   const [importAsk, setImportAsk] = useState(false);
   const [artist, setArtist] = useState<string | null>(null);
+  /** The JioSaavn song the artist was opened from, when it was a song's
+   *  credit: it names the artist exactly (ArtistScreen's songUrl). */
+  const [artistSong, setArtistSong] = useState('');
+  const [artistSongTitle, setArtistSongTitle] = useState('');
   // Whichever overlay was opened LAST renders on top. Fixed JSX order put the
   // album under the artist page — it opened invisibly, which read as "albums
   // don't work". zIndex from a counter mirrors the order things were opened.
-  const zRef = useRef(0);
   const [collectionZ, setCollectionZ] = useState(0);
   const [artistZ, setArtistZ] = useState(0);
 
@@ -299,9 +310,15 @@ function Shell() {
     const stopSharingSync = startSharing();
     // Old songs still showing a wrong iTunes cover get their real one.
     const covers = setTimeout(() => repairCovers().catch(() => {}), 20000);
+    // Saved songs that were someone else's recording get the real one.
+    const copies = setTimeout(
+      () => recheckSavedCopies().catch(() => {}),
+      45000,
+    );
     return () => {
       clearTimeout(u);
       clearTimeout(covers);
+      clearTimeout(copies);
       stopCacheLimit();
       stopSharingSync();
     };
@@ -326,16 +343,143 @@ function Shell() {
    *  Either way the full player closes first — the artist page renders in the
    *  body, and a Modal player would sit on top of it, which is why "clicked
    *  the artist, nothing happened until I pressed back". */
-  const openCollection = useCallback((c: Collection) => {
-    setCollection(c);
-    setCollectionZ(++zRef.current);
+  /**
+   * Album, playlist and artist pages STACK, as ONE history.
+   *
+   * There were two stacks, one of albums and playlists and one of artists,
+   * each told apart from the other only by which was opened last. Open them
+   * in turns (a playlist, an artist on it, an artist from "Fans also like",
+   * an album of theirs) and Back closed the album, then put the PLAYLIST
+   * over both artists, whose pages were gone at the next Back: "it exited
+   * the entire thing and put me back in the library". Now every page opened
+   * is one step in `navOrder`, Back undoes the newest step whichever kind it
+   * is, and the newest page of either kind is the one drawn on top.
+   */
+  const navOrder = useRef<Array<'c' | 'a'>>([]);
+  /** Draw whichever kind was opened last on top. */
+  const restack = useCallback(() => {
+    setCollectionZ(navOrder.current.lastIndexOf('c') + 1);
+    setArtistZ(navOrder.current.lastIndexOf('a') + 1);
+  }, []);
+  const dropStep = useCallback((kind: 'c' | 'a') => {
+    const at = navOrder.current.lastIndexOf(kind);
+    if (at >= 0) {
+      navOrder.current.splice(at, 1);
+    }
   }, []);
 
-  const openArtist = useCallback((name: string) => {
-    setPlayerOpen(false);
-    setArtist(name);
-    setArtistZ(++zRef.current);
-  }, []);
+  const collectionRef = useRef<Collection | null>(null);
+  collectionRef.current = collection;
+  const collectionStack = useRef<Collection[]>([]);
+  const showCollection = useCallback(
+    (c: Collection) => {
+      const prev = collectionRef.current;
+      // The same page again, or "Finding the album…" becoming the album:
+      // replaced in place, not a step to go back to.
+      const replacing =
+        !!prev && (prev.id === c.id || prev.id.startsWith(FINDING_ALBUM));
+      if (prev && !replacing) {
+        collectionStack.current.push(prev);
+      }
+      if (replacing) {
+        dropStep('c');
+      }
+      navOrder.current.push('c');
+      // The playlist just imported, opened from anywhere: Home's card
+      // stops announcing it.
+      noteCollectionOpened(c.id);
+      // Over the player too, which otherwise covered it: "Go to album" from
+      // the lyrics opened the album behind the player.
+      setPlayerOpen(false);
+      collectionRef.current = c;
+      setCollection(c);
+      restack();
+    },
+    [restack, dropStep],
+  );
+  /** Back to the screen this one was opened from, or none. */
+  const closeCollection = useCallback(() => {
+    const prev = collectionStack.current.pop() ?? null;
+    collectionRef.current = prev;
+    setCollection(prev);
+    dropStep('c');
+    restack();
+  }, [restack, dropStep]);
+  /** Every album and playlist screen at once (a tab change). */
+  const closeAllCollections = useCallback(() => {
+    collectionStack.current = [];
+    collectionRef.current = null;
+    navOrder.current = navOrder.current.filter(k => k !== 'c');
+    setCollection(null);
+    restack();
+  }, [restack]);
+  const openCollection = showCollection;
+
+  /** The artists opened one over another, under the one on screen. */
+  const artistStack = useRef<
+    Array<{name: string; song: string; title: string}>
+  >([]);
+  const artistNow = useRef({name: '', song: '', title: ''});
+  /** Put an artist on screen, without touching the history. */
+  const setArtistPage = useCallback(
+    (name: string, songUrl: string, songTitle: string) => {
+      setPlayerOpen(false);
+      setArtistSong(songUrl);
+      // A song not from JioSaavn (YouTube) names its artist by its JioSaavn copy.
+      setArtistSongTitle(songUrl ? '' : songTitle);
+      setArtist(name);
+      artistNow.current = {name, song: songUrl, title: songTitle};
+    },
+    [],
+  );
+  /** An artist, over whatever is open: from a song, a credit, or another
+   *  artist's "Fans also like". Back returns to what it was opened from. */
+  const openArtist = useCallback(
+    (name: string, songUrl = '', songTitle = '') => {
+      const now = artistNow.current;
+      const same = !!now.name && now.name.toLowerCase() === name.toLowerCase();
+      if (now.name && !same) {
+        artistStack.current.push(now);
+      }
+      if (same) {
+        dropStep('a');
+      }
+      navOrder.current.push('a');
+      setArtistPage(name, songUrl, songTitle);
+      restack();
+    },
+    [setArtistPage, restack, dropStep],
+  );
+  const openArtistFromArtist = useCallback(
+    (name: string) => openArtist(name),
+    [openArtist],
+  );
+  /** Back to the artist this one was opened from, or none. */
+  const closeArtist = useCallback(() => {
+    const prev = artistStack.current.pop();
+    if (prev) {
+      setArtistPage(prev.name, prev.song, prev.title);
+    } else {
+      artistNow.current = {name: '', song: '', title: ''};
+      setArtist(null);
+    }
+    dropStep('a');
+    restack();
+  }, [setArtistPage, restack, dropStep]);
+  /** One step back through every album, playlist and artist page opened:
+   *  the newest, whichever kind it is. False when none is open. */
+  const navBack = useCallback((): boolean => {
+    const last = navOrder.current[navOrder.current.length - 1];
+    if (last === 'a') {
+      closeArtist();
+      return true;
+    }
+    if (last === 'c') {
+      closeCollection();
+      return true;
+    }
+    return false;
+  }, [closeArtist, closeCollection]);
 
   const openArtistCredit = useCallback(
     (t: {title?: string | null; artist?: string | null}) => {
@@ -354,7 +498,12 @@ function Shell() {
           jiosaavnUrl: song.sources?.jiosaavn?.url,
         });
       } else if (names.length === 1) {
-        openArtist(names[0]);
+        const song: Partial<Track> = sourceTrackFor(t) ?? (t as Partial<Track>);
+        openArtist(
+          names[0],
+          song.sources?.jiosaavn?.url ?? '',
+          cleanText(String(t.title ?? '')),
+        );
       }
     },
     [openArtist],
@@ -370,7 +519,7 @@ function Shell() {
       seed: Track[] = [],
       albumId = '',
     ) => {
-      setCollection({
+      showCollection({
         id: `album:${albumName}`,
         kind: 'album',
         name: albumName,
@@ -378,8 +527,11 @@ function Shell() {
         image: seed[0]?.artwork_url,
         tracks: seed,
       });
-      setCollectionZ(++zRef.current);
       setCollectionLoading(true);
+      // Everything below acts only on THIS page, if it is still the one on
+      // screen. Album A answering after the listener had moved on to album B
+      // switched B's placeholders off, and B looked like a one-song album.
+      const here = () => collectionRef.current?.id === `album:${albumName}`;
       try {
         // The song's own page names its album exactly; by name alone a film
         // soundtrack finds nothing and the page stays at the one seed song.
@@ -389,11 +541,9 @@ function Shell() {
           seed[0]?.sources?.jiosaavn?.url ?? '',
           albumId,
         );
-        if (!data.tracks.length && !seed.length) {
+        if (!data.tracks.length && !seed.length && here()) {
           // Nothing to show: close it rather than leave an empty page open.
-          setCollection(prev =>
-            prev && prev.id === `album:${albumName}` ? null : prev,
-          );
+          closeCollection();
           toast('That one has no playable songs right now.');
         }
         if (data.tracks.length) {
@@ -402,6 +552,10 @@ function Shell() {
               ? {
                   ...prev,
                   name: data.name || albumName,
+                  // The album's own cover: without it the header was a
+                  // mosaic of its songs', a single's art among them.
+                  image: data.image || prev.image,
+                  year: data.year || prev.year,
                   tracks: normalizeTracks(data.tracks),
                 }
               : prev,
@@ -410,10 +564,12 @@ function Shell() {
       } catch {
         // The seed tracks stay — a partial album beats an error screen.
       } finally {
-        setCollectionLoading(false);
+        if (here()) {
+          setCollectionLoading(false);
+        }
       }
     },
-    [],
+    [showCollection, closeCollection],
   );
   /** Home and the artist page open an album by its id, with no songs yet.
    *  One stable function, so passing it does not undo HomeScreen's memo: an
@@ -426,12 +582,53 @@ function Shell() {
 
   const openAlbumOf = useCallback(
     (track: Track) => {
-      if (!track.album) {
+      if (track.album) {
+        openAlbumByName(track.album, track.artist, [track]);
         return;
       }
-      openAlbumByName(track.album, track.artist, [track]);
+      // A song that does not name its album (a YouTube one): the engine
+      // finds the release it is on, by the same song on iTunes or JioSaavn.
+      // Measured 58 of 59 right, niche to famous; a cover finds none.
+      // The page opens at once, holding the song, so the seconds of looking
+      // show as looking instead of as nothing having happened.
+      const finding = `${FINDING_ALBUM}${getTrackId(track)}`;
+      showCollection({
+        id: finding,
+        kind: 'album',
+        // No name yet: the page shows a placeholder bar until it is found.
+        name: '',
+        artist: track.artist,
+        image: track.artwork_url,
+        tracks: [track],
+      });
+      setCollectionLoading(true);
+      const stillWaiting = () => collectionRef.current?.id === finding;
+      const notFound = (message: string) => {
+        // Only to someone still waiting: left already, it is news about a
+        // page they closed.
+        if (stillWaiting()) {
+          setCollectionLoading(false);
+          closeCollection();
+          toast(message);
+        }
+      };
+      getAlbumOf(track)
+        .then(found => {
+          if (!found) {
+            notFound("Couldn't find the album this song is on.");
+          } else if (stillWaiting()) {
+            // The song itself as the album's first seed: it is on this
+            // release, so the page is never empty while the rest load, and
+            // a release whose other songs are not found still holds it.
+            openAlbumByName(found.name, found.artist, [track], found.album_id);
+          }
+          // Closed while looking: it is not opened behind the user's back.
+        })
+        .catch(() =>
+          notFound("Couldn't find the album. Check your connection."),
+        );
     },
-    [openAlbumByName],
+    [openAlbumByName, showCollection, closeCollection],
   );
 
   /** A Home card is a track, album or playlist. Tracks play; the rest open —
@@ -445,10 +642,25 @@ function Shell() {
       if (!item.perma_url) {
         return;
       }
+      const id = item.perma_url;
+      const album = item.type === 'album';
+      const name = item.name || item.title || '';
+      const by = item.artist || item.subtitle || '';
+      // The page opens AT ONCE, with placeholder rows, and fills in. It
+      // used to open only once everything had loaded: seconds of a card that
+      // seemed not to have been tapped, tapped again, or another tapped, and
+      // the pages piled up when the answers came.
+      showCollection({
+        id,
+        kind: album ? 'album' : 'sourcePlaylist',
+        name: item.title || item.name || '',
+        image: item.image,
+        tracks: [],
+        source: id,
+      });
+      setCollectionLoading(true);
+      const here = () => collectionRef.current?.id === id;
       try {
-        const album = item.type === 'album';
-        const name = item.name || item.title || '';
-        const by = item.artist || item.subtitle || '';
         // An album opens by its JioSaavn id: its link is an album page, which
         // the playlist lookup cannot read, and by name a soundtrack or a
         // "(From ...)" title often matched nothing — "no playable songs" on a
@@ -465,53 +677,72 @@ function Shell() {
         if (!data.tracks.length && album) {
           data = await getAlbum(name, by);
         }
+        if (!here()) {
+          return; // closed while it loaded
+        }
         if (!data.tracks.length) {
+          closeCollection();
           toast('That one has no playable songs right now.');
           return;
         }
         // A single is filed as an album with one song on it. It plays, with
-        // similar songs after it, rather than opening a page of one.
+        // similar songs after it, rather than staying a page of one.
         if (album && data.tracks.length === 1) {
           const [only] = normalizeTracks(data.tracks);
           if (only) {
+            closeCollection();
             play(only);
             return;
           }
         }
-        openCollection({
-          id: item.perma_url,
-          kind: item.type === 'album' ? 'album' : 'sourcePlaylist',
-          name: data.name || item.title || item.name || '',
-          image: item.image,
-          tracks: normalizeTracks(data.tracks),
-          source: item.perma_url,
-        });
+        setCollection(prev =>
+          prev && prev.id === id
+            ? {
+                ...prev,
+                name: data.name || prev.name,
+                tracks: normalizeTracks(data.tracks),
+              }
+            : prev,
+        );
       } catch {
-        toast("Couldn't open that — try again in a moment.");
+        if (here()) {
+          closeCollection();
+          toast("Couldn't open that — try again in a moment.");
+        }
+      } finally {
+        if (here()) {
+          setCollectionLoading(false);
+        }
       }
     },
-    [play, openCollection],
+    [play, showCollection, closeCollection],
   );
 
   /** Home's quick-access tiles. Home only knows WHAT was tapped; the
    *  tracklists live here, next to everything else that opens a Collection. */
   const refreshDownloadsCollection = refreshDownloads;
 
-  const switchTab = useCallback((next: Tab) => {
-    logEvent('screen_view', {screen_name: next});
-    setTab(next);
-    setCollection(null);
-    setArtist(null);
-    setImportUrl(null);
-    setImportAsk(false);
-    setSettingsOpen(false);
-    setActivity(null);
-    // Every full-screen overlay closes on a tab change. The Equalizer and Jam
-    // were missing here, so the Equalizer stayed on top of every tab.
-    setEqOpen(false);
-    setLangOpen(false);
-    setJamOpen(false);
-  }, []);
+  const switchTab = useCallback(
+    (next: Tab) => {
+      logEvent('screen_view', {screen_name: next});
+      setTab(next);
+      closeAllCollections();
+      artistStack.current = [];
+      artistNow.current = {name: '', song: '', title: ''};
+      navOrder.current = [];
+      setArtist(null);
+      setImportUrl(null);
+      setImportAsk(false);
+      setSettingsOpen(false);
+      setActivity(null);
+      // Every full-screen overlay closes on a tab change. The Equalizer and Jam
+      // were missing here, so the Equalizer stayed on top of every tab.
+      setEqOpen(false);
+      setLangOpen(false);
+      setJamOpen(false);
+    },
+    [closeAllCollections],
+  );
 
   /**
    * Android's back button must walk the same stack the on-screen back arrow
@@ -571,24 +802,9 @@ function Shell() {
       setImportUrl(null);
       return true;
     }
-    // Artist and album/playlist overlays stack in either order (open an album
-    // FROM an artist, or an artist from an album), so back must dismiss the one
-    // actually on TOP — by z-order — not a fixed priority. Otherwise back closed
-    // the screen underneath and left the visible one stuck.
-    if (artist && collection) {
-      if (artistZ >= collectionZ) {
-        setArtist(null);
-      } else {
-        setCollection(null);
-      }
-      return true;
-    }
-    if (artist) {
-      setArtist(null);
-      return true;
-    }
-    if (collection) {
-      setCollection(null);
+    // Artist and album/playlist pages stack in either order, in turns: back
+    // undoes the newest of them, whichever kind (navBack).
+    if (navBack()) {
       return true;
     }
     // Any tab other than Home goes to Home before the app will exit.
@@ -639,10 +855,26 @@ function Shell() {
   const closeLanguages = useCallback(() => setLangOpen(false), []);
   const openImportAsk = useCallback(() => setImportAsk(true), []);
   const closeImportAsk = useCallback(() => setImportAsk(false), []);
-  const importLink = useCallback((url: string) => {
-    setImportAsk(false);
-    setImportUrl(url);
-  }, []);
+  /** A new link to import, from the link box or a paste in Search. One
+   *  already imported opens its playlist instead of making a copy of it:
+   *  Sync there brings in whatever is new. */
+  const importLink = useCallback(
+    (url: string) => {
+      setImportAsk(false);
+      // From Search the keyboard stayed up over whatever opened next.
+      Keyboard.dismiss();
+      const before = importedPlaylistFor(url);
+      if (before) {
+        openCollection(playlistToCollection(before));
+        toast(
+          `"${before.name}" is already in Your Library. Sync adds its new songs.`,
+        );
+        return;
+      }
+      setImportUrl(url);
+    },
+    [openCollection],
+  );
   // Sunday's Recap notification opens the app on relaxify://recap, and a
   // shared playlist link's page on relaxify://p/CODE, whether the app was
   // closed (the initial URL) or already running (a url event).
@@ -774,9 +1006,10 @@ function Shell() {
   const pickCreditedArtist = useCallback(
     (name: string) => {
       setCreditsFor(null);
-      openArtist(name); // closes the player too — the profile is behind it
+      // closes the player too — the profile is behind it
+      openArtist(name, creditsFor?.jiosaavnUrl ?? '', creditsFor?.title ?? '');
     },
-    [openArtist],
+    [openArtist, creditsFor],
   );
   const expandPlayer = useCallback(() => {
     // A tap during the tail of a close turns the panel round; the app still
@@ -845,12 +1078,13 @@ function Shell() {
           <SearchScreen
             visible={tab === 'search'}
             onPickTrack={play}
-            onImportSpotify={setImportUrl}
+            onImportSpotify={importLink}
             onMenu={openSheet}
             onOpenArtist={openArtist}
             onOpenBrowse={pickHomeItem}
             onOpenMenu={openDrawer}
             onOpenCollection={openFromLibrary}
+            onOpenAlbum={openAlbumById}
           />
         </View>
         <View
@@ -870,7 +1104,7 @@ function Shell() {
             <CollectionScreen
               collection={collection}
               loading={collectionLoading}
-              onClose={() => setCollection(null)}
+              onClose={closeCollection}
               // The only play path with a collection behind it, so the only one
               // that can tell the library where playback started. Everything
               // else — search, radio, a tap on Home — passes nothing, which is
@@ -892,7 +1126,7 @@ function Shell() {
                 if (collection.kind === 'downloads') {
                   refreshDownloadsCollection();
                 } else {
-                  setCollection(null);
+                  closeCollection();
                 }
                 setLibraryNonce(n => n + 1);
               }}
@@ -901,13 +1135,13 @@ function Shell() {
         )}
 
         {importAsk && (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.overPages]}>
             <ImportLinkScreen onImport={importLink} onClose={closeImportAsk} />
           </View>
         )}
 
         {!!importUrl && (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.overPages]}>
             <SpotifyImportScreen
               url={importUrl}
               onClose={() => setImportUrl(null)}
@@ -919,8 +1153,14 @@ function Shell() {
         {!!artist && (
           <View style={[StyleSheet.absoluteFill, {zIndex: artistZ}]}>
             <ArtistScreen
+              // A fresh page per artist: one opened from another's "Fans
+              // also like" kept the last one's scroll and open sections.
+              key={artist}
               name={artist}
-              onClose={() => setArtist(null)}
+              songUrl={artistSong}
+              songTitle={artistSongTitle}
+              onClose={closeArtist}
+              onOpenArtist={openArtistFromArtist}
               onPlay={play}
               onMenu={openSheet}
               onToggleFollow={(n, img) =>
@@ -936,7 +1176,7 @@ function Shell() {
             rest: a Modal floats over the whole window and hid the mini player.
             Here it stays inside the body, so playback controls remain visible. */}
         {settingsOpen && (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.overPages]}>
             <SettingsScreen
               focus={settingsFocus}
               onClose={() => {
@@ -950,19 +1190,19 @@ function Shell() {
         )}
 
         {eqOpen && (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.overPages]}>
             <EqualizerScreen onClose={() => setEqOpen(false)} />
           </View>
         )}
 
         {langOpen && (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.overPages]}>
             <LanguagesScreen onClose={closeLanguages} />
           </View>
         )}
 
         {jamOpen && (
-          <View style={StyleSheet.absoluteFill}>
+          <View style={[StyleSheet.absoluteFill, styles.overPages]}>
             <JamScreen onClose={closeJam} />
           </View>
         )}
@@ -1063,7 +1303,22 @@ function Shell() {
         />
       )}
 
-      <UpdateModal hidden={!!activity} />
+      <UpdateModal
+        hidden={!!activity}
+        quiet={
+          tab !== 'home' ||
+          playerOpen ||
+          !!collection ||
+          collectionLoading ||
+          !!artist ||
+          !!importUrl ||
+          importAsk ||
+          settingsOpen ||
+          eqOpen ||
+          langOpen ||
+          jamOpen
+        }
+      />
       <JamBar hidden={!!activity || jamOpen} onOpen={openJam} />
 
       {/* Above everything, and the real UI is already mounted and painted
@@ -1121,6 +1376,8 @@ function askForNotifications(): void {
 
 /** The longest the splash waits for the JS thread to go quiet. */
 const SPLASH_QUIET_CAP_MS = 2500;
+/** The id of an album page still finding which album its song is on. */
+const FINDING_ALBUM = 'finding-album:';
 
 /**
  * Resolves once the JS thread has been idle for a moment: three 100 ms ticks
@@ -1201,6 +1458,12 @@ function BodyFade() {
 }
 
 const styles = StyleSheet.create({
+  // Settings, the Equalizer, Languages, Jam and the import screens are drawn
+  // over every album, playlist and artist page. Those are layered by the
+  // order they were opened (1, 2, 3...), and these had no layer at all, so
+  // one opened over a page (the Equalizer from the player, over an album)
+  // was drawn under it, and Back closed it unseen.
+  overPages: {zIndex: 1000},
   // No background: the window paints the app's black once (styles.xml).
   // Both roots use this style, so a fill here was two extra full-screen
   // layers under everything, every frame.

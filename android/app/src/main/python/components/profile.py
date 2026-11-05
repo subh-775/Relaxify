@@ -236,6 +236,13 @@ def _token_from_url(url):
     return (url or "").rstrip("/").split("/")[-1]
 
 
+def _int_or_none(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _song_to_raw(s):
     """Normalize a JioSaavn song object (from autocomplete / album-details /
     artist-topSongs — three different shapes) into the raw dict SourceMerger
@@ -304,6 +311,37 @@ def _track_art(track):
     return (track or {}).get("artwork_url") or ""
 
 
+def _album_tracks(songs):
+    """A JioSaavn album's songs as playable tracks, every one in its place.
+
+    One at a time, not through one merge: SourceMerger folds what it takes
+    for the same song together, and inside an album that is the original
+    and its remaster, the song and its live take (RÜFÜS DU SOL's "Atlas
+    (10 Year Anniversary)" opened with 11 of its 26). A song JioSaavn lists
+    without a stream is found elsewhere (YouTube) by name, in its place."""
+    slots, missing = [], []
+    for s in songs:
+        raw = _song_to_raw(s)
+        made = _make_playable([raw]) if raw else []
+        if made:
+            slots.append(made[0])
+        else:
+            title = _clean((s or {}).get("title") or (s or {}).get("song"))
+            mi = (s or {}).get("more_info") or {}
+            artist = _clean((s or {}).get("primary_artists") or mi.get("artistMap_str")
+                            or ", ".join(a.get("name", "") for a in
+                                         ((mi.get("artistMap") or {}).get("primary_artists") or [])
+                                         if isinstance(a, dict)))
+            slots.append(None)
+            if title:
+                missing.append((len(slots) - 1, title, artist))
+    if missing:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for (i, _, _), d in zip(missing, ex.map(lambda m: _resolve_multi(m[1], m[2]), missing)):
+                slots[i] = d
+    return [t for t in slots if t]
+
+
 def _make_playable(raw_songs):
     """Run raw JioSaavn song dicts through SourceMerger → frontend track dicts."""
     raw = [r for r in (raw_songs or []) if r]
@@ -329,7 +367,8 @@ def _fallback_search_service():
             from components.unified_search import UnifiedSearchService, SearchConfig
             from components.source_merger import SourceType
             cfg = SearchConfig(
-                enabled_sources={SourceType.JIOSAAVN, SourceType.SOUNDCLOUD, SourceType.YOUTUBE},
+                # No SoundCloud: previews, DRM and copies (mobile_server _rematch).
+                enabled_sources={SourceType.JIOSAAVN, SourceType.YOUTUBE},
                 max_results_per_source=5,
                 max_total_results=8,
                 timeout_seconds=12.0,
@@ -343,8 +382,20 @@ def _same_song(name, artist, d):
     track's title must (fuzzily / by-substring) match the requested name AND,
     when both artists are known, share at least one word. Mirrors the frontend
     matchesTrack safety net so an album never fills with imposters."""
+    from components import search_rank as sr
     title = d.get("title") or ""
-    if _plain_ratio(name, title) < 80 and _norm_title(name) not in _norm_title(title):
+    # The same song's name once packaging brackets go ("(feat. Lulu James)",
+    # "(From ...)") and version ones stay ("[Live]"): iTunes lists features
+    # in the title, JioSaavn in the credits, and half of an album (Lane 8's
+    # "Rise", 5 of 11) failed this check while JioSaavn had every song.
+    same_core = bool(sr.core_title(name)) and sr.core_title(name) == sr.core_title(title)
+    if (not same_core and _plain_ratio(name, title) < 80
+            and _norm_title(name) not in _norm_title(title)):
+        return False
+    # Another version is another recording: "Alfaaz" is not "Alfaaz -
+    # Acoustic", though one name holds the other. An album opened with the
+    # acoustic take in place of its song.
+    if sr.version_words(name) != sr.version_words(title):
         return False
     da = d.get("artist") or ""
     if not artist or not da:
@@ -376,7 +427,7 @@ def _resolve_multi(name, artist):
     return None
 
 
-def _resolve_names(pairs, limit):
+def _resolve_names(pairs, limit, shown=None):
     """Resolve (name, artist) pairs to playable tracks, preserving order.
 
     JioSaavn first (fast, our primary source — UNCHANGED happy path). For any
@@ -419,6 +470,13 @@ def _resolve_names(pairs, limit):
                 if d:
                     slots[i] = d
 
+    # Each song by its name as written, when it was found by another
+    # (a Japanese album's songs, found by their romaji names: see
+    # _itunes_lookup).
+    if shown:
+        for i, t in enumerate(slots):
+            if t and i < len(shown) and shown[i]:
+                t["title"] = shown[i]
     # Preserve original (tracklist) order; drop unresolved slots.
     return [t for t in slots if t][:limit]
 
@@ -491,9 +549,39 @@ def _itunes_albums(name, limit=12):
         # exact-name match.
         if not _same_artist_name(name, artists[0].name):
             return []
-        lk = c._lookup({"id": artists[0].artist_id, "entity": "album", "limit": limit})
+        aid = artists[0].artist_id
+
+        def albums_in(country):
+            try:
+                return [r for r in c._lookup({"id": aid, "entity": "album", "limit": limit,
+                                              "country": country}).get("results", [])
+                        if r.get("wrapperType") == "collection"]
+            except Exception:
+                return []
+
+        def native_names(country):
+            """{album id: its name as written} from the store's song search:
+            a lookup gives albums in romaji even in their own store, a
+            search's songs carry the album's real name."""
+            try:
+                hits = c._search({"term": name, "entity": "song", "limit": 200,
+                                  "country": country}).get("results", [])
+            except Exception:
+                return {}
+            return {r.get("collectionId"): r.get("collectionName") for r in hits
+                    if str(r.get("artistId")) == str(aid)
+                    and _native_store(r.get("collectionName"))}
+
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            us_f = ex.submit(albums_in, "US")
+            jp_f = ex.submit(native_names, "JP")
+            kr_f = ex.submit(native_names, "KR")
+            rows = us_f.result()
+            native = jp_f.result() or kr_f.result()
         out = []
-        for r in lk.get("results", []):
+        for r in rows:
+            if native.get(r.get("collectionId")):
+                r = {**r, "collectionName": native[r.get("collectionId")]}
             if r.get("wrapperType") != "collection":
                 continue
             art100 = r.get("artworkUrl100", "")
@@ -501,7 +589,10 @@ def _itunes_albums(name, limit=12):
                 "name": _clean(r.get("collectionName")),
                 "artist": _clean(r.get("artistName")),
                 "image": art100.replace("100x100", "600x600"),
-                "album_id": "",  # iTunes id isn't a JioSaavn id; navigate by name
+                # The exact release, opened by it (_build_album): by name, "Awake"
+                # found Tycho's single of that name, not the album.
+                "album_id": f"itunes:{r.get('collectionId')}" if r.get("collectionId") else "",
+                "track_count": r.get("trackCount"),
                 "year": (r.get("releaseDate") or "")[:4],
                 "source": "itunes",
             })
@@ -687,17 +778,30 @@ def search_artists(query, limit=10):
       • JioSaavn autocomplete artists — Indian catalog + typo tolerance.
     Collaboration entities ("A & B") are dropped, and the SAME artist written
     with different punctuation ("Shankar Ehsaan Loy" / "Shankar-Ehsaan-Loy" /
-    "Shankar - Ehsaan - Loy") is collapsed to one (normalized-name key). Ranked
-    by popularity so the searched, real artist leads and low-fan tribute/cover
-    accounts sink below the cut. Never raises."""
+    "Shankar - Ehsaan - Loy") is collapsed to one (normalized-name key).
+
+    A popular song's title answers with that song's artists first
+    (_song_artists); otherwise names that ARE what was typed, exact before
+    fans. Measured on 21 searches (2026-11-05): "blinding lights" was three
+    acts named after the song and no Weeknd, "kesariya" a "Mariya Takeuchi",
+    "natalie holt" Natalie Cole first; all now answer with the artist meant.
+    Never raises."""
     query = (query or "").strip()
     if not query:
         return []
-    with ThreadPoolExecutor(max_workers=3) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         f_dz = ex.submit(_deezer_search_artists, query, limit)
         f_js = ex.submit(_jiosaavn_search_artists, query, limit)
         f_ph = ex.submit(_jiosaavn_artist_photos, query, limit)
+        f_song = ex.submit(_song_artists, query)
+        f_hint = ex.submit(top_artist_hint, query)
         dz, js, photos = f_dz.result(), f_js.result(), f_ph.result()
+        song_artists = f_song.result()
+        hint = f_hint.result()
+    # JioSaavn's own top match is this artist: an artist search, whatever a
+    # song titled with their name ("Cold Blue" by R Denham) suggests.
+    if hint and _fold_name(hint.get("name")) == _fold_name(query):
+        song_artists = []
 
     merged = {}
     _noise = lambda s: sum(1 for c in s if not c.isalnum() and not c.isspace())
@@ -747,60 +851,159 @@ def search_artists(query, limit=10):
         if key in photos:
             a["image"] = photos[key]
 
-    # ── Validate so we only surface REAL artists that open a profile with data
-    # (the user's rule: no dead "Artist not available" cards). Three layers:
-    #   1. combos ("A & B", "Berryman; …") and derivatives (tribute/karaoke/
-    #      covers) are dropped by name.
-    #   2. a famous Deezer artist is always kept (covers band members /
-    #      "people also search", e.g. Chris Martin for "coldplay").
-    #   3. everyone else must be RELEVANT to the query AND actually exist:
-    #      Deezer entries already exist; JioSaavn-only hits (fans=None, the
-    #      autocomplete junk like "Yellow Coldplay") are verified with a strict
-    #      JioSaavn credit check that rejects concatenated non-artists.
-    ql = query.lower()
-    def _tok(s):
-        return set(t for t in re.split(r"[^a-z0-9]+", (s or "").lower()) if t)
-    qtok = _tok(query)
-    FAME = 10000
+    # ── Who is shown, in this order:
+    #   1. The artists of the SONG typed. A search is a song's name far more
+    #      often than an artist's, and the old section answered "blinding
+    #      lights" with acts NAMED "Blinding Lights" (a cover account, a noise
+    #      channel) and no Weeknd. JioSaavn's song search says who sang it.
+    #   2. Artists whose name IS what was typed: near-equal, or the typed
+    #      words as the start of the name ("arijit" -> Arijit Singh). A name
+    #      that merely contains the words ("Too Close To The Weeknd") or is
+    #      only famous ("Faye Wong" for "the weeknd", the old 10k-fans rule)
+    #      no longer qualifies.
+    # When the query is a song's title, a same-named act also needs a real
+    # following to stand beside the song's own artists.
+    # Ordered by how well the name matches before fans: "natalie holt" put
+    # Natalie Cole (158k fans) above Natalie Holt.
+    qf = _fold_name(query)
+    song_query = bool(song_artists)
+    SONG_QUERY_FANS = 50000
 
-    candidates = []  # (artist, needs_jiosaavn_check)
-    for a in merged.values():
-        name = a["name"]
-        if _is_combo(name) or _is_nonartist(name):
+    def _key(nm):
+        return re.sub(r"[^a-z0-9]", "", (nm or "").lower())
+
+    out, seen = [], set()
+    for a in song_artists:
+        key = _key(a["name"])
+        if not key or key in seen:
             continue
-        fans = a.get("fans") or 0
-        # "Relevant" = the name actually CONTAINS the searched words — NOT a fuzzy
-        # edit-distance lookalike. This separates "ColdPlay Wu" / "Arijit Singh"
-        # (contain the query → keep) from "Coolplay" / "Codeplay" / "Coldgray"
-        # (1-2 char misspellings of "coldplay" → drop). Those lookalikes are
-        # often cover/sound-alike acts whose catalog mirrors the real artist's
-        # titles, so they read as "wrong data". Searching an artist's REAL name
-        # still shows them; misspellings of OTHER artists no longer pollute.
-        contains_query = bool(qtok) and qtok <= _tok(name)
-        if fans >= FAME:
-            candidates.append((a, False))      # famous — survives a typo'd query too
-        elif not contains_query:
-            continue                           # low-fan lookalike → noise
-        elif fans > 0:
-            candidates.append((a, False))      # real Deezer artist that contains the query
-        else:
-            candidates.append((a, True))       # JioSaavn-only → verify it's real
+        seen.add(key)
+        known = merged.get(key) or {}
+        out.append({
+            "name": a["name"],
+            "image": photos.get(key) or known.get("image") or a.get("image") or "",
+            "fans": known.get("fans"),
+        })
 
-    # Verify the JioSaavn-only candidates in parallel (cheap, ~1 call each).
-    need_idx = [i for i, (_, need) in enumerate(candidates) if need]
+    has_exact = any(_fold_name(a["name"]) == qf for a in merged.values())
+    candidates = []  # (artist, exact, needs_jiosaavn_check)
+    for key, a in merged.items():
+        name = a["name"]
+        if key in seen or _is_combo(name) or _is_nonartist(name):
+            continue
+        nf = _fold_name(name)
+        exact = nf == qf
+        prefix = len(qf) >= 3 and nf.startswith(qf + " ")
+        # A misspelling's lookalikes ("Codeplay" for "coldplay") only when
+        # nothing is called exactly what was typed: then they are the typo's
+        # best guesses, otherwise they are noise.
+        near = not has_exact and _plain_ratio(qf, nf) >= 85
+        if not (exact or prefix or near):
+            continue
+        fans = a.get("fans")
+        if not exact and fans is not None and fans < 100:
+            continue               # "Arijit Dey", 6 fans: not who was meant
+        if song_query and exact:
+            # Named like a popular song: shown beside its artists only with a
+            # following of its own ("Starboy", "Perfect"), and only if JioSaavn
+            # has it as an artist (a page with its own photo, or credits on
+            # songs) and not as a cover account named after the song
+            # ("Blinding Lights": JioSaavn's entry is a placeholder face).
+            if (fans or 0) < 10000:
+                continue
+            candidates.append((a, True, key not in photos))
+            continue
+        if song_query and (fans or 0) < SONG_QUERY_FANS:
+            continue
+        candidates.append((a, exact, fans is None))
+
+    # Names with no fan count, and same-named acts of a song query, are
+    # checked to be real artists: autocomplete also returns junk like
+    # "Yellow Coldplay".
+    need = [i for i, (_, _, n) in enumerate(candidates) if n]
     drop = set()
-    if need_idx:
-        with ThreadPoolExecutor(max_workers=min(6, len(need_idx))) as ex:
-            oks = list(ex.map(lambda i: _jiosaavn_artist_real(candidates[i][0]["name"]), need_idx))
-        drop = {need_idx[k] for k, ok in enumerate(oks) if not ok}
-    final = [a for i, (a, _) in enumerate(candidates) if i not in drop]
+    if need:
+        with ThreadPoolExecutor(max_workers=min(6, len(need))) as ex:
+            oks = list(ex.map(lambda i: _jiosaavn_artist_real(candidates[i][0]["name"]), need))
+        drop = {need[k] for k, ok in enumerate(oks) if not ok}
+    named = [(a, exact) for i, (a, exact, _) in enumerate(candidates) if i not in drop]
 
-    # Rank by popularity; fan-less (JioSaavn-only) entries get a relevance-based
-    # pseudo-score so a strong name match isn't buried under a low-fan artist.
-    def _eff_fans(a):
+    # An exact name counts ten times its fans: "Arijit" (62 fans) stays
+    # below Arijit Singh, Natalie Holt above Natalie Cole. Unknown fans (a
+    # JioSaavn-only artist, checked real above) count as a modest following.
+    def weight(ae):
+        a, exact = ae
         f = a.get("fans")
-        return f if f is not None else int(_plain_ratio(ql, a["name"].lower()) * 1000)
-    return sorted(final, key=_eff_fans, reverse=True)[:limit]
+        return (f if f is not None else 1000) * (10 if exact else 1)
+    named.sort(key=weight, reverse=True)
+    # The artist named exactly leads. For a song query the song's own artists
+    # come first instead, unless that act is well known in its own right
+    # ("Starboy"); a small same-named act ("Hymn for the Weekend", 454 fans;
+    # "Running Touch") follows the song's credits.
+    top = named[0] if named else None
+    lead = ([top[0]] if top and top[1]
+            and (not song_query or (top[0].get("fans") or 0) >= SONG_QUERY_FANS)
+            else [])
+    rest = [a for a, _ in named if not lead or a is not lead[0]]
+    return (lead + out + rest)[:limit]
+
+
+def _fold_name(s):
+    """A name for comparing: lower case, accents and punctuation gone."""
+    s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", s.lower())).strip()
+
+
+# Plays a JioSaavn song needs before a search for its title is taken to mean
+# it (see _song_artists): measured 2026-11-05, songs people mean have 1M+, a
+# title that only matches has none or under 100k.
+SONG_MIN_PLAYS = 250_000
+
+
+def _song_artists(query, songs=1):
+    """The credited artists of the song `query` names, or [] when it names no
+    song: [{name, image}], main artists of the best matches, in credit order.
+
+    A JioSaavn song counts when the query is plainly that song (its title,
+    or its title and artist: search_rank.relevance >= 90). "kesariya" is
+    Pritam, Arijit Singh and Amitabh Bhattacharya; "coldplay" names no song."""
+    from components import search_rank as sr
+    res = _jcall({"__call": "search.getResults", "q": query, "p": "1", "n": "6",
+                  "api_version": "4"})
+    results = res.get("results", []) if isinstance(res, dict) else []
+    out, seen, used = [], set(), 0
+    for s in results:
+        if used >= songs:
+            break
+        mi = s.get("more_info") or {}
+        am = mi.get("artistMap") or {}
+        primary = [a for a in (am.get("primary_artists") or []) if isinstance(a, dict)]
+        credit = ", ".join(_clean(a.get("name")) for a in primary)
+        if not primary or sr.relevance(query, _clean(s.get("title")), credit) < 90:
+            continue
+        # A song people mean has plays: Anti-Hero 1.9M, Blinding Lights 39M.
+        # A title that only happens to be the query ("Running Touch" by Adam
+        # Marsh, none; an "atif aslam" upload, 75k) is not the song asked for.
+        try:
+            plays = int(s.get("play_count") or 0)
+        except (TypeError, ValueError):
+            plays = 0
+        if plays < SONG_MIN_PLAYS:
+            continue
+        # The query is one of the song's artists ("melezz", "atif aslam"):
+        # an artist search, whose own name section answers it. Their
+        # collaborators are not who was asked for.
+        if any(_fold_name(a.get("name")) == _fold_name(query) for a in primary):
+            return []
+        used += 1
+        for a in primary:
+            nm = _clean(a.get("name"))
+            if nm and not _is_combo(nm) and nm.lower() not in seen:
+                seen.add(nm.lower())
+                img = a.get("image") or ""
+                img = "" if "artist-default" in img else re.sub(r"\d+x\d+(?=\.\w+$)", "500x500", img)
+                out.append({"name": nm, "image": img})
+    return out[:4]
 
 
 def _deezer_artist(name):
@@ -814,21 +1017,53 @@ def _deezer_artist(name):
     out = {}
     try:
         r = SESSION.get("https://api.deezer.com/search/artist",
-                         params={"q": name, "limit": 5}, timeout=8)
-        for a in (r.json() or {}).get("data", [])[:5]:
-            # Strict same-artist name match (length-sensitive) so an ambiguous
-            # bare name ("Priya") never borrows the popular namesake's photo
-            # ("Priya Saraiya").
-            if _same_artist_name(name, a.get("name", "")):
-                out = {
-                    "image": a.get("picture_xl") or a.get("picture_big") or "",
-                    "fans": a.get("nb_fan"),
-                }
-                break
+                         params={"q": name, "limit": 8}, timeout=8)
+        # Strict same-artist name match (length-sensitive) so an ambiguous
+        # bare name ("Priya") never borrows the popular namesake's photo
+        # ("Priya Saraiya"). Of those, the most followed: Deezer keeps
+        # duplicate pages, and its first was often one ("Hans Zimmer", 18
+        # fans, before the real one's 2.1M; "Bonobo" 75 before 366k), whose
+        # photo and count the page showed.
+        same = [a for a in (r.json() or {}).get("data", [])[:8]
+                if _same_artist_name(name, a.get("name", ""))]
+        if same:
+            a = max(same, key=lambda a: a.get("nb_fan") or 0)
+            out = {
+                "image": a.get("picture_xl") or a.get("picture_big") or "",
+                "fans": a.get("nb_fan"),
+            }
     except Exception:
         pass
     with _cache_lock:
         _cache[key] = out
+    return out
+
+
+# Last.fm's page for a name several artists share lists them all.
+_AMBIGUOUS_BIO = re.compile(r"\s*(there (are|is) (at least )?(\d+|several|multiple|two|three)\b)", re.I)
+
+
+def _clean_bio(text):
+    """A biography as plain prose: no links, no "Read more on Last.fm"."""
+    t = re.sub(r"<[^>]+>", " ", text or "")
+    t = re.sub(r"Read more on Last\.fm.*$", "", t, flags=re.I | re.S)
+    t = re.sub(r"\(?https?://\S+\)?", "", t)
+    t = re.sub(r"[ \t]+", " ", t)
+    return re.sub(r"\n{3,}", "\n\n", t).strip()
+
+
+def _brief(text, limit=320):
+    """The first sentences of `text`, whole, up to about `limit` characters:
+    who the artist is, not their life story. At least one sentence."""
+    first = (text or "").split("\n\n")[0].strip()
+    # A full stop that ends a sentence: not "St. ", "Mr. " or an initial.
+    parts = re.split(r"(?<!\bSt\.)(?<!\bMr\.)(?<!\bDr\.)(?<!\bJr\.)(?<!\bSr\.)"
+                     r"(?<!\bMrs\.)(?<!\bvs\.)(?<!\b[A-Z]\.)(?<=[.!?])\s+(?=[A-Z\"'(])", first)
+    out = ""
+    for p in parts:
+        if out and len(out) + len(p) + 1 > limit:
+            break
+        out = f"{out} {p}".strip()
     return out
 
 
@@ -884,10 +1119,68 @@ def _jiosaavn_artist_token(name):
     return ""
 
 
-def _fetch_jiosaavn_artist(name):
+def _artist_token_from_song(name, song_url):
+    """The JioSaavn token of the artist called `name` ON THIS SONG, or ''.
+
+    Exact where the name search guesses: the song's own credits (artistMap)
+    carry every credited artist's page, so the artist tapped on a song opens
+    that artist and never a same-named stranger or a variant spelling
+    ("Natalie Ann Holt"). One call; '' when the song is not JioSaavn's or
+    does not credit the name, and the name search takes over."""
+    tok = _token_from_url(song_url) if "jiosaavn.com/song/" in (song_url or "") else ""
+    if not tok or not name:
+        return ""
+    d = _jcall({"__call": "webapi.get", "token": tok, "type": "song", "api_version": "4"})
+    songs = (d.get("songs") if isinstance(d, dict) else None) or []
+    song = songs[0] if songs and isinstance(songs[0], dict) else (d if isinstance(d, dict) else {})
+    am = ((song.get("more_info") or {}).get("artistMap") or {})
+    best, best_score = "", -1
+    for a in (am.get("primary_artists") or []) + (am.get("featured_artists") or []) + (am.get("artists") or []):
+        if not isinstance(a, dict):
+            continue
+        sc = _score_artist(name, _clean(a.get("name", "")))
+        if sc > best_score:
+            best, best_score = _token_from_url(a.get("perma_url", "")), sc
+    return best if best_score >= 85 else ""
+
+
+def _artist_token_from_title(name, title):
+    """For a song that is not JioSaavn's (a YouTube one): the same song on
+    JioSaavn, and from its credits the artist called `name`. '' unless a
+    JioSaavn song has the same title AND credits that name, so a cover or a
+    remix on YouTube never borrows the original's artist; the name search
+    takes over then."""
+    if not name or not title:
+        return ""
+    from components import search_rank as sr
+    want = sr.core_title(title)
+    res = _jcall({"__call": "search.getResults", "q": f"{title} {name}", "p": "1",
+                  "n": "5", "api_version": "4"})
+    for s in (res.get("results", []) if isinstance(res, dict) else []):
+        # JioSaavn's title may run on past the song's ("Glorious Purpose
+        # (From "Loki: Vol. 1 ..."/Score)" reads "glorious purpose score"):
+        # it must start with it. The credit below is what proves the artist.
+        got = sr.core_title(_clean(s.get("title")))
+        if not want or not (got == want or got.startswith(want + " ")):
+            continue
+        am = (s.get("more_info") or {}).get("artistMap") or {}
+        for a in (am.get("primary_artists") or []) + (am.get("featured_artists") or []):
+            if not isinstance(a, dict):
+                continue
+            cand = _clean(a.get("name", ""))
+            if _score_artist(name, cand) >= 85 and _same_artist_name(name, cand):
+                return _token_from_url(a.get("perma_url", ""))
+    return ""
+
+
+def _fetch_jiosaavn_artist(name, song_url="", song_title=""):
     """Resolve `name` to its canonical JioSaavn artist page dict (or {}).
-    Tries the reliable song→artistMap token first, then autocomplete."""
-    token = _jiosaavn_artist_token(name)
+    The song it was tapped on first (exact): its own credits when it is a
+    JioSaavn song, its JioSaavn copy's when it is not. Then the song→artistMap
+    search by name, then autocomplete."""
+    token = (_artist_token_from_song(name, song_url)
+             or _artist_token_from_title(name, song_title)
+             or _jiosaavn_artist_token(name))
     if not token:
         ac = _jcall({"__call": "autocomplete.get", "query": name})
         hits = (ac.get("artists", {}) or {}).get("data", []) if isinstance(ac, dict) else []
@@ -919,6 +1212,7 @@ def _parse_albums(raw_albums):
             "artist": _clean(al.get("subtitle") or al.get("primary_artists")),
             "image": al.get("image", ""),
             "album_id": str(al.get("id", "")),
+            "track_count": _int_or_none((al.get("more_info") or {}).get("song_count")),
             "year": al.get("year") or "",
             "perma_url": url,
             "source": "jiosaavn",
@@ -999,20 +1293,50 @@ def get_followed_releases(names, this_year):
     return {"releases": releases[:12]}
 
 
-def get_artist(name):
+def get_artist(name, song_url="", song_title=""):
     """Cached artist profile (see _build_artist)."""
-    key = ("artist", (name or "").strip().lower())
+    # The song it was tapped on is part of the identity: a name alone may be
+    # someone else; the song pins down which artist (_artist_token_from_song).
+    key = ("artist", (name or "").strip().lower(),
+           _token_from_url(song_url) if song_url else "", (song_title or "").strip().lower())
     with _cache_lock:
         if key in _cache:
             return _cache[key]
-    result = _build_artist(name)
+    result = _build_artist(name, song_url, song_title)
     if result.get("name"):  # cache any real profile (incl. data-less ones); skip empty failures
         with _cache_lock:
             _cache[key] = result
     return result
 
 
-def _build_artist(name):
+def _release_key(name):
+    """A release's name with case, marks and a store's " - Single" / " - EP"
+    set aside; "&" and "+" and "and" read alike."""
+    from components.search_rank import fold
+    n = re.sub(r"\s*[-–(\[]\s*(single|ep)\s*[)\]]?\s*$", "", name or "", flags=re.I)
+    n = re.sub(r"\s*(&|\+)\s*", " and ", n)
+    return re.sub(r"[\W_]+", "", fold(n))
+
+
+def _one_per_release(albums):
+    """Each release once, in the order first listed: the copy with the most
+    songs, JioSaavn's on a tie."""
+    best, order = {}, []
+    for a in albums:
+        k = _release_key(a.get("name")) or id(a)
+        held = best.get(k)
+        if held is None:
+            best[k] = a
+            order.append(k)
+            continue
+        mine, theirs = a.get("track_count") or 0, held.get("track_count") or 0
+        if mine > theirs or (mine == theirs and a.get("source") == "jiosaavn"
+                             and held.get("source") != "jiosaavn"):
+            best[k] = a
+    return [best[k] for k in order]
+
+
+def _build_artist(name, song_url="", song_title=""):
     """Assemble a rich artist profile. Returns a dict (never raises).
 
     Strategy (rebuilt on real data): the canonical JioSaavn artist — resolved via
@@ -1031,7 +1355,7 @@ def _build_artist(name):
     # doesn't depend on the JioSaavn result, so running it here (rather than
     # after) makes its richer data free latency-wise.
     with ThreadPoolExecutor(max_workers=6) as ex:
-        f_js = ex.submit(_fetch_jiosaavn_artist, name)
+        f_js = ex.submit(_fetch_jiosaavn_artist, name, song_url, song_title)
         f_dz = ex.submit(_deezer_artist, name)
         f_tadb = ex.submit(_audiodb_artist, name)
         f_lfm = ex.submit(_lastfm_artist, name)
@@ -1100,20 +1424,50 @@ def _build_artist(name):
     # JioSaavn "Ved" again, and only the JioSaavn copy opens by its id.
     def _album_key(n):
         return re.sub(r"\s*-\s*(ep|single)$", "", (n or "").strip().lower())
-    seen = {_album_key(a["name"]) for a in albums}
+    # Both list it: the fuller release wins. JioSaavn often has only the
+    # single of an album's name (Tycho's "Awake", 1 song for the album's 8)
+    # or a part of it ("InnerSpeaker (10 Year Anniversary ...)", 2 songs).
+    at = {_album_key(a["name"]): i for i, a in enumerate(albums)}
     for a in itunes_albums:
-        if _album_key(a["name"]) not in seen:
-            seen.add(_album_key(a["name"]))
+        k = _album_key(a["name"])
+        if k not in at:
+            at[k] = len(albums)
             albums.append(a)
+        elif (a.get("track_count") or 0) > (albums[at[k]].get("track_count") or 0) + 1:
+            albums[at[k]] = a
+
+    # Once per release, however each source spelled it: JioSaavn lists some
+    # twice ("When The Sun Goes Down", 2006, two ids), and iTunes's copy of
+    # one it has slipped past the key above (Tranquility Base Hotel & Casino
+    # showed twice). The fuller one stays, JioSaavn's on a tie (it plays by
+    # its id).
+    albums = _one_per_release(albums)
 
     # ── merged header metadata (best of each source) ────────────
-    bios = [b for b in (tadb.get("bio"), lfm.get("bio"), _js_bio(js.get("bio"))) if b and len(b) > 5]
-    bio = max(bios, key=len) if bios else ""
+    # The first good one, not the longest: the longest was a page of
+    # biography in a section meant to be glanced at, and Last.fm's own page
+    # for a shared name is a list of strangers ("There are 3 artists...").
+    bios = [_clean_bio(b) for b in (tadb.get("bio"), lfm.get("bio"), _js_bio(js.get("bio")))]
+    bios = [b for b in bios if len(b) > 40 and not _AMBIGUOUS_BIO.match(b)]
+    bio_full = bios[0] if bios else ""
+    bio = _brief(bio_full)
 
     # Image: JioSaavn first — its artist page is resolved via song→artistMap
     # tokens, so the identity is CERTAIN; Deezer/TheAudioDB match by NAME and
     # can borrow a same-named artist's photo (seen with "Aditya Rikhari").
-    image = (js.get("image") or dz.get("image") or tadb.get("image")
+    # JioSaavn's at 500px: it hands out 150x150, which the page's full-width
+    # header blew up into a pixelated blur. The CDN has every size.
+    js_img = re.sub(r"\d+x\d+(?=\.\w+$)", "500x500", js.get("image") or "")
+    if "artist-default" in js_img:
+        js_img = ""   # JioSaavn's placeholder face, not a photo
+    # JioSaavn's photos live under /artists/; otherwise its "photo" is one of
+    # the artist's album covers (Boards of Canada's was a Peel Session
+    # sleeve). Deezer's photo then, when its page is surely theirs: the
+    # most followed of the name (_deezer_artist), with a real following.
+    if (js_img and "/artists/" not in js_img and dz.get("image")
+            and (dz.get("fans") or 0) >= 10000):
+        js_img = ""
+    image = (js_img or dz.get("image") or tadb.get("image")
              or _track_art(top_songs[0] if top_songs else None))
 
     # Similar artists: Last.fm names, JioSaavn fallback; images filled via Deezer.
@@ -1142,6 +1496,8 @@ def _build_artist(name):
         "image": image,
         "banner": tadb.get("banner") or "",
         "bio": bio,
+        # All of it, for "Read more"; empty when the brief is the whole.
+        "bio_full": bio_full if bio_full != bio else "",
         "genre": genre,
         "country": tadb.get("country") or "",
         "founded": tadb.get("founded") or "",
@@ -1226,6 +1582,236 @@ def _album_id_from_song(song_url):
     return ""
 
 
+# A release that collects songs from elsewhere, by its name: "Epic",
+# "Selected Works 1972-1999", "World Music Day - Best Of Bollywood Hits".
+_COMPILATION_RE = re.compile(
+    r"\b(hits|best of|greatest|collection|selected works|essentials|"
+    r"the highlights|anthology|vibes|playlist|presents|mixed|focus|workout|"
+    r"party|top \d+|love songs|world music day|lo-?fi|chill|now that'?s|"
+    r"romance|monsoon|wedding|epic|classics|evergreen|jukebox|non ?stop|"
+    r"pov|music taste)\b", re.I)
+
+
+# Japanese (kana, kanji) and Korean (hangul) script.
+_KANA = re.compile(r"[぀-ヿㇰ-ㇿ]")
+_HAN = re.compile(r"[㐀-䶿一-鿿]")
+_HANGUL = re.compile(r"[가-힯ᄀ-ᇿ]")
+
+
+def _native_store(text):
+    """The iTunes storefront that lists a song by its name as written: JP for
+    Japanese, KR for Korean, None for anything else. The US store gives
+    Japanese songs in romaji ("Hikari No Hou E" for its real title), and a
+    search for the song as written finds nothing there to match it."""
+    text = text or ""
+    if _HANGUL.search(text):
+        return "KR"
+    if _KANA.search(text) or _HAN.search(text):
+        return "JP"
+    return None
+
+
+def _song_core(title):
+    """A song's core title, also from Spotify's dash form: "Sunflower -
+    Spider-Man: Into the Spider-Verse" is iTunes' "Sunflower (Spider-Man: ...)"
+    and "Creep - Remastered" is "Creep". A part after the dash that names a
+    version ("- Live", "- Acoustic") stays, so it is still that version.
+
+    A title in Japanese or Korean keeps its own letters: core_title is ASCII
+    only, and a Japanese title came out empty, so no album was looked for."""
+    from components import search_rank as sr
+    parts = sr.title_parts(title or "")
+    if len(parts) > 1 and not any(sr.version_words(p) for p in parts[1:]):
+        title = parts[0]
+    core = sr.core_title(title or "")
+    if not _native_store(title):
+        return core
+    native = unicodedata.normalize("NFKC", title or "").casefold()
+    native = re.sub(r"[\(\[【「][^\)\]】」]*[\)\]】」]", " ", native)
+    native = re.sub(r"\s(?:feat\.?|ft\.?|featuring)\s.*$", "", native)
+    native = re.sub(r"[^\w]+", "", native)
+    # The ASCII words left are the version a bracket named ("(Live)").
+    extra = " ".join(w for w in core.split() if w in sr.VERSION_WORDS)
+    return f"{native} {extra}".strip()
+
+
+def _store_artist_ids(name, country):
+    """iTunes ids of the artist called `name` in a storefront: the JP store
+    credits Kaneko Ayano in katakana, so a song there is theirs by id."""
+    try:
+        from components.itunes_client import iTunesClient
+        found = iTunesClient()._search({"term": name, "entity": "musicArtist",
+                                        "limit": 5, "country": country}).get("results", [])
+    except Exception:
+        return set()
+    return {r.get("artistId") for r in found
+            if r.get("artistId") and _same_artist_name(name, r.get("artistName") or "")}
+
+
+def _itunes_album_scan(artist, want, close, unwanted, limit=6, country="US"):
+    """The artist's own studio albums, earliest first, opened one by one until
+    one lists the song: iTunes' song search does not have every track its
+    albums do (Radiohead's "Creep" is on Pablo Honey there, and no search for
+    it finds it). Only when that search came up empty."""
+    from components.itunes_client import iTunesClient
+    client = iTunesClient()
+    # By the artist's id: a search for their albums leaves some out (Pablo
+    # Honey, again), their own catalogue does not.
+    try:
+        found = client._search({"term": artist, "entity": "musicArtist",
+                                "limit": 5, "country": country}).get("results", [])
+        aid = next((r.get("artistId") for r in found
+                    if _same_artist_name(artist, r.get("artistName") or "")), None)
+        if not aid:
+            return None
+        raw = client._lookup({"id": aid, "entity": "album", "limit": 200,
+                              "country": country}).get("results", [])
+    except Exception:
+        return None
+    raw = [r for r in raw if r.get("wrapperType") == "collection"]
+    albums = [r for r in raw
+              if (_same_artist_name(artist, r.get("artistName") or "") or r.get("artistId") == aid)
+              and (r.get("trackCount") or 0) >= 4
+              and not re.search(r"\s-\s(ep|single)$", r.get("collectionName") or "", re.I)
+              and not unwanted(r.get("collectionName") or "")
+              and r.get("collectionId")]
+    albums.sort(key=lambda r: r.get("releaseDate") or "9999")
+    seen = set()
+    for r in albums:
+        name = sr_fold(r.get("collectionName") or "")
+        if name in seen:          # a deluxe or a reissue of one already looked at
+            continue
+        seen.add(name)
+        if len(seen) > limit:
+            break
+        try:
+            songs = client._lookup({"id": r["collectionId"], "entity": "song",
+                                    "country": country}).get("results", [])
+        except Exception:
+            continue
+        for t in songs:
+            if (t.get("wrapperType") == "track" and _song_core(t.get("trackName") or "") == want
+                    and close((t.get("trackTimeMillis") or 0) // 1000)):
+                return {"name": _clean(r.get("collectionName")),
+                        "artist": _clean(r.get("artistName")),
+                        "album_id": f"itunes:{r['collectionId']}"}
+    return None
+
+
+def sr_fold(text):
+    from components import search_rank as sr
+    return sr.fold(re.sub(r"\s*[\(\[].*$", "", text or ""))
+
+
+def album_of(title, artist, duration_ms=0):
+    """The album a song is on, for a song that does not say (a YouTube one):
+    {name, artist, album_id} or None.
+
+    "The same song" is a song of the same title (search_rank.core_title: a
+    "(feat.)" is packaging, a "(Live)" is not) credited to the artist, within
+    10 s when both lengths are known; a cover or a remix finds no album
+    rather than the original's.
+
+    Of the releases the song is on, the one meant: the earliest studio album,
+    else its single or EP; never a compilation or a live album (unless the
+    song is the live one). Taking the first hit, as JioSaavn lists them, gave
+    "Epic" for Bohemian Rhapsody and a "Best Of Bollywood Hits" for Kun Faya
+    Kun: 18 of 36 right on a mixed test, niche to famous (2026-11-05).
+    iTunes first, which says what each release is (its track count, whether
+    it is various artists'); JioSaavn's catalogue after, by name alone."""
+    from components import search_rank as sr
+    want = _song_core(title)
+    if not want or not artist:
+        return None
+    names = [n for n in _credits_list(artist) if n]
+    live_song = "live" in want.split()
+
+    def credits(credit):
+        return any(_score_artist(n, c) >= 85 and _same_artist_name(n, c)
+                   for n in names for c in _credits_list(credit))
+
+    def close(secs):
+        return not duration_ms or not secs or abs(secs * 1000 - duration_ms) <= 10_000
+
+    def unwanted(release):
+        words = sr.fold(release).split()
+        return bool(_COMPILATION_RE.search(release or "")) or (
+            "live" in words and not live_song)
+
+    picks = []   # (kind, date, album): kind 0 album, 1 single/EP
+    # A song named in Japanese or Korean is looked for in that country's
+    # store, where it has that name, and its artist by id (the credit there is
+    # in the same script).
+    store = _native_store(title) or "US"
+    ids = _store_artist_ids(names[0], store) if store != "US" and names else set()
+    try:
+        from components.itunes_client import iTunesClient
+        raw = iTunesClient()._search({"term": f"{title} {artist}", "entity": "song",
+                                      "limit": 25, "country": store}).get("results", [])
+    except Exception:
+        raw = []
+    for r in raw:
+        if (_song_core(r.get("trackName") or "") != want
+                or not (credits(r.get("artistName") or "") or r.get("artistId") in ids)
+                or not close((r.get("trackTimeMillis") or 0) // 1000)
+                or not r.get("collectionId")):
+            continue
+        release = r.get("collectionName") or ""
+        if "various" in (r.get("collectionArtistName") or "").lower() or unwanted(release):
+            continue
+        # An album: four songs or more, and not named as an EP or a single
+        # ("I'm Sorry... - EP" came before "I Love You." for Sweater Weather).
+        short = re.search(r"\s-\s(ep|single)$", release, re.I)
+        kind = 0 if (r.get("trackCount") or 0) >= 4 and not short else 1
+        picks.append((kind, r.get("releaseDate") or "9999", {
+            "name": _clean(release), "artist": _clean(r.get("artistName")),
+            "album_id": f"itunes:{r.get('collectionId')}"}))
+    if not picks and ids:
+        # A copy whose length is off (a YouTube video with an intro: 2:59 for
+        # a 2:29 song) still names the song exactly, and the artist is
+        # theirs by id: the length is not asked of it.
+        for r in raw:
+            release = r.get("collectionName") or ""
+            if (_song_core(r.get("trackName") or "") == want and r.get("artistId") in ids
+                    and r.get("collectionId") and not unwanted(release)
+                    and "various" not in (r.get("collectionArtistName") or "").lower()):
+                short = re.search(r"\s-\s(ep|single)$", release, re.I)
+                kind = 0 if (r.get("trackCount") or 0) >= 4 and not short else 1
+                picks.append((kind, r.get("releaseDate") or "9999", {
+                    "name": _clean(release), "artist": _clean(r.get("artistName")),
+                    "album_id": f"itunes:{r.get('collectionId')}"}))
+    if picks:
+        return min(picks, key=lambda p: (p[0], p[1]))[2]
+    if names:
+        found = _itunes_album_scan(names[0], want, close, unwanted, country=store)
+        if found:
+            return found
+
+    res = _jcall({"__call": "search.getResults", "q": f"{title} {artist}", "p": "1",
+                  "n": "10", "api_version": "4"})
+    for s in (res.get("results", []) if isinstance(res, dict) else []):
+        mi = s.get("more_info") or {}
+        credit = ", ".join(_clean(a.get("name", "")) for a in
+                           ((mi.get("artistMap") or {}).get("primary_artists") or [])
+                           if isinstance(a, dict))
+        try:
+            secs = int(mi.get("duration") or 0)
+        except (TypeError, ValueError):
+            secs = 0
+        release = _clean(mi.get("album"))
+        if (_song_core(_clean(s.get("title"))) == want and credits(credit)
+                and close(secs) and mi.get("album_id") and not unwanted(release)):
+            picks.append((0, str(s.get("year") or "9999"), {
+                "name": release, "artist": credit, "album_id": str(mi.get("album_id"))}))
+    return min(picks, key=lambda p: p[1])[2] if picks else None
+
+
+def _credits_list(credit):
+    """"A, B & C feat. D" as its names."""
+    return [p.strip() for p in re.split(r",|&| feat\.? | ft\.? | x |/", credit or "", flags=re.I)
+            if p.strip()]
+
+
 def get_album(name, artist="", song_url="", album_id=""):
     """Cached album profile (see _build_album)."""
     if album_id:
@@ -1255,12 +1841,52 @@ def _build_album(name, artist="", song_url="", album_id=""):
     if not name and not song_url and not album_id:
         return {}
 
+    # An iTunes release, by its id (an artist page's album the JioSaavn
+    # catalogue lacks): its exact tracklist, each song found where it plays.
+    itunes_full, itunes_want = None, 0
+    if str(album_id or "").startswith("itunes:"):
+        full = _itunes_lookup(str(album_id)[len("itunes:"):])
+        album_id = ""
+        if full:
+            # JioSaavn's own copy when it is the same release (its title, and
+            # about as many songs): already playable, at JioSaavn's quality,
+            # where song-by-song matching missed some (Bonobo, Lane 8). Else
+            # the iTunes tracklist, each song found where it plays.
+            from components import search_rank as sr
+            it_titles = {sr.core_title(t.name or "") for t in (getattr(full, "tracks", []) or [])}
+            it_titles.discard("")
+            want = len(it_titles)
+            # Its name as JioSaavn would have it: without iTunes's " - Single".
+            base = re.sub(r"\s*-\s*(single|ep)$", "", _clean(full.name), flags=re.I)
+            aid = _find_jiosaavn_album(base, _clean(full.artist_name))
+            d = _jcall({"__call": "content.getAlbumDetails", "albumid": aid}) if aid else {}
+            js_songs = (d.get("songs") or d.get("list") or []) if isinstance(d, dict) else []
+            # The SAME release: most of its songs are the iTunes tracklist's.
+            # A count alone let a one-song single take any album of its name
+            # (Alfaaz - Single opened as "Alfaaz - Acoustic", someone else's).
+            same = sum(1 for s in js_songs
+                       if sr.core_title(_clean(s.get("title") or s.get("song"))) in it_titles)
+            if aid and want and same >= max(1, -(-want * 3 // 5)) and len(js_songs) >= want - 1:
+                album_id = aid
+                itunes_full, itunes_want = full, want
+            else:
+                found = _itunes_album_from(full)
+                if found:
+                    return found
+
     album_id = str(album_id or "") or _album_id_from_song(song_url) or (_find_jiosaavn_album(name, artist) if name else "")
     if album_id:
         d = _jcall({"__call": "content.getAlbumDetails", "albumid": album_id})
         if isinstance(d, dict) and (d.get("songs") or d.get("list")):
             songs = d.get("songs") or d.get("list") or []
-            tracks = _make_playable([_song_to_raw(s) for s in songs])
+            tracks = _album_tracks(songs)
+            # An iTunes release's JioSaavn copy with songs that do not play
+            # (Loki Vol. 2: 9 of 23): the iTunes tracklist, found song by
+            # song, when that finds more.
+            if itunes_full is not None and len(tracks) < itunes_want - 1:
+                alt = _itunes_album_from(itunes_full)
+                if len(alt.get("tracks") or []) > len(tracks):
+                    return alt
             if tracks:
                 # JioSaavn sometimes hands back a dead cover link (404). Validate
                 # it; if broken/missing, fall back to iTunes' reliable 600px art
@@ -1290,26 +1916,83 @@ def _build_album(name, artist="", song_url="", album_id=""):
     # Western fallback: iTunes album tracklist → resolve each to playable.
     try:
         from components.itunes_client import iTunesClient
-        c = iTunesClient()
-        albums = c.search_albums(f"{name} {artist}".strip(), limit=1)
+        albums = iTunesClient().search_albums(f"{name} {artist}".strip(), limit=1)
         if albums:
-            full = c.lookup_album(albums[0].collection_id, entity="albumTrack")
-            it_tracks = getattr(full, "tracks", []) if full else []
-            pairs = [(t.name, t.artist_name) for t in it_tracks if getattr(t, "name", None)]
-            tracks = _resolve_names(pairs, max(len(pairs), 20))
-            if tracks:
-                art100 = albums[0].artwork_url_100 or ""
-                return {
-                    "name": _clean(albums[0].name) or name,
-                    "artist": _clean(albums[0].artist_name) or artist,
-                    "image": art100.replace("100x100", "600x600"),
-                    "year": str(albums[0].release_year or ""),
-                    "release_date": albums[0].release_date or "",
-                    "tracks": tracks,
-                    "track_count": len(tracks),
-                    "source": "itunes",
-                }
+            found = _itunes_album_from(_itunes_lookup(albums[0].collection_id))
+            if found:
+                return found
     except Exception:
         pass
 
     return {"name": name, "artist": artist, "image": "", "tracks": [], "track_count": 0}
+
+
+def _itunes_lookup(collection_id):
+    """An iTunes release with its tracklist, by id; None when unreachable.
+
+    From the store that names it as its artist does: a Japanese or Korean
+    release, asked of the US store, comes back in romaji ("Sansan", "Hikari
+    No Hou E"), and its songs as written could not be found to play. The
+    three stores are asked at once; the native one wins when it has it."""
+    from components.itunes_client import iTunesClient
+
+    def one(country):
+        try:
+            return iTunesClient().lookup_album(str(collection_id), country=country,
+                                               entity="song")
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        us, jp, kr = ex.map(one, ("US", "JP", "KR"))
+    for native, store in ((jp, "JP"), (kr, "KR")):
+        if native and _mostly_native([t.name for t in (native.tracks or [])], store):
+            # The album's own name is in its tracks (the lookup gives the
+            # album in romaji even there), and each song keeps its romaji
+            # name too: YouTube's copies go by it ("Hikari No Hou E"), and
+            # found by the name as written, an album played none of its songs.
+            names = [t.collection_name for t in native.tracks if t.collection_name]
+            if names and _native_store(names[0]):
+                native.name = names[0]
+            us_tracks = (us.tracks or []) if us else []
+            if len(us_tracks) == len(native.tracks):
+                native.romaji = [(t.name, t.artist_name) for t in us_tracks]
+            return native
+    return us or jp or kr
+
+
+def _mostly_native(names, store):
+    """Most of `names` written in the store's own script: a Japanese
+    artist's release, not a Western one's Japanese edition with a bonus
+    track named in Japanese."""
+    names = [n for n in names if n]
+    return bool(names) and sum(_native_store(n) == store for n in names) * 2 >= len(names)
+
+
+def _itunes_album_from(full):
+    """An iTunes release (_itunes_lookup), each of its songs found where it
+    plays (JioSaavn, else YouTube: _resolve_names). {} when it has none."""
+    if not full:
+        return {}
+    songs = [t for t in getattr(full, "tracks", []) or [] if getattr(t, "name", None)]
+    romaji = getattr(full, "romaji", None)
+    if romaji and len(romaji) == len(songs):
+        # Found by the names YouTube's copies have, shown as written.
+        pairs = [(r[0] or t.name, r[1] or t.artist_name) for r, t in zip(romaji, songs)]
+        tracks = _resolve_names(pairs, max(len(pairs), 20), [t.name for t in songs])
+    else:
+        pairs = [(t.name, t.artist_name) for t in songs]
+        tracks = _resolve_names(pairs, max(len(pairs), 20))
+    if not tracks:
+        return {}
+    art100 = full.artwork_url_100 or ""
+    return {
+        "name": _clean(full.name),
+        "artist": _clean(full.artist_name),
+        "image": art100.replace("100x100", "600x600"),
+        "year": str(full.release_year or ""),
+        "release_date": full.release_date or "",
+        "tracks": tracks,
+        "track_count": len(tracks),
+        "source": "itunes",
+    }

@@ -31,9 +31,9 @@ const SHARE_NOTE =
   "playlist's name, until you delete the playlist.";
 
 /** The music services Relaxify plays from, credited wherever the terms are. */
-const SOURCES = ['JioSaavn', 'SoundCloud', 'YouTube'] as const;
+const SOURCES = ['JioSaavn', 'YouTube'] as const;
 
-export const LEGAL_UPDATED = '18 October 2026';
+export const LEGAL_UPDATED = '5 November 2026';
 
 type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
@@ -68,7 +68,7 @@ export const TERMS: LegalDoc = {
       paras: [
         'Relaxify does not host, upload, store for others or sell any music. ' +
           'When you search or press play, the app requests audio that ' +
-          '**JioSaavn**, **SoundCloud** and **YouTube** already make publicly ' +
+          '**JioSaavn** and **YouTube** already make publicly ' +
           'available, in the same way their own websites and apps do, and ' +
           'plays it on your phone.',
         'All songs, artwork, lyrics and names remain the property of their ' +
@@ -85,7 +85,7 @@ export const TERMS: LegalDoc = {
         'use it for your own personal listening only;',
         'keep downloaded songs on your own phone for offline listening, and ' +
           'not copy, share, sell or publish them;',
-        'respect the terms of JioSaavn, SoundCloud and YouTube, and the ' +
+        'respect the terms of JioSaavn and YouTube, and the ' +
           'copyright law where you live;',
         'not use the app, or its code, to overload, scrape or harm those ' +
           'services;',
@@ -187,7 +187,7 @@ export const PRIVACY: LegalDoc = {
           'policies:',
       ],
       list: [
-        '**JioSaavn**, **SoundCloud** and **YouTube**, for search and ' +
+        '**JioSaavn** and **YouTube**, for search and ' +
           'playback; JioSaavn also for new releases from the artists you ' +
           'follow, the right cover for songs you saved, and who wrote a song;',
         'public **Invidious** servers, independent ones that relay YouTube, ' +

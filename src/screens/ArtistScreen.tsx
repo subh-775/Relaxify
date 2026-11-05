@@ -1,13 +1,13 @@
 /**
- * An artist's profile: photo, monthly listeners, top songs, and albums.
+ * An artist's profile: photo, one count of their audience, popular songs,
+ * albums, the artists their fans also like, singles and EPs, and who they are.
  *
  * The backend assembles this from several services, so parts can be missing —
  * every section here renders only when it actually has content, rather than
  * showing an empty heading.
  */
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   StyleSheet,
@@ -38,6 +38,16 @@ import {BOTTOM_INSET} from '../layout';
 import {useListEnd} from '../components/UpdateModal';
 import {rememberArtistPhoto} from '../artistPhotos';
 import {useArtworkColor} from '../artworkColor';
+import {SkeletonBar, SkeletonRows} from '../components/Skeleton';
+import {albumKind} from '../searchTop';
+import {releaseTitle} from '../collections';
+
+type Release = ArtistProfile['albums'][number];
+
+/** Newest first, as a discography reads; an undated one last. */
+function byYear(a: Release, b: Release): number {
+  return (Number(b.year) || 0) - (Number(a.year) || 0);
+}
 
 /** Profiles the session has already opened — going back to an artist you just
  *  visited must not spin a loader again. */
@@ -62,18 +72,32 @@ export function ArtistScreen({
   onPlay,
   onMenu,
   onOpenAlbum,
+  onOpenArtist,
   onToggleFollow,
+  songUrl = '',
+  songTitle = '',
 }: {
   name: string;
+  /** The JioSaavn song this artist was opened from: names them exactly. */
+  songUrl?: string;
+  /** A song not from JioSaavn: its title, to find its JioSaavn copy's credits. */
+  songTitle?: string;
   onClose: () => void;
   onPlay: (track: Track, context: Track[]) => void;
   onMenu: (track: Track) => void;
-  onOpenAlbum: (albumName: string, artistName: string, albumId?: string) => void;
+  onOpenAlbum: (
+    albumName: string,
+    artistName: string,
+    albumId?: string,
+  ) => void;
+  /** Another artist, from "Fans also like": opened over this one. */
+  onOpenArtist?: (name: string) => void;
   onToggleFollow: (name: string, image?: string) => void;
 }) {
   const cachedProfile = profileCache.get(name.toLowerCase()) ?? null;
   const [profile, setProfile] = useState<ArtistProfile | null>(cachedProfile);
   const [busy, setBusy] = useState(!cachedProfile);
+  const [bioOpen, setBioOpen] = useState(false);
 
   // Subscribed to the store, so tapping Follow flips the button IMMEDIATELY —
   // a prop computed once by the parent went stale until something else
@@ -91,7 +115,7 @@ export function ArtistScreen({
     }
     let alive = true;
     setBusy(true);
-    getArtist(name)
+    getArtist(name, songUrl, songTitle)
       .then(p => {
         profileCache.set(name.toLowerCase(), p);
         // The Recap and "Your artists" show this face from now on.
@@ -105,11 +129,34 @@ export function ArtistScreen({
     return () => {
       alive = false;
     };
+    // songUrl only sharpens who `name` is; a new name is what reloads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
 
   const songs = normalizeTracks(profile?.top_songs ?? []);
-  const albums = profile?.albums ?? [];
-  const listeners = compact(profile?.listeners ?? profile?.followers);
+  const albums = profile?.albums;
+  // A record and the singles beside it, as Spotify shelves them: one long
+  // row of both put a one-song single between every album.
+  const [records, singles] = useMemo(() => {
+    const kind = (a: Release) =>
+      albumKind({name: a.name, songs: a.track_count ?? 0});
+    const sorted = [...(albums ?? [])].sort(byYear);
+    return [
+      sorted.filter(a => kind(a) === 'Album'),
+      sorted.filter(a => kind(a) !== 'Album'),
+    ];
+  }, [albums]);
+  const similar = (profile?.similar_artists ?? []).filter(
+    a =>
+      a.name && a.name.toLowerCase() !== (profile?.name || name).toLowerCase(),
+  );
+  // One count, called what it is: Last.fm's listeners, else Deezer's (or
+  // JioSaavn's) followers. It said "listeners" over a follower count.
+  const audience = compact(profile?.listeners)
+    ? `${compact(profile?.listeners)} listeners`
+    : compact(profile?.followers)
+    ? `${compact(profile?.followers)} followers`
+    : '';
 
   // The play button mirrors reality: pause icon while one of this artist's top
   // songs is what's playing, and tapping it pauses/resumes instead of
@@ -199,8 +246,17 @@ export function ArtistScreen({
   return (
     <View style={styles.wrap}>
       {busy ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={C.accent} />
+        // The page's own shape while it loads: the poster, its name and
+        // count, and the popular songs.
+        <View>
+          <View style={[styles.hero, styles.heroEmpty, {height: hero}]}>
+            <View style={styles.nameBox}>
+              <SkeletonBar width="62%" height={40} style={styles.skName} />
+              <SkeletonBar width={120} height={12} />
+            </View>
+          </View>
+          <SkeletonBar width={90} height={16} style={styles.skSection} />
+          <SkeletonRows count={5} />
         </View>
       ) : (
         <Animated.ScrollView
@@ -243,9 +299,7 @@ export function ArtistScreen({
                 minimumFontScale={0.55}>
                 {posterLines(title)}
               </Text>
-              {!!listeners && (
-                <Text style={styles.listeners}>{listeners} listeners</Text>
-              )}
+              {!!audience && <Text style={styles.listeners}>{audience}</Text>}
             </View>
           </View>
 
@@ -255,7 +309,8 @@ export function ArtistScreen({
               onPress={() => onToggleFollow(title, profile?.image)}
               activeOpacity={0.7}
               style={[styles.follow, following && styles.followOn]}>
-              <Text style={[styles.followText, following && styles.followTextOn]}>
+              <Text
+                style={[styles.followText, following && styles.followTextOn]}>
                 {following ? 'Following' : 'Follow'}
               </Text>
             </TouchableOpacity>
@@ -299,48 +354,79 @@ export function ArtistScreen({
             </>
           )}
 
-          {albums.length > 0 && (
+          {records.length > 0 && (
+            <Releases
+              title="Albums"
+              items={records}
+              onOpen={r => onOpenAlbum(r.name, title, r.album_id)}
+            />
+          )}
+
+          {similar.length > 0 && !!onOpenArtist && (
             <>
-              <Text style={styles.section}>Albums</Text>
+              <Text style={styles.section}>Fans also like</Text>
               <FlatList
                 horizontal
-                data={albums}
-                keyExtractor={a => a.album_id || a.name}
+                data={similar}
+                keyExtractor={f => f.name}
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.albums}
                 renderItem={({item}) => (
                   <TouchableOpacity
-                    style={styles.album}
+                    style={styles.fan}
                     activeOpacity={0.75}
-                    onPress={() => onOpenAlbum(item.name, title, item.album_id)}>
+                    accessibilityRole="button"
+                    onPress={() => onOpenArtist(item.name)}>
                     {item.image ? (
-                      <Image
-                        source={{uri: item.image}}
-                        style={styles.albumArt}
-                      />
+                      <Image source={{uri: item.image}} style={styles.fanArt} />
                     ) : (
-                      <View style={[styles.albumArt, styles.artEmpty]} />
+                      <View style={[styles.fanArt, styles.fanEmpty]}>
+                        <Text style={styles.fanInitial}>
+                          {item.name.trim().charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
                     )}
-                    <Text style={styles.albumName} numberOfLines={2}>
+                    <Text style={styles.fanName} numberOfLines={2}>
                       {item.name}
                     </Text>
-                    {!!item.year && (
-                      <Text style={styles.albumYear}>{item.year}</Text>
-                    )}
                   </TouchableOpacity>
                 )}
               />
             </>
           )}
 
+          {singles.length > 0 && (
+            <Releases
+              title="Singles and EPs"
+              items={singles}
+              onOpen={r => onOpenAlbum(r.name, title, r.album_id)}
+            />
+          )}
+
           {!!profile?.bio && (
             <>
               <Text style={styles.section}>About</Text>
-              <Text style={styles.bio}>{profile.bio}</Text>
+              {/* Who they are in a few lines; the rest on a tap. The whole
+                  biography was the longest one any source had, a page of
+                  text under the albums. */}
+              <Text style={styles.bio}>
+                {bioOpen && profile.bio_full ? profile.bio_full : profile.bio}
+              </Text>
+              {!!profile.bio_full && (
+                <TouchableOpacity
+                  onPress={() => setBioOpen(o => !o)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  style={styles.readMore}>
+                  <Text style={styles.readMoreText}>
+                    {bioOpen ? 'Show less' : 'Read more'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
-          {!songs.length && !albums.length && !profile?.bio && (
+          {!songs.length && !albums?.length && !profile?.bio && (
             <Text style={styles.empty}>
               Not much is known about this artist yet.
             </Text>
@@ -370,6 +456,53 @@ export function ArtistScreen({
         <ChevronLeft size={26} color={C.text} />
       </TouchableOpacity>
     </View>
+  );
+}
+
+/** A heading and a sideways row of covers, each with its year and kind. */
+function Releases({
+  title,
+  items,
+  onOpen,
+}: {
+  title: string;
+  items: Release[];
+  onOpen: (a: Release) => void;
+}) {
+  return (
+    <>
+      <Text style={styles.section}>{title}</Text>
+      <FlatList
+        horizontal
+        data={items}
+        keyExtractor={(a, i) => `${a.album_id || a.name}#${i}`}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.albums}
+        renderItem={({item}) => (
+          <TouchableOpacity
+            style={styles.album}
+            activeOpacity={0.75}
+            onPress={() => onOpen(item)}>
+            {item.image ? (
+              <Image source={{uri: item.image}} style={styles.albumArt} />
+            ) : (
+              <View style={[styles.albumArt, styles.artEmpty]} />
+            )}
+            <Text style={styles.albumName} numberOfLines={2}>
+              {releaseTitle(item.name)}
+            </Text>
+            <Text style={styles.albumYear} numberOfLines={1}>
+              {[
+                item.year,
+                albumKind({name: item.name, songs: item.track_count ?? 0}),
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
+          </TouchableOpacity>
+        )}
+      />
+    </>
   );
 }
 
@@ -500,6 +633,30 @@ const styles = StyleSheet.create({
   },
   moreText: {...T.sub, color: C.text, fontWeight: '700'},
   artEmpty: {backgroundColor: C.surfaceHi},
+  heroEmpty: {backgroundColor: C.surface},
+  skName: {marginBottom: 14},
+  skSection: {marginHorizontal: S.gutter, marginTop: 28, marginBottom: 12},
+  // Round faces, as artists are everywhere else.
+  fan: {width: 112, alignItems: 'center'},
+  fanArt: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: C.surface,
+  },
+  fanEmpty: {
+    backgroundColor: C.surfaceHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fanInitial: {color: C.faint, fontSize: 34, fontWeight: '700'},
+  fanName: {
+    ...T.sub,
+    color: C.text,
+    marginTop: 8,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   playNudge: {marginLeft: 3},
   section: {
     ...T.rowTitle,
@@ -525,6 +682,12 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     paddingHorizontal: S.gutter,
   },
+  readMore: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: S.gutter,
+    marginTop: 8,
+  },
+  readMoreText: {color: C.text, fontSize: 13.5, fontWeight: '700'},
   empty: {
     color: C.faint,
     textAlign: 'center',

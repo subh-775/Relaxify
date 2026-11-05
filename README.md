@@ -9,8 +9,8 @@
   </picture>
 </h1>
 
-A free music player for Android. Search, stream and download from JioSaavn,
-SoundCloud and YouTube in one place, and listen together with friends.
+A free music player for Android. Search, stream and download from JioSaavn
+and YouTube in one place, and listen together with friends.
 
 [![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases/latest)
 [![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
@@ -24,8 +24,8 @@ SoundCloud and YouTube in one place, and listen together with friends.
 
 ## About
 
-Relaxify is a music player for everyday listening. One search covers JioSaavn,
-SoundCloud and YouTube, and the results arrive as a single list.
+Relaxify is a music player for everyday listening. One search covers JioSaavn
+and YouTube, and the results arrive as a single list.
 
 It is the React Native successor to
 [Fix-Spotify](https://github.com/AshirwadRai/Fix-Spotify), which ran its

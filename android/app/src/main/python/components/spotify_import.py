@@ -150,13 +150,27 @@ def match_rank(item, track) -> tuple:
     def norm(s):
         return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", _plain(s).lower())).strip()
 
-    exact = fuzz.ratio(norm(clean_title(item["title"])), norm(clean_title(getattr(track, "title", ""))))
+    got_title = clean_title(getattr(track, "title", ""))
+    # "Einaudi: Experience", as classical releases name a piece: the
+    # composer before a colon, when they are a credited artist.
+    head, colon, rest = got_title.partition(":")
+    if colon and rest.strip() and any(
+            norm(head) and (norm(head) in norm(a) or norm(a) in norm(head))
+            for a in credited(item["artist"])):
+        got_title = rest.strip()
+    exact = fuzz.ratio(norm(clean_title(item["title"])), norm(got_title))
     want = int(item.get("duration_ms") or 0)
     got = int(getattr(track, "duration_ms", 0) or 0)
     close = -abs(got - want) if want and got else -60_000
     sources = getattr(track, "sources", {}) or {}
     saavn = any(getattr(k, "value", k) == "jiosaavn" for k in sources)
-    return (exact >= 90, close, exact, saavn)
+    # Lengths within five seconds are the same recording (a source's encode
+    # differs by a second or three): among those, JioSaavn's quality, then a
+    # label's own upload (YouTube Music's song) over a fan's. "Another Love"
+    # at 4:08 on JioSaavn is Spotify's 4:04, not a reason for YouTube's 160k.
+    official = bool(getattr(track, "official", False))
+    same = close >= -5_000
+    return (exact >= 90, 0 if same else close, saavn, official, close, exact)
 
 
 def is_good_match(item, track, weak_artist: bool = False) -> bool:

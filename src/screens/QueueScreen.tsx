@@ -34,7 +34,7 @@ import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import {Menu} from '../icons';
+import {Menu, X} from '../icons';
 import {Headphones, Shuffle} from '../glyphs';
 import type {Track as RNTPTrack} from 'react-native-track-player';
 import {C, S, T} from '../theme';
@@ -45,11 +45,13 @@ import {
   moveQueueItem,
   onQueueChanged,
   playWithFade,
+  removeQueueItem,
   sourceTrackFor,
   useShuffle,
 } from '../player';
 import {useAudioOutput} from '../audioOutput';
 import {splitArtists} from '../tracks';
+import {noteDismissed} from '../taste';
 
 const ROW_H = 60;
 
@@ -225,6 +227,43 @@ export function QueuePane({
     });
   }, [upcoming]);
 
+  /**
+   * Take an upcoming row out. Shown gone at once (the same settle window as a
+   * drop, so the engine's own events cannot paint it back), then removed from
+   * the engine. A RECOMMENDED song removed is the listener saying "not this
+   * one", and the radio remembers it (taste.ts); a song they queued
+   * themselves is just a change of plan.
+   */
+  const remove = useCallback(
+    async (j: number) => {
+      if (activeIdx < 0) {
+        return;
+      }
+      const at = activeIdx + 1 + j;
+      const t = queue[at];
+      if (!t) {
+        return;
+      }
+      const src = sourceTrackFor(t);
+      settleUntil.current = Date.now() + 2000;
+      setQueue(prev => {
+        const next = [...prev.slice(0, at), ...prev.slice(at + 1)];
+        lastQueue = next;
+        return next;
+      });
+      const ok = await removeQueueItem(at);
+      if (!ok) {
+        settleUntil.current = 0;
+        refresh();
+        return;
+      }
+      if (src?._autoplay) {
+        noteDismissed(src);
+      }
+    },
+    [activeIdx, queue, refresh],
+  );
+
   const firstRecommended = useMemo(
     () => upcoming.findIndex(t => sourceTrackFor(t)?._autoplay),
     [upcoming],
@@ -286,13 +325,14 @@ export function QueuePane({
             track={item}
             onPress={() => jump(activeIdx + 1 + j)}
             onDrag={drag}
+            onRemove={() => remove(j)}
             lifted={isActive}
             recommended={firstRecommended >= 0 && j >= firstRecommended}
           />
         </ScaleDecorator>
       );
     },
-    [jump, activeIdx, firstRecommended],
+    [jump, remove, activeIdx, firstRecommended],
   );
 
   // The context above the scroll region, always — including when there is
@@ -435,6 +475,7 @@ function Row({
   track: t,
   onPress,
   onDrag,
+  onRemove,
   lifted = false,
   activeRow = false,
   recommended = false,
@@ -442,6 +483,7 @@ function Row({
   track: RNTPTrack;
   onPress?: () => void;
   onDrag?: () => void;
+  onRemove?: () => void;
   lifted?: boolean;
   activeRow?: boolean;
   recommended?: boolean;
@@ -470,6 +512,18 @@ function Row({
           </Text>
         </View>
       </TouchableOpacity>
+
+      {!!onRemove && !lifted && (
+        <TouchableOpacity
+          style={styles.remove}
+          onPress={onRemove}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${String(t.title ?? 'song')} from queue`}
+          activeOpacity={0.6}>
+          <X size={17} color={C.faint} />
+        </TouchableOpacity>
+      )}
 
       {!!onDrag && (
         // Lifts on first touch. This is a dedicated handle at the row's edge —
@@ -548,6 +602,7 @@ const styles = StyleSheet.create({
   titleActive: {color: C.accent, fontWeight: '700'},
   artist: {...T.sub, color: C.sub, marginTop: 2},
   rec: {color: C.faint},
+  remove: {paddingLeft: 10, paddingRight: 4, paddingVertical: 18},
   grip: {paddingHorizontal: 14, paddingVertical: 18},
   empty: {flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40},
   emptyText: {
