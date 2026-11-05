@@ -17,7 +17,7 @@ test('bold runs split around **markers**', () => {
 
 test('credits and both statements are complete', () => {
   expect(CREDITS).toBe(
-    'Music from JioSaavn, SoundCloud and YouTube. Relaxify is not affiliated with them. For educational and personal use.',
+    'Music from JioSaavn and YouTube. Relaxify is not affiliated with them. For educational and personal use.',
   );
   for (const doc of [TERMS, PRIVACY]) {
     expect(doc.sections.length).toBeGreaterThan(5);
