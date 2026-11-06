@@ -76,7 +76,7 @@ test('a code or the pasted message opens a playlist; a search word does not', ()
   // The link wins over a capitalised playlist name earlier in the message.
   expect(
     codeIn(
-      'Listen to "CHILLS" with me on Relaxify 🎧\nhttps://subh-775.github.io/Relaxify/p/?c=K7QX2M\n\nenter K7QX2M.',
+      'Listen to "CHILLS" with me on Relaxify 🎧\nhttps://hayate-sh.github.io/Relaxify/p/?c=K7QX2M\n\nenter K7QX2M.',
     ),
   ).toBe('K7QX2M');
 });

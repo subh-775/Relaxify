@@ -33,7 +33,7 @@ const SHARE_NOTE =
 /** The music services Relaxify plays from, credited wherever the terms are. */
 const SOURCES = ['JioSaavn', 'YouTube'] as const;
 
-export const LEGAL_UPDATED = '5 November 2026';
+export const LEGAL_UPDATED = '7 November 2026';
 
 type LegalSection = {heading: string; paras?: string[]; list?: string[]};
 export type LegalDoc = {
@@ -45,7 +45,7 @@ export type LegalDoc = {
 
 const CONTACT =
   'Questions about these terms or your data: open an issue at ' +
-  '**github.com/subh-775/Relaxify/issues**.';
+  '**github.com/Hayate-sh/Relaxify/issues**.';
 
 export const TERMS: LegalDoc = {
   key: 'terms',
