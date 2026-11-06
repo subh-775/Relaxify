@@ -12,11 +12,11 @@
 A free music player for Android. Search, stream and download from JioSaavn
 and YouTube in one place, and listen together with friends.
 
-[![Release](https://img.shields.io/github/v/release/subh-775/Relaxify?label=Release&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases/latest)
-[![Build](https://img.shields.io/github/actions/workflow/status/subh-775/Relaxify/build-android.yml?event=push&label=Build&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/actions/workflows/build-android.yml)
-[![App Docs](https://img.shields.io/badge/App%20Docs-Read-FF5A6E?labelColor=111111&color=FF5A6E)](https://subh-775.github.io/Relaxify/)
-[![Downloads](https://img.shields.io/github/downloads/subh-775/Relaxify/total?label=Downloads&labelColor=111111&color=FF5A6E)](https://github.com/subh-775/Relaxify/releases)
-[![Licence](https://img.shields.io/github/license/subh-775/Relaxify?label=Licence&labelColor=111111&color=FF5A6E)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Hayate-sh/Relaxify?label=Release&labelColor=111111&color=FF5A6E)](https://github.com/Hayate-sh/Relaxify/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/Hayate-sh/Relaxify/build-android.yml?event=push&label=Build&labelColor=111111&color=FF5A6E)](https://github.com/Hayate-sh/Relaxify/actions/workflows/build-android.yml)
+[![App Docs](https://img.shields.io/badge/App%20Docs-Read-FF5A6E?labelColor=111111&color=FF5A6E)](https://hayate-sh.github.io/Relaxify/)
+[![Downloads](https://img.shields.io/github/downloads/Hayate-sh/Relaxify/total?label=Downloads&labelColor=111111&color=FF5A6E)](https://github.com/Hayate-sh/Relaxify/releases)
+[![Licence](https://img.shields.io/github/license/Hayate-sh/Relaxify?label=Licence&labelColor=111111&color=FF5A6E)](LICENSE)
 
 </div>
 
@@ -71,13 +71,13 @@ use and much lighter on the phone's processor and battery.
 ## Install
 
 Download `Relaxify.apk` from the
-[latest release](https://github.com/subh-775/Relaxify/releases/latest) and open
+[latest release](https://github.com/Hayate-sh/Relaxify/releases/latest) and open
 it on your phone. Android 8.0 or newer is required.
 
 Updates show up in the app by themselves; install from there. Do not uninstall
 first: uninstalling deletes your playlists, likes and history.
 
-The [documentation](https://subh-775.github.io/Relaxify/) walks through every
+The [documentation](https://hayate-sh.github.io/Relaxify/) walks through every
 feature in six short pages.
 
 ## How it works
@@ -98,7 +98,7 @@ Requirements: Node.js 18 or newer, JDK 17, the Android SDK (API 34) with NDK
 engine).
 
 ```bash
-git clone https://github.com/subh-775/Relaxify.git
+git clone https://github.com/Hayate-sh/Relaxify.git
 cd Relaxify
 npm install
 npx react-native run-android

@@ -465,18 +465,18 @@ class UpdateModule(private val ctx: ReactApplicationContext) :
         private const val TAG = "MusicPlayerUpd"
         private const val PROGRESS_GAP_MS = 250L
         private const val RELEASES_API =
-            "https://api.github.com/repos/subh-775/Relaxify/releases/latest"
+            "https://api.github.com/repos/Hayate-sh/Relaxify/releases/latest"
         /** Test builds: the release list; see newestRcRelease. */
         private const val RC_RELEASES_API =
-            "https://api.github.com/repos/subh-775/Relaxify/releases?per_page=20"
+            "https://api.github.com/repos/Hayate-sh/Relaxify/releases?per_page=20"
         /** The test build's asset name: CI's Stage APK step for the rc variant. */
         private const val RC_ASSET = "Relaxify-RC.apk"
         /** The real app's asset name, from the same step; see latestFromWeb. */
         private const val APK_ASSET = "Relaxify.apk"
         private const val LATEST_PAGE =
-            "https://github.com/subh-775/Relaxify/releases/latest"
+            "https://github.com/Hayate-sh/Relaxify/releases/latest"
         private const val DOWNLOAD_BASE =
-            "https://github.com/subh-775/Relaxify/releases/download"
+            "https://github.com/Hayate-sh/Relaxify/releases/download"
     }
 
     // RN's NativeEventEmitter wants these two on Android.

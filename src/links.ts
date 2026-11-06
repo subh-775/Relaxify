@@ -1,5 +1,5 @@
 /** The addresses the app opens in the browser, in one place. */
-export const DOCS_URL = 'https://subh-775.github.io/Relaxify/';
+export const DOCS_URL = 'https://hayate-sh.github.io/Relaxify/';
 export const LICENCE_URL = 'https://www.gnu.org/licenses/gpl-3.0.html';
 /** One link for every invite: the page's button always downloads the newest
  *  release (GitHub's releases/latest/download), so it never goes stale. */
@@ -35,5 +35,5 @@ export function reportUrl(version: string, phone: string, android: string): stri
     '---',
     `Relaxify ${version || '?'}, ${phone || 'unknown phone'}, Android ${android || '?'}`,
   ].join('\n');
-  return `https://github.com/subh-775/Relaxify/issues/new?body=${encodeURIComponent(body)}`;
+  return `https://github.com/Hayate-sh/Relaxify/issues/new?body=${encodeURIComponent(body)}`;
 }
